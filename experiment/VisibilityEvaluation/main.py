@@ -212,18 +212,24 @@ class ExperimentApp:
         self.canvas1.delete("calib")
         self.canvas2.delete("calib")
 
-        # --- マーカーサイズの定義 (固定ピクセルサイズ) ---
-        fg_w, fg_h = 256, 256
-        bg_w, bg_h = 512, 256
+        d_fg = self.distance1.get()
+        d_bg = self.distance2.get()
+
+        # --- 前景マーカーのサイズ計算 (正方形) ---
+        fg_size = self.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
+        
+        # --- 背景マーカーのサイズ計算 (横長) ---
+        bg_h = self.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG)
+        bg_w = self.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG * 2)
 
         # --- Window 1 (被験者側) のマーカー描画 ---
         # 1. 背景全体（横長）の四隅にマーカーを描画
-        self.draw_image_corner_brackets(self.canvas1, bg_w, bg_h, self.offset_x.get(), self.offset_y.get(), color=WIN1_MARKER_COLOR)
-        # 2. 背景の中央に、前景と同じサイズの正方形マーカーを描画
-        self.draw_image_corner_brackets(self.canvas1, fg_w, fg_h, self.offset_x.get(), self.offset_y.get(), color=WIN1_MARKER_COLOR)
+        self.draw_image_corner_brackets(self.canvas1, bg_w, bg_h, self.offset_x.get(), self.offset_y.get(), color=WIN1_MARKER_COLOR, line_width=MARKER_LINE_WIDTH * 1.5)
+        # 2. 背景の中央に、正方形マーカーを描画
+        self.draw_image_corner_brackets(self.canvas1, bg_h, bg_h, self.offset_x.get(), self.offset_y.get(), color=WIN1_MARKER_COLOR, line_width=MARKER_LINE_WIDTH * 1.5)
         
         # Window 2 (実験者側): 基準となるマーカーと十字を描画
-        self.draw_image_corner_brackets(self.canvas2, fg_w, fg_h, 0, 0, color=WIN2_MARKER_COLOR, flip_x=False)
+        self.draw_image_corner_brackets(self.canvas2, fg_size, fg_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=False)
         self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
 
     def adjust_offset(self, dx, dy):
@@ -331,21 +337,22 @@ class ExperimentApp:
         img2 = Image.open(self.current_img_path_2)
         
         # --- 画像処理 ---
-        # 前景は256x256にリサイズ
-        fg_w, fg_h = 256, 256
-        img2 = img2.resize((fg_w, fg_h))
+        d_fg = self.distance1.get()
+        d_bg = self.distance2.get()
+        fg_size = self.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
 
-        # 背景は512x512にリサイズ後、中央の512x256を切り出す
-        bg_temp_w, bg_temp_h = 512, 512
-        bg_final_w, bg_final_h = 512, 256
-        
-        img1_resized = img1.resize((bg_temp_w, bg_temp_h))
-        
-        # 切り出す領域を計算 (上下を均等にカット)
-        top = (bg_temp_h - bg_final_h) // 2
-        bottom = top + bg_final_h
-        box = (0, top, bg_temp_w, bottom)
-        img1 = img1_resized.crop(box)
+        # 背景は横長(幅が視角の2倍)なので、幅と高さを別々に計算してリサイズ
+        bg_h = self.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG)
+        bg_w = self.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG * 2)
+
+        # 背景画像の前処理: 512x512にリサイズし、中央の512x256(アスペクト比2:1)を切り出す
+        # これにより、元画像の中央256x256の領域が、前景画像と重なる領域となる
+        img1 = img1.resize((512, 512))
+        img1 = img1.crop((0, 128, 512, 384)) # top=128, bottom=384 (高さ256px分を切り出し)
+
+        # 最終的な表示サイズ(視角依存)にリサイズ
+        img1 = img1.resize((bg_w, bg_h))
+        img2 = img2.resize((fg_size, fg_size))
 
         img2 = img2.transpose(Image.FLIP_LEFT_RIGHT) # Flip for experimenter view
 
@@ -369,8 +376,9 @@ class ExperimentApp:
         self.canvas2.delete("img") # Window 2の画像を削除
         
         # 暗転中、Window 2には基準マーカーを表示
-        fg_w, fg_h = 256, 256
-        self.draw_image_corner_brackets(self.canvas2, fg_w, fg_h, 0, 0, color=WIN2_MARKER_COLOR, flip_x=True)
+        d_fg = self.distance1.get()
+        fg_size = self.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
+        self.draw_image_corner_brackets(self.canvas2, fg_size, fg_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=True)
         self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
 
         # 指定時間後に次のフェーズへ
