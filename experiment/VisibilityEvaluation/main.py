@@ -51,8 +51,6 @@ class ExperimentApp:
         # --- 実験条件用変数 ---
         self.distance1 = tk.IntVar(value=50)
         self.distance2 = tk.IntVar(value=70)
-        self.bg_brightness = tk.DoubleVar(value=100.0)
-        self.fg_brightness = tk.DoubleVar(value=10.0)
         self.trial_list = []
         self.current_trial_index = 0
         self.results = []
@@ -126,14 +124,8 @@ class ExperimentApp:
         tk.Label(self.participant_frame, text="Background Distance (cm):").grid(row=6, column=0, sticky='w', padx=5, pady=5)
         tk.Entry(self.participant_frame, textvariable=self.distance2).grid(row=6, column=1, padx=5, pady=5)
 
-        tk.Label(self.participant_frame, text="BG Brightness (cd/m^2):").grid(row=7, column=0, sticky='w', padx=5, pady=5)
-        tk.Entry(self.participant_frame, textvariable=self.bg_brightness).grid(row=7, column=1, padx=5, pady=5)
-
-        tk.Label(self.participant_frame, text="FG Brightness (cd/m^2):").grid(row=8, column=0, sticky='w', padx=5, pady=5)
-        tk.Entry(self.participant_frame, textvariable=self.fg_brightness).grid(row=8, column=1, padx=5, pady=5)
-
         btn = tk.Button(self.participant_frame, text="Setup Complete, Next", command=self.start_calibration)
-        btn.grid(row=9, column=0, columnspan=2, pady=20)
+        btn.grid(row=7, column=0, columnspan=2, pady=20)
         btn.bind('<Return>', lambda event: self.start_calibration())
 
     def start_calibration(self):
@@ -145,8 +137,6 @@ class ExperimentApp:
         try:
             self.distance1.get()
             self.distance2.get()
-            self.bg_brightness.get()
-            self.fg_brightness.get()
         except (ValueError, tk.TclError):
             messagebox.showwarning("Input Error", "Please enter valid numbers for experiment settings.")
             return
@@ -464,9 +454,6 @@ class ExperimentApp:
             self.root.unbind(key, binding_id)
         self.key_bindings.clear()
         
-        bg_brightness = self.bg_brightness.get()
-        fg_brightness = self.fg_brightness.get()
-
         score = self.evaluation_val.get()
         f1 = os.path.basename(self.current_img_path_1)
         f2 = os.path.basename(self.current_img_path_2)
@@ -474,7 +461,6 @@ class ExperimentApp:
         self.results.append([
             self.participant_id.get(), self.participant_age.get(), self.participant_gender.get(), self.participant_ipd.get(),
             self.distance1.get(), self.distance2.get(),
-            bg_brightness, fg_brightness,
             self.offset_x.get(), self.offset_y.get(),
             self.current_trial_index + 1,
             f1, f2, score
@@ -500,8 +486,7 @@ class ExperimentApp:
             writer = csv.writer(f)
             header = [
                 "ID", "Age", "Gender", "IPD(mm)", "Distance1(cm)", "Distance2(cm)",
-                "BG_Brightness(cd/m^2)", "FG_Brightness(cd/m^2)", "Offset_X", "Offset_Y",
-                "Trial_ID", "Image_Win1", "Image_Win2", "Score"
+                "Offset_X", "Offset_Y", "Trial_ID", "Image_Win1", "Image_Win2", "Score"
             ]
             writer.writerow(header)
             writer.writerows(self.results)
