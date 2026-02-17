@@ -1,0 +1,37 @@
+{
+    "check_vismodel":"vismlp_norm",
+    "model":[
+        {
+            "type":"testnet",
+            "mode":4,
+            "load":"ours_full",
+            "shortname":"ours_full",
+            "target_type":"content"
+        },
+        {
+            "type":"standard",
+            "apply_sigmoid":false,
+            "shortname":"standard",
+            "target_type":"content"
+        },
+        {
+            "type":"vismlp_norm",
+            "shortname":"vismlp_norm",
+            "target_type":"content",
+            "num_epochs":500,
+            "lr":0.1,
+            "lambda_vis":5.0,
+            "lambda_fidelity":5.0,
+            "lambda_smooth":2.0,
+            "calc_max_vis":false,
+            "smooth_loss_grad_weight":10,
+            "use_norm_vis_for_loss":true,
+            "l2_loss":true,
+            "apply_blur":true,
+            "clip_norm_size":0.0,
+            "alpha_initialize_by_tvismap":true,
+            "clip_target_vis":true
+        }
+        ]
+        
+}

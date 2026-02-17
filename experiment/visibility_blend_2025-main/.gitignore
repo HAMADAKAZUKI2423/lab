@@ -1,0 +1,12 @@
+__pycache__
+results
+tools/output
+videoTest
+dataset/dataset
+videos/
+venv/
+.venv/
+vismaps/
+.DS_Store
+ColorVideoVDP_backup/
+networks/weights/vismlp_norm/resnet_552_clip_half_mode4_map_newcrop*

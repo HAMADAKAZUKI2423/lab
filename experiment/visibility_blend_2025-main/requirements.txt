@@ -1,0 +1,22 @@
+torch
+torchvision
+torchaudio
+opencv-python
+seaborn
+scipy
+scikit-image
+tqdm
+thop
+pycocotools
+pyiqa
+onnx
+onnxruntime
+ipykernel
+matplotlib
+numpy
+pandas
+pillow
+ffmpeg-python
+PyEXR
+imageio
+-e ./ColorVideoVDP

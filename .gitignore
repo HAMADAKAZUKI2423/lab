@@ -1,0 +1,41 @@
+# ===== Python =====
+__pycache__/          # Pythonのキャッシュフォルダ
+*.pyc                 # コンパイル済みPythonファイル
+*.pyo                 # 最適化済みPythonファイル
+.ipynb_checkpoints/   # Jupyter Notebookのチェックポイント
+*.egg-info/           # パッケージ情報
+dist/                 # ビルド成果物
+build/
+.venv/                # 仮想環境（容量が大きいため）
+venv/
+
+# ===== LaTeX =====
+*.aux                 # LaTeX補助ファイル
+*.log                 # LaTeXログ
+*.toc                 # 目次ファイル
+*.bbl                 # 参考文献処理ファイル
+*.blg
+*.out
+*.synctex.gz          # エディタの同期用ファイル
+# *.pdf               # 出力PDFを管理したくない場合はコメント解除
+
+# ===== データ・一時ファイル =====
+data/raw/             # 生データ（Git LFSで管理 or 別管理）
+data/processed/       # 処理済みデータ（再生成可能なら除外）
+*.h5                  # HDF5データファイル（大容量）
+*.npy                 # Numpy配列ファイル（大容量）
+*.pkl                 # Pickleファイル
+
+# ===== OS生成ファイル =====
+.DS_Store             # macOS
+Thumbs.db             # Windows
+Desktop.ini           # Windows
+
+# ===== エディタ =====
+.vscode/              # VSCode設定（チームで共有したい場合は除外しない）
+.idea/                # JetBrains IDE
+*.swp                 # Vimスワップファイル
+
+# ===== 機密情報 =====
+*.env                 # 環境変数（APIキー等）
+secrets/

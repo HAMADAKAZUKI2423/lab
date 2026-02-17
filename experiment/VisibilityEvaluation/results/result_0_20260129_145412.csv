@@ -1,0 +1,9 @@
+ID,0,Age,23,Gender,Male,IPD(mm),66
+Distance,60,Brightness,1.0,Offset_X,0,Offset_Y,0
+Win1_x0,590.5,Win1_y0,218.5,Win1_x1,945.5,Win1_y1,573.5
+Trial_ID,Image_Win1,Image_Win2,Score,Brightness
+1,pippin_RS_YachtClub019.tif,pippin_Peel043.tif,3.0,1.0
+2,pippin_Peel043.tif,merry_mtl07_041.tif,3.0,1.0
+3,pippin_ParcSafari005.tif,merry_mexico0140.tif,3.0,1.0
+4,merry_mtl07_023.tif,pippin_park0060.tif,3.0,1.0
+5,merry_mtl07_003.tif,merry_mtl07_023.tif,3.0,1.0

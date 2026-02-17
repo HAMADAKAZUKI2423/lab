@@ -1,0 +1,19 @@
+{
+    "image":[
+        {
+            "opaque":"imgs/boy.png",
+            "bg":"imgs/parasol.png",
+            "mask":"none",
+            "vismap":"imgs/boy_vis.png",
+            "vis_value":"none"
+        },
+        {
+            "opaque":"imgs/car.png",
+            "bg":"imgs/beach.png",
+            "mask":"none",
+            "vismap":"imgs/car_vis_70_30.png",
+            "vis_value":"none"
+        }
+            
+        ]
+}

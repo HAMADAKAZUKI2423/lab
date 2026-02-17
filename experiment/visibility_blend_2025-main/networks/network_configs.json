@@ -1,0 +1,36 @@
+{
+    "alphanet":{
+    },
+    "adaptnet":{
+    },
+    "mattingnet":{
+    },
+    "onnx":{
+    },
+    "deeplabv3":{
+        "mobilenet_552_clip_half_mode4_map_newcrop":"vismlp_norm/mobilenet_552_clip_half_mode4_map_newcrop"
+    },
+    "deeplabv3_res":{
+        "resnet_552_clip_half_mode4_map_newcrop_final":"vismlp_norm/resnet_552_clip_half_mode4_map_newcrop_final"
+    },
+    "testnet":{
+        "4":{
+            "ours_full":"vismlp_norm/552_clip_half_mode4_map_newcrop_final",
+
+            "ours_ablated502":"vismlp_norm/502_clip_half_mode4_map_newcrop_final",
+
+            "ours_ablated550":"vismlp_norm/550_clip_half_mode4_map_newcrop_final",
+
+            "ours_quarter":"vismlp_norm/552_clip_half_res4_mode4_map_newcrop_final",
+
+            "ours_half":"vismlp_norm/552_clip_half_res_mode4_map_newcrop_final"
+
+        }
+    },
+    "scalar_testnet":{
+    },
+    "scalar_deeplab":{
+    },
+    "scalar_deeplabv3_res":{
+    }
+}

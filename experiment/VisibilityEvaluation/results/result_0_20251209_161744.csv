@@ -1,0 +1,7 @@
+ID,0,Age,23,Gender,Male,IPD(mm),66
+Trial_ID,Image_Win1,Image_Win2,Score,Distance,Brightness,Offset_X,Offset_Y
+1,pippin_park0039.tif,pippin_RVHtexture019.tif,3.0,60,1.0,0,0
+2,pippin_park0052.tif,merry_mtl07_022.tif,3.0,60,1.0,0,0
+3,merry_mexico0154.tif,pippin_UniStrt024.tif,3.0,60,1.0,0,0
+4,pippin_RVHtexture010.tif,pippin_jtalon0022.tif,3.0,60,1.0,0,0
+5,pippin_park0059.tif,pippin_RVHtexture022.tif,3.0,60,1.0,0,0

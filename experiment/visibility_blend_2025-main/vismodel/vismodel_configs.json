@@ -1,0 +1,72 @@
+{
+    "vismlp_norm":{
+        "MLP": true,
+        "path": "sigfit2024/vismlp_norm.pth",
+        "weight_mode": "3-vis-fusion",
+        "target_type": "content",
+        "extraction_mode": "lowpass",
+        "sigmoid_type": "generalized_sigmoid",
+        "num_hidden_layer": 2,
+        "mlp_dim": 64,
+        "skip_dn": false,
+        "no_mask": true,
+        "nobound_opaque": false,
+        "fc_downsample_factor": 4,
+        "drop_out_rate": 0.5,
+        "lp_norm": 2,
+        "adaptive_max_vis": false,
+        "mask_loss_weight": 1.0,
+        "aliasing_free_pooling": true,
+        "final_activation": "relu",
+        "sigmoid_param": [
+            -1.3819918094560388,
+            1.116153062227564,
+            6.350409402729756
+        ]
+    },
+    "IQA_cvvdp_norm":{
+        "MLP": false,
+        "IQA": true,
+        "path": "sigfit2024/IQA_cvvdp_norm.pth",
+        "target_type": "content",
+        "sigmoid_type": "generalized_sigmoid",
+        "metric_name": "cvvdp",
+        "sigmoid_param": [
+            15.279979770021065,
+            0.24793138031929784,
+            -7.04009645069274
+        ]
+    },
+    "IQA_ciede_norm":{
+        "MLP": false,
+        "IQA": true,
+        "path": "sigfit2024/IQA_ciede_norm.pth",
+        "target_type": "content",
+        "sigmoid_type": "generalized_sigmoid",
+        "metric_name": "ciede",
+        "sigmoid_param": [
+            -1.5210754598655791,
+            3.6292381128637774,
+            -14.430467724401558
+        ]
+    },
+    "fukiage2023_plus_norm":{
+        "MLP": true,
+        "path": "sigfit2024/fukiage2023_plus_norm.pth",
+        "weight_mode": "original",
+        "target_type": "content",
+        "extraction_mode": "partial-precise",
+        "sigmoid_type": "generalized_sigmoid",
+        "fc_downsample_factor": 1,
+        "no_mask": false,
+        "nobound_opaque": false,
+        "lp_norm": "trainable",
+        "adaptive_max_vis": false,
+        "mask_loss_weight": 0.0,
+        "sigmoid_param": [
+            -5.080204743863316,
+            -0.41759374879972216,
+            -1.2566282170393617
+        ]
+    }
+}

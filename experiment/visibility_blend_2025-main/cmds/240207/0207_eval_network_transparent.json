@@ -1,0 +1,31 @@
+{
+    "setting":{
+        "vismodel":"MLP_3way_ds4_h2_c64_lp2_do_botelow_csig2_zero_wd1e4",
+        "lambda_vis":5.0,
+        "lambda_fidelity":0.0,
+        "lambda_smooth":1.0,
+        "calc_max_vis":false,
+        "target_type":"content",
+        "smooth_loss_grad_weight":10,
+        "spatial_weighting":false,
+        "use_norm_vis_for_loss":true,
+        "l2_loss":true,
+        "shortname":"501_loss_eval_scalar"
+    },
+    "model":[
+        {
+            "type":"testnet",
+            "mode":0,
+            "load":"halftrans_501",
+            "shortname":"testnet_halftrans_0_501_opaqueData",
+            "wo_semi":true
+        },
+        {
+            "type":"testnet",
+            "mode":3,
+            "load":"halftrans_501",
+            "shortname":"testnet_halftrans_3_501_opaqueData",
+            "wo_semi":true
+        }
+    ]
+}

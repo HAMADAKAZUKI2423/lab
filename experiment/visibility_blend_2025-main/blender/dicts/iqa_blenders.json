@@ -1,0 +1,16 @@
+{
+    "model":[
+        {
+            "type":"MLP_3way_ds4_h2_c64_lp2_do_botelow_csig2_zero",
+            "shortname":"brisque",
+            "num_epochs":500,
+            "lr":0.1,
+            "target_type":"content",
+            "loss_type":"iqa",
+            "use_norm_vis_for_loss":true,
+            "iqa_metric":"brisque",
+            "lambda_vis":1.0,
+            "lambda_iqa":1.0
+        }
+        ]
+}

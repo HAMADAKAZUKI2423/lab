@@ -1,0 +1,13 @@
+{
+    "image":[
+        {
+            "blend":"none",
+            "opaque":"imgs/bike.png",
+            "bg":"imgs/leaves.png",
+            "mask":"none",
+            "alpha":1,
+            "vismap":"none",
+            "vis_value":0.5
+        }
+        ]
+}

@@ -1,0 +1,15 @@
+{
+    "image":[
+        {
+            "overlaid":"videos/bg/Boy - 47064.mp4",
+            "bg":"videos/bg/Sea - 4006.mp4",
+            "mask":"none",
+            "target_vismap":"none",
+            "obj_vis_value":0.5,
+            "num_frame":60,
+            "width":768,
+            "height":512,
+            "shrink":0.8
+        }            
+        ]
+}

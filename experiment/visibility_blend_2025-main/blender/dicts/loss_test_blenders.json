@@ -1,0 +1,32 @@
+{
+    "model":[
+        {
+            "type":"MLP_3way_ds4_h2_c64_lp2_do_botelow_csig2_zero",
+            "shortname":"all_loss_woedge",
+            "lambda_vis":1.0,
+            "lambda_fidelity":5.0,
+            "lambda_smooth":2.0,
+            "lr":0.1,
+            "calc_max_vis":false,
+            "smooth_loss_grad_weight":0,
+            "spatial_weighting":false,
+            "num_epochs":500,
+            "target_type":"content",
+            "use_norm_vis_for_loss":true
+        },
+        {
+            "type":"MLP_3way_ds4_h2_c64_lp2_do_botelow_csig2_zero",
+            "shortname":"all_loss_woedge",
+            "lambda_vis":1.0,
+            "lambda_fidelity":5.0,
+            "lambda_smooth":1.0,
+            "lr":0.1,
+            "calc_max_vis":false,
+            "smooth_loss_grad_weight":0,
+            "spatial_weighting":false,
+            "num_epochs":500,
+            "target_type":"content",
+            "use_norm_vis_for_loss":true
+        }
+        ]
+}

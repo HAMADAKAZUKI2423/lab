@@ -1,0 +1,23 @@
+{
+    "image":[
+        {
+            "blend":"none",
+            "opaque":"imgs/exp/content/opacity/illust/2.png",
+            "bg":"imgs/exp/background/8.png",
+            "mask":"none",
+            "alpha":1,
+            "vismap":"none",
+            "vis_value":0.5
+        },
+        {
+            "blend":"none",
+            "opaque":"imgs/exp/content/opacity/illust/2.png",
+            "bg":"imgs/exp/background/8.png",
+            "mask":"none",
+            "alpha":1,
+            "vismap":"imgs/exp/content/opacity/illust/2_vis_50_30.png",
+            "vis_value":"none"
+        }
+            
+        ]
+}

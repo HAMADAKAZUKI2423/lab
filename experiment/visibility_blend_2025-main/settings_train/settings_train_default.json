@@ -1,0 +1,27 @@
+{
+    "setting":[
+        {
+            "network":{
+                "type":"testnet",
+                "mode":4
+            },
+            "vismodel":"vismlp_norm",
+            "shortname":"vismlp_552",
+            "target_type":"content",
+            "wo_semi":false,
+            "half_semi":"map",
+            "tv_type":"map",
+            "lambda_vis":5.0,
+            "lambda_fidelity":5.0,
+            "lambda_smooth":2.0,
+            "calc_max_vis":false,
+            "clip_target_vis":true,
+            "use_norm_vis_for_loss":true,
+            "smooth_loss_grad_weight":10,
+            "l2_loss":true,
+            "num_pairs":10000,
+            "data_size":256,
+            "train_size":256
+        }
+    ]
+}

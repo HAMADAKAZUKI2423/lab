@@ -1,0 +1,71 @@
+{
+    "setting":{
+        "vismodel":"MLP_3way_ds4_h2_c64_lp2_do_botelow_csig2_zero_wd1e4",
+        "shortname":"MLP_3way_ds4_h2_c64_lp2_do_botelow_csig2_zero_wd1e4",
+        "target_type":"content",
+        "lambda_vis":5.0,
+        "lambda_fidelity":0.0,
+        "lambda_smooth":1.0,
+        "calc_max_vis":false,
+        "smooth_loss_grad_weight":10,
+        "use_norm_vis_for_loss":true,
+        "l2_loss":true
+    },
+    "model":[
+        {
+            "type":"standard",
+            "shortname":"alphablend",
+            "target_type":"content",
+
+            "wo_semi":true,
+            "tv_type":"map",
+
+            "data_size":512
+        },
+        {
+            "type":"testnet",
+            "mode":0,
+            "load":"1225_501",
+            "shortname":"testnet_lowres",
+            "target_type":"content",
+
+            "wo_semi":true,
+            "tv_type":"map",
+
+            "data_size":512,
+            "train_size":128
+        },
+        {
+            "type":"testnet",
+            "mode":0,
+            "load":"1225_501",
+            "shortname":"testnet_rawres",
+            "target_type":"content",
+
+            "wo_semi":true,
+            "tv_type":"map",
+
+            "data_size":512,
+            "train_size":512
+        },
+        {
+            "type":"MLP_3way_ds4_h2_c64_lp2_do_botelow_csig2_zero_wd1e4",
+            "shortname":"iterative",
+            "target_type":"content",
+            "num_epochs":500,
+            "lr":0.1,
+            "lambda_vis":5.0,
+            "lambda_fidelity":0.0,
+            "lambda_smooth":1.0,
+            "calc_max_vis":false,
+            "smooth_loss_grad_weight":10,
+            "use_norm_vis_for_loss":true,
+            "l2_loss":true,
+            
+            "wo_semi":true,
+            "tv_type":"map",
+
+            "data_size":512
+        }
+    ]
+}
