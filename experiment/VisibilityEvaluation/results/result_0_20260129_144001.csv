@@ -1,8 +1,0 @@
-ID,0,Age,23,Gender,Male,IPD(mm),66
-Win1_x0,590.5,Win1_y0,218.5,Win1_x1,945.5,Win1_y1,573.5
-Trial_ID,Image_Win1,Image_Win2,Score,Distance,Brightness,Offset_X,Offset_Y
-1,merry_mtl07_053.tif,pippin_RVHtexture009.tif,3.0,60,1.0,0,0
-2,pippin_park0059.tif,pippin_park0010.tif,3.0,60,1.0,0,0
-3,pippin_Peel071.tif,pippin_park0050.tif,3.0,60,1.0,0,0
-4,pippin_adirondacks0025.tif,pippin_UniStrt005.tif,3.0,60,1.0,0,0
-5,pippin_RVHtexture014.tif,pippin_park0058.tif,3.0,60,1.0,0,0
