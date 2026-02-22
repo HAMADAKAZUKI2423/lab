@@ -168,6 +168,7 @@ class ExperimentApp:
             return 0
         # 物理サイズ[cm] = 2 * 距離[cm] * tan(視角[rad] / 2)
         angle_rad = math.radians(angle_deg)
+
         size_cm = 2 * distance_cm * math.tan(angle_rad / 2)
         # ピクセルサイズ = 物理サイズ[cm] * PPC
         return round(size_cm * PIXELS_PER_CM)

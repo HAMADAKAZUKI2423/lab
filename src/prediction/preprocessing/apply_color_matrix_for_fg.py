@@ -67,8 +67,11 @@ matrix_data = np.array([
 
 # 2. 実行 (お手持ちの画像ファイル名があれば書き換えてください)
 # ファイルパスを None にすると、R/G/Bの箱を描いたデモ画像で動きます
-original, transformed = apply_glass_simulation(
-    r"C:\Users\HamaKazu\Desktop\GradSchool\lab\McGill Calibrated Color Image Database\Textures\Textures\pippin0224.tif", matrix_data) 
+script_dir = os.path.dirname(os.path.abspath(__file__))
+lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+default_image_path = os.path.join(lab_root, "data", "raw", "images", "McGill Calibrated Color Image Database", "Textures", "Textures", "pippin0224.tif")
+
+original, transformed = apply_glass_simulation(default_image_path, matrix_data) 
 # 例: apply_glass_simulation("my_photo.jpg", matrix_data)
 
 # 画像の保存

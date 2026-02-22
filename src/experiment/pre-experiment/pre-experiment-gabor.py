@@ -6,6 +6,7 @@ import datetime
 from PIL import Image, ImageTk, ImageEnhance
 import glob
 import random
+import math
 
 # ==========================================
 # 定数設定エリア (実験条件やデザインはここを変更)
@@ -165,7 +166,6 @@ class ExperimentApp:
 
     def get_size_for_visual_angle(self, distance_cm, angle_deg):
         """指定された視角と距離から、対応するピクセルサイズを計算する"""
-        import math
         if distance_cm <= 0:
             return 0
         # 物理サイズ[cm] = 2 * 距離[cm] * tan(視角[rad] / 2)
