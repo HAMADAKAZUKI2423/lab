@@ -1,3 +1,4 @@
+# py .\src\experiment\pre-analyze\pre-analyze-image.py
 import pandas as pd
 import matplotlib.pyplot as plt
 import re

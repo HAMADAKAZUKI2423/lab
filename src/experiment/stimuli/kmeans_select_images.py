@@ -1,3 +1,4 @@
+# py .\src\experiment\stimuli\kmeans_select_images.py
 import os
 import glob
 import shutil

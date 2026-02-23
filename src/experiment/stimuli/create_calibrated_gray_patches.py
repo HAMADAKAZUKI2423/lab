@@ -1,3 +1,4 @@
+# py .\src\experiment\stimuli\create_calibrated_gray_patches.py
 import numpy as np
 import cv2
 import os

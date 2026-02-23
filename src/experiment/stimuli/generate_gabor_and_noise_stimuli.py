@@ -1,3 +1,4 @@
+# py .\src\experiment\stimuli\generate_gabor_and_noise_stimuli.py
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.fft import fft2, ifft2, fftshift, ifftshift
