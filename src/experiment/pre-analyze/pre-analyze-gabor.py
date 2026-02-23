@@ -111,8 +111,8 @@ unique_cpds = sorted(final_df['cpd'].dropna().unique())
 
 # --- スタイル定義 ---
 # 空間周波数ごとの色
-cpd_colors = plt.cm.viridis(np.linspace(0, 0.8, len(unique_cpds)))
-cpd_color_map = {cpd: cpd_colors[i] for i, cpd in enumerate(unique_cpds)}
+cpd_colors = ['blue', 'green', 'orange']
+cpd_color_map = {cpd: cpd_colors[i % len(cpd_colors)] for i, cpd in enumerate(unique_cpds)}
 
 # 平均輝度ごとのマーカー
 lum_marker_map = {lum: marker for lum, marker in zip(unique_lums, ['o', 's', '^', 'D'])}
