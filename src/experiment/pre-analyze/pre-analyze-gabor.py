@@ -137,7 +137,12 @@ if not unique_distances.size:
 # --- 凡例と全体ラベルの設定 ---
 from matplotlib.lines import Line2D
 legend_elements = [Line2D([0], [0], color=cpd_color_map.get(cpd), lw=2, label=f'{cpd} cpd') for cpd in unique_cpds]
-legend_elements.extend([Line2D([0], [0], marker=lum_marker_map.get(lum), color='gray', label=f'{lum} nit', linestyle='None') for lum in unique_lums])
+legend_elements.extend([
+    Line2D([0], [0], marker='o' if lum == 50 else lum_marker_map.get(lum), color='gray', 
+           markerfacecolor='none' if lum == 50 else 'gray', 
+           label=f'{lum} nit', linestyle='None') 
+    for lum in unique_lums
+])
 
 # 各距離の組み合わせについて個別のグラフを生成
 for distance in unique_distances:
@@ -153,8 +158,9 @@ for distance in unique_distances:
             plot_df = distance_df[(distance_df['mean_luminance'] == lum) & (distance_df['cpd'] == cpd)].sort_values('contrast')
             if not plot_df.empty:
                 ax.errorbar(plot_df['contrast'], plot_df['mean'], yerr=plot_df['sem'], 
-                            marker=lum_marker_map.get(lum, 'o'), 
+                            marker='o' if lum == 50 else lum_marker_map.get(lum, 'o'), 
                             color=cpd_color_map.get(cpd, 'black'), 
+                            markerfacecolor='none' if lum == 50 else None,
                             linestyle='-', capsize=4)
 
     # 4. グラフの装飾
