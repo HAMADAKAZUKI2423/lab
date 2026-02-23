@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import re
 import os
 import glob
+import argparse
 
 # 解析対象のフォルダ
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -12,19 +13,30 @@ lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 # 入力データのベースディレクトリ (pre-experiment-image.py の出力先)
 DATA_BASE_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-image")
 
-# 最新のフォルダを検索
-if not os.path.exists(DATA_BASE_DIR):
-    print(f"データディレクトリが見つかりません: {DATA_BASE_DIR}")
-    exit()
+parser = argparse.ArgumentParser(description='Analyze Image experiment results.')
+parser.add_argument('target_dir', nargs='?', help='Path to the target directory')
+args = parser.parse_args()
 
-subdirs = [d for d in glob.glob(os.path.join(DATA_BASE_DIR, "*")) if os.path.isdir(d)]
-if not subdirs:
-    print(f"データフォルダが見つかりません: {DATA_BASE_DIR}")
-    exit()
+if args.target_dir:
+    TARGET_DIR = args.target_dir
+    if not os.path.exists(TARGET_DIR):
+        print(f"指定されたディレクトリが見つかりません: {TARGET_DIR}")
+        exit()
+else:
+    # 最新のフォルダを検索
+    if not os.path.exists(DATA_BASE_DIR):
+        print(f"データディレクトリが見つかりません: {DATA_BASE_DIR}")
+        exit()
 
-# 最新のフォルダを取得 (更新日時順)
-TARGET_DIR = max(subdirs, key=os.path.getmtime)
-target_folder_name = os.path.basename(TARGET_DIR)
+    subdirs = [d for d in glob.glob(os.path.join(DATA_BASE_DIR, "*")) if os.path.isdir(d)]
+    if not subdirs:
+        print(f"データフォルダが見つかりません: {DATA_BASE_DIR}")
+        exit()
+
+    # 最新のフォルダを取得 (更新日時順)
+    TARGET_DIR = max(subdirs, key=os.path.getmtime)
+
+target_folder_name = os.path.basename(os.path.normpath(TARGET_DIR))
 print(f"解析対象フォルダ: {TARGET_DIR}")
 
 # 出力先ディレクトリの設定
