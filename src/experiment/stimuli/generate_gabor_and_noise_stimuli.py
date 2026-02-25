@@ -18,7 +18,7 @@ SCREEN_RES_X_PX     = 2560    # 画面の横解像度 (px)
 # 論文 (Table 1) に基づく刺激パラメータ
 STIM_WIDTH_DEG      = 7.9     # 刺激の幅 (度)
 STIM_HEIGHT_DEG     = 7.9     # 刺激の高さ (度)
-SPATIAL_FREQS_CPD   = [1, 2, 4] # 生成する空間周波数のリスト (cpd)
+SPATIAL_FREQS_CPD   = [2, 4] # 生成する空間周波数のリスト (cpd)
 GABOR_SIGMA_DEG     = 1.0     # ガボールパッチの標準偏差 (度)
 
 # --- [新規] 輝度・コントラスト設定 ---
@@ -28,7 +28,7 @@ lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 CALIBRATION_LOG_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor", "calibration_log")
 
 MEAN_LUMINANCES_CDM2  = [50, 5]   # 平均輝度リスト (cd/m^2)
-MICHELSON_CONTRASTS = [1.0, 0.8, 0.6, 0.4, 0.2] # コントラストリスト
+MICHELSON_CONTRASTS = [0.2, 0.6, 1.0] # コントラストリスト
 
 # --- 保存設定 ---
 OUTPUT_DIR = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor")
