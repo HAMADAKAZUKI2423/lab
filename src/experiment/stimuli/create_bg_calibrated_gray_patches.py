@@ -1,4 +1,4 @@
-# py .\src\experiment\stimuli\create_calibrated_gray_patches.py
+# py .\src\experiment\stimuli\create_bg_calibrated_gray_patches.py
 import numpy as np
 import cv2
 import os
@@ -26,11 +26,11 @@ def generate_calibrated_gray_patches(cd_m2_levels, max_cd_m2, min_cd_m2, offset=
     # 保存用ディレクトリの作成
     script_dir = os.path.dirname(os.path.abspath(__file__))
     lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
-    output_dir = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "calibrated_gray_patches")
+    output_dir = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_calibrated_gray_patches")
     if create_images:
         os.makedirs(output_dir, exist_ok=True)
         offset_str = f"{offset:.2f}" if np.isscalar(offset) else "variable"
-        print(f"--- 物理輝度準拠のグレーパッチ (max={max_cd_m2}, min={min_cd_m2}, offset={offset_str} cd/m^2, gamma={gamma}) を生成中 ---")
+        print(f"--- [Background] 物理輝度準拠のグレーパッチ (max={max_cd_m2}, min={min_cd_m2}, offset={offset_str} cd/m^2, gamma={gamma}) を生成中 ---")
  
     pixel_values = []
     
@@ -84,10 +84,11 @@ def get_measured_values_from_user(target_levels):
     """
     ユーザーに測定値の入力を促し、数値のリストとして返す。
     """
-    print("\n" + "="*60)
-    print("輝度測定と入力")
+    print("
+" + "="*60)
+    print("輝度測定と入力 (Background Display)")
     print("="*60)
-    print("生成された各グレーパッチをディスプレイに表示し、輝度計で実際の輝度(cd/m^2)を測定してください。")
+    print("生成された各グレーパッチを背景ディスプレイに表示し、輝度計で実際の輝度(cd/m^2)を測定してください。")
     print("以下の目標輝度に対応する測定値を、順番にスペースで区切って入力してください。")
     print(f"目標輝度リスト: {target_levels}")
     
@@ -105,7 +106,7 @@ def get_measured_values_from_user(target_levels):
 # --- 実行部分 ---
 if __name__ == "__main__":
     start_time = datetime.datetime.now()
-    # --- 基本設定 ---
+    # --- 基本設定 (背景ディスプレイ用に必要に応じて調整してください) ---
     MAX_LUMINANCE = 100.0
     MIN_LUMINANCE = 0.0
     TARGET_LUMINANCE_LEVELS = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 0]
@@ -114,8 +115,9 @@ if __name__ == "__main__":
     
     # --- 初回測定 ---
     # 最初に基準となるパッチ（オフセット=0の状態）を測定してもらう
-    print("\n" + "="*60)
-    print("初回測定: 基準となるグレーパッチを測定してください。")
+    print("
+" + "="*60)
+    print("初回測定: [Background] 基準となるグレーパッチを測定してください。")
     print("="*60)
     print("まず、オフセット 0 で生成された基準のグレーパッチ（または、それに相当する画像）を輝度計で測定してください。")
     
@@ -132,7 +134,8 @@ if __name__ == "__main__":
     # 各輝度レベルごとに個別の補正値を計算する (初期オフセットは0なので、0 - error)
     correction_offsets = -errors
 
-    print("\n--- 初回計算結果 ---")
+    print("
+--- 初回計算結果 ---")
     print(f"最大誤差 (絶対値): {max_abs_error:.4f} cd/m^2")
 
     # --- ループ初期化 ---
@@ -142,10 +145,12 @@ if __name__ == "__main__":
     while max_abs_error > 2.0:
         iteration += 1
         if iteration > max_iterations:
-            print(f"\n反復回数が{max_iterations}回を超えたため、処理を中断します。")
+            print(f"
+反復回数が{max_iterations}回を超えたため、処理を中断します。")
             break
 
-        print(f"\n{'='*20} キャリブレーション: Iteration {iteration} {'='*20}")
+        print(f"
+{'='*20} [Background] キャリブレーション: Iteration {iteration} {'='*20}")
         
         # 1. 現在の補正オフセットでグレーパッチを生成
         generate_calibrated_gray_patches(
@@ -163,12 +168,13 @@ if __name__ == "__main__":
         # 次の補正値は、現在の補正値から観測された誤差を引くことで更新する
         correction_offsets = correction_offsets - errors
 
-        print("\n--- 計算結果 ---")
+        print("
+--- 計算結果 ---")
         print(f"最大誤差 (絶対値): {max_abs_error:.4f} cd/m^2")
-        # print(f"次のループで適用する補正オフセット: {correction_offsets}")
 
     # --- ループ終了後 ---
-    print(f"\n{'='*20} キャリブレーション完了 {'='*20}")
+    print(f"
+{'='*20} [Background] キャリブレーション完了 {'='*20}")
     if iteration <= max_iterations:
         print(f"最大誤差 {max_abs_error:.4f} cd/m^2 となり、閾値(2.0)内に収束しました。")
     
@@ -179,7 +185,8 @@ if __name__ == "__main__":
         offset=correction_offsets, gamma=GAMMA, size=IMAGE_SIZE, create_images=False
     )
     
-    print("\n--- 【最終結果】目標輝度とピクセル値の対応表 ---")
+    print("
+--- [Background] 【最終結果】目標輝度とピクセル値の対応表 ---")
     print("-" * 50)
     print(f"{'Target Luminance (cd/m^2)':<30} | {'Pixel Value (0-255)'}")
     print("-" * 50)
@@ -190,7 +197,7 @@ if __name__ == "__main__":
     # --- 結果をCSVに保存 ---
     script_dir = os.path.dirname(os.path.abspath(__file__))
     lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
-    output_dir = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor", "calibration_log")
+    output_dir = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor", "bg_calibration_log")
     os.makedirs(output_dir, exist_ok=True)
     
     log_filename = os.path.join(output_dir, start_time.strftime("%Y%m%d_%H%M%S") + ".csv")
@@ -207,6 +214,8 @@ if __name__ == "__main__":
             for target, pixel, off_val in zip(TARGET_LUMINANCE_LEVELS, final_pixel_values, correction_offsets):
                 writer.writerow([now_str, target, pixel, off_val, GAMMA, MAX_LUMINANCE, MIN_LUMINANCE])
         
-        print(f"\nキャリブレーション結果を '{log_filename}' に保存しました。")
+        print(f"
+キャリブレーション結果を '{log_filename}' に保存しました。")
     except Exception as e:
-        print(f"\nエラー: CSVファイルへの保存に失敗しました。 ({e})")
+        print(f"
+エラー: CSVファイルへの保存に失敗しました。 ({e})")
