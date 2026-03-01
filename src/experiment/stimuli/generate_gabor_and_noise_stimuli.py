@@ -18,17 +18,23 @@ SCREEN_RES_X_PX     = 2560    # 画面の横解像度 (px)
 # 論文 (Table 1) に基づく刺激パラメータ
 STIM_WIDTH_DEG      = 7.9     # 刺激の幅 (度)
 STIM_HEIGHT_DEG     = 7.9     # 刺激の高さ (度)
-SPATIAL_FREQS_CPD   = [1, 2, 4] # 生成する空間周波数のリスト (cpd)
+SPATIAL_FREQS_CPD   = [2, 4] # 生成する空間周波数のリスト (cpd)
 GABOR_SIGMA_DEG     = 1.0     # ガボールパッチの標準偏差 (度)
 
 # --- [新規] 輝度・コントラスト設定 ---
 # キャリブレーション結果の保存先ディレクトリ (create_calibrated_gray_patches.py の出力先)
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
-CALIBRATION_LOG_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor", "calibration_log")
 
-MEAN_LUMINANCES_CDM2  = [50, 5]   # 平均輝度リスト (cd/m^2)
-MICHELSON_CONTRASTS = [1.0, 0.8, 0.6, 0.4, 0.2] # コントラストリスト
+# 前景 (HMD用)
+FG_CALIBRATION_LOG_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor", "fg_calibration_log")
+# 背景 (ディスプレイ用)
+BG_CALIBRATION_LOG_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor", "bg_calibration_log")
+
+FG_MEAN_LUMINANCES_CDM2 = [50, 5]   # 前景用平均輝度リスト (cd/m^2)
+BG_MEAN_LUMINANCES_CDM2 = [15, 5]   # 背景用平均輝度リスト (cd/m^2)
+FG_CONTRASTS = [0.2, 0.6, 1.0]      # 前景用コントラストリスト
+BG_CONTRASTS = [1.0]      # 背景用コントラストリスト
 
 # --- 保存設定 ---
 OUTPUT_DIR = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor")
@@ -110,6 +116,23 @@ def load_latest_calibration_map(log_dir):
     lum_pixel_map.sort(key=lambda x: x[0])
     return lum_pixel_map
 
+def get_calibrated_map_arrays(log_dir, name="Calibration"):
+    """
+    キャリブレーションディレクトリから最新のデータを読み込み、
+    np.interp用にソートされた輝度とピクセルの配列を返す。
+    """
+    lum_pixel_map = load_latest_calibration_map(log_dir)
+    if not lum_pixel_map:
+        print(f"警告: {name} の有効なキャリブレーションデータがありません。")
+        return None, None
+    
+    calibrated_lums = np.array([item[0] for item in lum_pixel_map])
+    calibrated_pixels = np.array([item[1] for item in lum_pixel_map])
+    
+    # np.interpは輝度が昇順である必要がある
+    sort_indices = np.argsort(calibrated_lums)
+    return calibrated_lums[sort_indices], calibrated_pixels[sort_indices]
+
 # ==========================================
 # 3. 刺激生成関数 (前回のコードをベースに調整)
 # ==========================================
@@ -180,21 +203,15 @@ def create_band_limited_noise(width_px, height_px, ppd, f_center_cpd, bandwidth_
 # ==========================================
 if __name__ == "__main__":
     # --- [新規] 輝度-ピクセル変換の準備 ---
-    # 最新のキャリブレーション結果を読み込む
-    luminance_pixel_map = load_latest_calibration_map(CALIBRATION_LOG_DIR)
+    # 最新のキャリブレーション結果を読み込む (Foreground)
+    fg_sorted_lums, fg_sorted_pixels = get_calibrated_map_arrays(FG_CALIBRATION_LOG_DIR, "Foreground")
     
-    if not luminance_pixel_map:
+    # 最新のキャリブレーション結果を読み込む (Background)
+    bg_sorted_lums, bg_sorted_pixels = get_calibrated_map_arrays(BG_CALIBRATION_LOG_DIR, "Background")
+    
+    if fg_sorted_lums is None or bg_sorted_lums is None:
         print("エラー: 有効なキャリブレーションデータがないため、処理を中断します。")
         exit(1)
-
-    # マップを輝度とピクセル値のリストに分割
-    calibrated_lums = [item[0] for item in luminance_pixel_map]
-    calibrated_pixels = [item[1] for item in luminance_pixel_map]
-
-    # np.interpはx座標(輝度)が昇順である必要があるため、並べ替える
-    sort_indices = np.argsort(calibrated_lums)
-    sorted_lums = np.array(calibrated_lums)[sort_indices]
-    sorted_pixels = np.array(calibrated_pixels)[sort_indices]
 
     # --- ガボールパッチの生成 (前景距離に基づく) ---
     print("--- Generating Gabor Patches (Foreground) ---")
@@ -207,9 +224,9 @@ if __name__ == "__main__":
         
         print(f"  Distance: {distance}cm (PPD: {my_ppd:.2f}, Size: {req_w}x{req_h}px)")
         
-        # C. 新しいパラメータでループ
-        for mean_lum in MEAN_LUMINANCES_CDM2:
-            for contrast in MICHELSON_CONTRASTS:
+        # C. パラメータでループ
+        for mean_lum in FG_MEAN_LUMINANCES_CDM2:
+            for contrast in FG_CONTRASTS:
                 for cpd in SPATIAL_FREQS_CPD:
                     print(f"    Generating for L_mean={mean_lum}, C={contrast}, f={cpd} cpd...")
 
@@ -223,7 +240,7 @@ if __name__ == "__main__":
                     # 輝度マップの計算: L(x,y) = L_mean * (1 + C * modulator)
                     lum_map_v = mean_lum * (1 + contrast * gabor_mod_v)
                     # 輝度マップをピクセル値マップに変換
-                    pixel_map_v = luminance_to_pixel(lum_map_v, sorted_lums, sorted_pixels)
+                    pixel_map_v = luminance_to_pixel(lum_map_v, fg_sorted_lums, fg_sorted_pixels)
                     # ファイル名の設定と保存
                     filename_v = os.path.join(gabor_dir, f"{cpd}cpd_{mean_lum}nit_{contrast}_v.png")
                     plt.imsave(filename_v, pixel_map_v, cmap='gray', vmin=0, vmax=255)
@@ -232,7 +249,7 @@ if __name__ == "__main__":
                     # --- C-2. 水平方向のガボールパッチ (Horizontal, orientation=90) ---
                     gabor_mod_h = create_gabor(req_w, req_h, my_ppd, cpd, GABOR_SIGMA_DEG, orientation_deg=90)
                     lum_map_h = mean_lum * (1 + contrast * gabor_mod_h)
-                    pixel_map_h = luminance_to_pixel(lum_map_h, sorted_lums, sorted_pixels)
+                    pixel_map_h = luminance_to_pixel(lum_map_h, fg_sorted_lums, fg_sorted_pixels)
                     filename_h = os.path.join(gabor_dir, f"{cpd}cpd_{mean_lum}nit_{contrast}_h.png")
                     plt.imsave(filename_h, pixel_map_h, cmap='gray', vmin=0, vmax=255)
                     print(f"      Saved: {filename_h}")
@@ -248,19 +265,26 @@ if __name__ == "__main__":
         print(f"  Distance: {distance}cm (PPD: {my_ppd:.2f}, Size: {req_w}x{req_h}px)")
         
         for cpd in SPATIAL_FREQS_CPD:
-            print(f"    Generating for {cpd} cpd...")
-            
-            # C. 帯域制限ノイズの生成
+            # 周波数ごとにノイズパターンを生成（輝度・コントラスト条件間でパターンを統一するためここで生成）
             stim_noise = create_band_limited_noise(req_w, req_h, my_ppd, f_center_cpd=cpd)
 
-            # D. 保存先フォルダの準備
-            noise_dir = os.path.join(OUTPUT_DIR, "bg_noise", f"{distance}cm")
-            os.makedirs(noise_dir, exist_ok=True)
+            for mean_lum in BG_MEAN_LUMINANCES_CDM2:
+                for contrast in BG_CONTRASTS:
+                    print(f"    Generating for L_mean={mean_lum}, C={contrast}, f={cpd} cpd...")
+                    
+                    # D. 輝度マップの計算
+                    lum_map_noise = mean_lum * (1 + contrast * stim_noise)
+                    # 輝度マップをピクセル値マップに変換
+                    pixel_map_noise = luminance_to_pixel(lum_map_noise, bg_sorted_lums, bg_sorted_pixels)
 
-            # E. ファイル名の設定と保存
-            noise_filename = os.path.join(noise_dir, f"{cpd}cpd.png")
-            plt.imsave(noise_filename, stim_noise, cmap='gray', vmin=-1, vmax=1)
-            
-            print(f"      Saved: {noise_filename}")
+                    # E. 保存先フォルダの準備
+                    noise_dir = os.path.join(OUTPUT_DIR, "bg_noise", f"{distance}cm")
+                    os.makedirs(noise_dir, exist_ok=True)
+
+                    # F. ファイル名の設定と保存
+                    noise_filename = os.path.join(noise_dir, f"{cpd}cpd_{mean_lum}nit_{contrast}.png")
+                    plt.imsave(noise_filename, pixel_map_noise, cmap='gray', vmin=0, vmax=255)
+                    
+                    print(f"      Saved: {noise_filename}")
 
     print("\n--- 全ての刺激画像の生成が完了しました ---")

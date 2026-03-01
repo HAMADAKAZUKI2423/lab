@@ -1,0 +1,18 @@
+[project]
+name = "lab"
+version = "0.1.0"
+description = "Lab project"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "ipykernel",
+    "jupyter",
+    "matplotlib",
+    "numpy",
+    "opencv-python",
+    "pandas",
+    "pillow",
+    "scikit-learn",
+    "scipy",
+    "seaborn",
+]
