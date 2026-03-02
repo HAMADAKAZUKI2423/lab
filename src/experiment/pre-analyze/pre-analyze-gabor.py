@@ -132,13 +132,13 @@ if not unique_distances.size:
 # データに含まれる全組み合わせを取得して色を割り当てる
 conditions = summary_df[['fg_lum', 'bg_lum', 'fg_cpd']].drop_duplicates().sort_values(by=['fg_lum', 'bg_lum', 'fg_cpd'])
 
-# 背景輝度の最小値を取得（これを点線にする）
-min_bg_lum = conditions['bg_lum'].min()
-
 # 色分けルールのための値の取得
 unique_fg_lums = sorted(conditions['fg_lum'].unique())
+unique_bg_lums = sorted(conditions['bg_lum'].unique())
 unique_fg_cpds = sorted(conditions['fg_cpd'].unique())
+
 max_fg_lum = max(unique_fg_lums) if unique_fg_lums else 0
+max_bg_lum = max(unique_bg_lums) if unique_bg_lums else 0
 max_fg_cpd = max(unique_fg_cpds) if unique_fg_cpds else 0
 
 condition_styles = {}
@@ -148,17 +148,19 @@ for idx, row in enumerate(conditions.itertuples(index=False)):
     key = (row.fg_lum, row.bg_lum, row.fg_cpd)
     label = f"FG:{row.fg_lum}nit, BG:{row.bg_lum}nit, {row.fg_cpd}cpd"
     
-    # 色の決定: 周波数が高い(赤系)/低い(青系)、輝度が高い(鮮やか)/低い(淡い)
+    # 色の決定: 背景輝度が高い(赤系)/低い(青系)、FG輝度が高い(濃い)/低い(薄い)
+    is_high_bg = (row.bg_lum == max_bg_lum)
+    is_high_fg = (row.fg_lum == max_fg_lum)
     is_high_cpd = (row.fg_cpd == max_fg_cpd)
-    is_high_lum = (row.fg_lum == max_fg_lum)
     
-    if is_high_cpd:
-        color = 'red' if is_high_lum else 'orange'
+    if is_high_bg:
+        color = 'red' if is_high_fg else 'orange'
     else:
-        color = 'blue' if is_high_lum else 'skyblue'
+        color = 'blue' if is_high_fg else 'skyblue'
 
-    # 背景輝度が低い場合は点線（破線）にする
-    linestyle = '--' if row.bg_lum == min_bg_lum else '-'
+    # 線の種類: 周波数が高い(実線)/低い(点線)
+    linestyle = '-' if is_high_cpd else '--'
+    
     condition_styles[key] = {'color': color, 'label': label, 'linestyle': linestyle}
 
 # 各距離の組み合わせについて個別のグラフを生成
@@ -208,3 +210,72 @@ for distance in unique_distances:
     print(f"グラフを保存しました: {output_filename}")
     
     plt.show()
+
+# --- 追加: AR拡張コントラスト vs スコア (平均 + 標準偏差) ---
+print("AR拡張コントラストの分析を実行中...")
+
+# AR拡張コントラストの計算
+# c_AR = (Y_max - Y_min) / (Y_max + Y_min + 2*Y_BG)
+# ここで、Y_max = fg_lum * (1 + fg_contrast), Y_min = fg_lum * (1 - fg_contrast)
+# これを代入すると: c_AR = (fg_lum * fg_contrast) / (fg_lum + bg_lum)
+final_df['ar_contrast'] = (final_df['fg_lum'] * final_df['fg_contrast']) / (final_df['fg_lum'] + final_df['bg_lum'])
+
+# グラフ描画
+fig_ar, ax_ar = plt.subplots(figsize=(10, 7))
+
+# FG輝度とBG輝度の組み合わせごとに集計してプロット
+grouped_ar = final_df.groupby(['fg_lum', 'bg_lum', 'ar_contrast'])['Score'].agg(['mean', 'std']).reset_index()
+grouped_ar['std'] = grouped_ar['std'].fillna(0)
+
+# 組み合わせのユニークなリストを作成
+conditions_ar = grouped_ar[['fg_lum', 'bg_lum']].drop_duplicates().sort_values(by=['fg_lum', 'bg_lum'])
+
+for idx, (fg_l, bg_l) in enumerate(conditions_ar.itertuples(index=False, name=None)):
+    subset = grouped_ar[(grouped_ar['fg_lum'] == fg_l) & (grouped_ar['bg_lum'] == bg_l)]
+    label = f"FG:{fg_l}nit, BG:{bg_l}nit"
+    # 線なし (fmt='o') でプロット
+    ax_ar.errorbar(subset['ar_contrast'], subset['mean'], yerr=subset['std'],
+                 fmt='o', capsize=4, label=label, alpha=0.8)
+
+ax_ar.set_title('Visibility Score vs. AR Extended Contrast', fontsize=14)
+ax_ar.set_xlabel(r'AR Extended Contrast ($c_{AR}$)', fontsize=12)
+ax_ar.set_ylabel('Average Score', fontsize=12)
+ax_ar.set_ylim(0.5, 5.5)
+ax_ar.set_xlim(0, 1.05)
+ax_ar.grid(True, which='both', linestyle='--', linewidth=0.5)
+ax_ar.legend(loc='upper left')
+
+output_filename_ar = os.path.join(OUTPUT_DIR, 'ar_contrast_vs_score_mean_std.png')
+plt.savefig(output_filename_ar)
+print(f"AR拡張コントラストのグラフを保存しました: {output_filename_ar}")
+plt.show()
+
+# --- 追加: 輝度比 (FG/BG) vs スコア ---
+print("輝度比 (FG/BG) の分析を実行中...")
+
+# 輝度比の計算
+final_df['lum_ratio'] = final_df['fg_lum'] / final_df['bg_lum']
+
+# 輝度比ごとの平均と標準偏差を算出
+ratio_summary_df = final_df.groupby('lum_ratio')['Score'].agg(['mean', 'std']).reset_index()
+ratio_summary_df['std'] = ratio_summary_df['std'].fillna(0)
+ratio_summary_df = ratio_summary_df.sort_values('lum_ratio')
+
+# グラフ描画
+fig_ratio, ax_ratio = plt.subplots(figsize=(10, 7))
+
+ax_ratio.errorbar(ratio_summary_df['lum_ratio'], ratio_summary_df['mean'], yerr=ratio_summary_df['std'],
+             fmt='-o', capsize=4, color='green', label='Mean Score ± STD')
+
+ax_ratio.set_title('Visibility Score vs. Luminance Ratio (FG/BG)', fontsize=14)
+ax_ratio.set_xlabel(r'Luminance Ratio ($Y_{FG}/Y_{BG}$)', fontsize=12)
+ax_ratio.set_ylabel('Average Score', fontsize=12)
+ax_ratio.set_ylim(0.5, 5.5)
+ax_ratio.set_xscale('log')
+ax_ratio.grid(True, which='both', linestyle='--', linewidth=0.5)
+ax_ratio.legend(loc='upper left')
+
+output_filename_ratio = os.path.join(OUTPUT_DIR, 'lum_ratio_vs_score_mean_std.png')
+plt.savefig(output_filename_ratio)
+print(f"輝度比のグラフを保存しました: {output_filename_ratio}")
+plt.show()
