@@ -1,6 +1,7 @@
 # py .\src\experiment\pre-analyze\pre-analyze-image.py
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 import re
 import os
 import glob
@@ -161,4 +162,44 @@ ax_bg.grid(axis='y', linestyle='--', alpha=0.7)
 
 plt.tight_layout()
 plt.savefig(os.path.join(OUTPUT_DIR, 'score_vs_distance_bg_bar.png'))
+
+# --- 追加: 前景・背景輝度のヒートマップ (距離ごとに作成) ---
+unique_distances = final_df['distance'].unique()
+# custom_order にあるものはその順で、ないものはその後に追加
+sorted_distances = [d for d in custom_order if d in unique_distances] + [d for d in unique_distances if d not in custom_order]
+
+for dist in sorted_distances:
+    dist_df = final_df[final_df['distance'] == dist]
+    
+    # 集計
+    heatmap_df = dist_df.groupby(['bg_image', 'fg_image'])['Score'].mean().reset_index()
+    heatmap_pivot = heatmap_df.pivot(index='bg_image', columns='fg_image', values='Score')
+    # カテゴリ順序を保持して再インデックス（データが存在しない組み合わせも表示するため）
+    heatmap_pivot = heatmap_pivot.reindex(index=final_df['bg_image'].cat.categories, columns=final_df['fg_image'].cat.categories)
+
+    fig_hm, ax_hm = plt.subplots(figsize=(8, 8))
+    im = ax_hm.imshow(heatmap_pivot, cmap='Reds', vmin=1, vmax=5, origin='lower')
+
+    ax_hm.set_xticks(np.arange(len(heatmap_pivot.columns)))
+    ax_hm.set_yticks(np.arange(len(heatmap_pivot.index)))
+    ax_hm.set_xticklabels(heatmap_pivot.columns, rotation=45, ha="right")
+    ax_hm.set_yticklabels(heatmap_pivot.index)
+    ax_hm.set_xlabel('Foreground Luminance')
+    ax_hm.set_ylabel('Background Luminance')
+    ax_hm.set_title(f'Average Score Heatmap (FG vs BG)\nDistance: {dist}')
+
+    for i in range(len(heatmap_pivot.index)):
+        for j in range(len(heatmap_pivot.columns)):
+            val = heatmap_pivot.iloc[i, j]
+            if not np.isnan(val):
+                text_color = "white" if val > 3.5 else "black"
+                ax_hm.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color)
+
+    cbar = ax_hm.figure.colorbar(im, ax=ax_hm)
+    cbar.set_label('Average Score')
+
+    plt.tight_layout()
+    safe_dist = str(dist).replace(' ', '_')
+    plt.savefig(os.path.join(OUTPUT_DIR, f'score_heatmap_fg_bg_{safe_dist}.png'))
+
 plt.show()
