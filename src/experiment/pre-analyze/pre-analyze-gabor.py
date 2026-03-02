@@ -92,19 +92,25 @@ def extract_parameters(filename):
         return luminance, cpd, contrast
     return None, None, None
 
-# 新しい列を一度に追加
-final_df[['mean_luminance', 'cpd', 'contrast']] = final_df['Image_Win2'].apply(
+# FGパラメータ抽出
+final_df[['fg_lum', 'fg_cpd', 'fg_contrast']] = final_df['Image_Win2'].apply(
     lambda x: pd.Series(extract_parameters(x))
 )
 
-# 不要な行（パラメータを抽出できなかったもの）を削除
-final_df.dropna(subset=['mean_luminance', 'cpd', 'contrast'], inplace=True)
+# BGパラメータ抽出
+final_df[['bg_lum', 'bg_cpd', 'bg_contrast']] = final_df['Image_Win1'].apply(
+    lambda x: pd.Series(extract_parameters(x))
+)
+
+# 不要な行を削除
+final_df.dropna(subset=['fg_lum', 'fg_cpd', 'fg_contrast', 'bg_lum'], inplace=True)
 # データ型を適切に変換
 if not final_df.empty:
-    final_df['cpd'] = final_df['cpd'].astype(int)
+    final_df['fg_cpd'] = final_df['fg_cpd'].astype(int)
 
 # 4. 条件ごとの平均値と標準誤差を算出
-summary_df = final_df.groupby(['distance', 'diopter_diff', 'd1', 'mean_luminance', 'cpd', 'contrast'])['Score'].agg(['mean', 'sem']).reset_index()
+# グルーピングキーを変更: 距離, FG輝度, BG輝度, FG周波数, FGコントラスト
+summary_df = final_df.groupby(['distance', 'fg_lum', 'bg_lum', 'fg_cpd', 'fg_contrast'])['Score'].agg(['mean', 'sem']).reset_index()
 
 # 指定された順序 `50-70, 81-150, 50-100, 60-150` でグラフのx軸を並べ替える
 custom_order = ['50-70 cm', '81-150 cm', '50-100 cm', '60-150 cm']
@@ -116,33 +122,44 @@ except ValueError:
     print("警告: CSVデータに 'custom_order' にない距離の組み合わせが含まれています。ソートはスキップされます。")
 
 # 5. グラフの描画
-# スタイルのためのユニークな値を取得
 unique_distances = summary_df['distance'].unique()
-unique_lums = sorted(final_df['mean_luminance'].dropna().unique())
-unique_cpds = sorted(final_df['cpd'].dropna().unique())
 
-# --- スタイル定義 ---
-# 空間周波数ごとの色
-cpd_colors = ['tab:blue', 'tab:green', 'tab:orange']
-cpd_color_map = {cpd: cpd_colors[i % len(cpd_colors)] for i, cpd in enumerate(unique_cpds)}
-
-# 平均輝度ごとのマーカー
-lum_marker_map = {lum: marker for lum, marker in zip(unique_lums, ['o', 's', '^', 'D'])}
-
-# --- グラフ作成 ---
 if not unique_distances.size:
     print("描画するデータがありません。")
     exit()
 
-# --- 凡例と全体ラベルの設定 ---
-from matplotlib.lines import Line2D
-legend_elements = [Line2D([0], [0], color=cpd_color_map.get(cpd), lw=2, label=f'{cpd} cpd') for cpd in unique_cpds]
-legend_elements.extend([
-    Line2D([0], [0], marker='o' if lum == 50 else lum_marker_map.get(lum), color='gray', 
-           markerfacecolor='none' if lum == 50 else 'gray', 
-           label=f'{lum} nit', linestyle='None') 
-    for lum in unique_lums
-])
+# 8本の線のための条件リストを作成 (FG Lum x BG Lum x FG CPD)
+# データに含まれる全組み合わせを取得して色を割り当てる
+conditions = summary_df[['fg_lum', 'bg_lum', 'fg_cpd']].drop_duplicates().sort_values(by=['fg_lum', 'bg_lum', 'fg_cpd'])
+
+# 背景輝度の最小値を取得（これを点線にする）
+min_bg_lum = conditions['bg_lum'].min()
+
+# 色分けルールのための値の取得
+unique_fg_lums = sorted(conditions['fg_lum'].unique())
+unique_fg_cpds = sorted(conditions['fg_cpd'].unique())
+max_fg_lum = max(unique_fg_lums) if unique_fg_lums else 0
+max_fg_cpd = max(unique_fg_cpds) if unique_fg_cpds else 0
+
+condition_styles = {}
+
+for idx, row in enumerate(conditions.itertuples(index=False)):
+    # (fg_lum, bg_lum, fg_cpd) -> (color, label)
+    key = (row.fg_lum, row.bg_lum, row.fg_cpd)
+    label = f"FG:{row.fg_lum}nit, BG:{row.bg_lum}nit, {row.fg_cpd}cpd"
+    
+    # 色の決定: 周波数が高い(赤系)/低い(青系)、輝度が高い(鮮やか)/低い(淡い)
+    is_high_cpd = (row.fg_cpd == max_fg_cpd)
+    is_high_lum = (row.fg_lum == max_fg_lum)
+    
+    if is_high_cpd:
+        color = 'red' if is_high_lum else 'orange'
+    else:
+        color = 'blue' if is_high_lum else 'skyblue'
+
+    # 背景輝度が低い場合は点線（破線）にする
+    linestyle = '--' if row.bg_lum == min_bg_lum else '-'
+    condition_styles[key] = {'color': color, 'label': label, 'linestyle': linestyle}
 
 # 各距離の組み合わせについて個別のグラフを生成
 for distance in unique_distances:
@@ -153,15 +170,23 @@ for distance in unique_distances:
     distance_df = summary_df[summary_df['distance'] == distance]
 
     # 3. データのプロット
-    for lum in unique_lums:
-        for cpd in unique_cpds:
-            plot_df = distance_df[(distance_df['mean_luminance'] == lum) & (distance_df['cpd'] == cpd)].sort_values('contrast')
-            if not plot_df.empty:
-                ax.errorbar(plot_df['contrast'], plot_df['mean'], yerr=plot_df['sem'], 
-                            marker='o' if lum == 50 else lum_marker_map.get(lum, 'o'), 
-                            color=cpd_color_map.get(cpd, 'black'), 
-                            markerfacecolor='none' if lum == 50 else None,
-                            linestyle='-', capsize=4)
+    # 定義した条件スタイルに基づいてループ
+    for key, style in condition_styles.items():
+        fg_l, bg_l, cpd = key
+        
+        # 条件に合致するデータを抽出
+        plot_df = distance_df[
+            (distance_df['fg_lum'] == fg_l) & 
+            (distance_df['bg_lum'] == bg_l) & 
+            (distance_df['fg_cpd'] == cpd)
+        ].sort_values('fg_contrast')
+        
+        if not plot_df.empty:
+            ax.errorbar(plot_df['fg_contrast'], plot_df['mean'], yerr=plot_df['sem'], 
+                        label=style['label'],
+                        color=style['color'], 
+                        marker='o',
+                        linestyle=style['linestyle'], capsize=4)
 
     # 4. グラフの装飾
     ax.set_title(f'Visibility Score vs. Contrast\nDistance Combination: {distance}', fontsize=14)
@@ -171,7 +196,7 @@ for distance in unique_distances:
     ax.set_ylim(0.5, 5.5)
     ax.set_xlim(-0.05, 1.05)
     ax.set_xticks(np.arange(0, 1.1, 0.2))
-    ax.legend(handles=legend_elements, title="Parameters")
+    ax.legend(title="Conditions (FG, BG, CPD)", bbox_to_anchor=(1.05, 1), loc='upper left')
 
     # 5. 保存と表示
     plt.tight_layout()
