@@ -355,6 +355,8 @@ class ExperimentApp:
                     selected_bg = random.choice(bg_list)
                     block_trials.append({"bg_image": selected_bg, "fg_image": fg_path})
 
+        block_trials = block_trials * 2
+
         random.shuffle(block_trials)
         self.trial_list = block_trials
             
