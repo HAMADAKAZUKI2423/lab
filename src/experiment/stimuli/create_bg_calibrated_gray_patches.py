@@ -139,7 +139,7 @@ if __name__ == "__main__":
     iteration = 0
     max_iterations = 10 # 無限ループ防止
 
-    while max_abs_error > 2.0:
+    while max_abs_error > 1.0:
         iteration += 1
         if iteration > max_iterations:
             print(f"反復回数が{max_iterations}回を超えたため、処理を中断します。")
