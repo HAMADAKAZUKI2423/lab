@@ -19,6 +19,7 @@ SCREEN_RES_X_PX     = 2560    # 画面の横解像度 (px)
 STIM_WIDTH_DEG      = 7.9     # 刺激の幅 (度)
 STIM_HEIGHT_DEG     = 7.9     # 刺激の高さ (度)
 SPATIAL_FREQS_CPD   = [2, 4] # 生成する空間周波数のリスト (cpd)
+BG_SPATIAL_FREQS_CPD = [2, 4, 8, 16] # 背景ノイズ用の空間周波数リスト (cpd)
 GABOR_SIGMA_DEG     = 1.0     # ガボールパッチの標準偏差 (度)
 
 # --- [新規] 輝度・コントラスト設定 ---
@@ -247,12 +248,13 @@ if __name__ == "__main__":
                     print(f"      Saved: {filename_v}")
 
                     # --- C-2. 水平方向のガボールパッチ (Horizontal, orientation=90) ---
-                    gabor_mod_h = create_gabor(req_w, req_h, my_ppd, cpd, GABOR_SIGMA_DEG, orientation_deg=90)
-                    lum_map_h = mean_lum * (1 + contrast * gabor_mod_h)
-                    pixel_map_h = luminance_to_pixel(lum_map_h, fg_sorted_lums, fg_sorted_pixels)
-                    filename_h = os.path.join(gabor_dir, f"{cpd}cpd_{mean_lum}nit_{contrast}_h.png")
-                    plt.imsave(filename_h, pixel_map_h, cmap='gray', vmin=0, vmax=255)
-                    print(f"      Saved: {filename_h}")
+                    # 一時的に無効化 (縦方向のみ生成)
+                    # gabor_mod_h = create_gabor(req_w, req_h, my_ppd, cpd, GABOR_SIGMA_DEG, orientation_deg=90)
+                    # lum_map_h = mean_lum * (1 + contrast * gabor_mod_h)
+                    # pixel_map_h = luminance_to_pixel(lum_map_h, fg_sorted_lums, fg_sorted_pixels)
+                    # filename_h = os.path.join(gabor_dir, f"{cpd}cpd_{mean_lum}nit_{contrast}_h.png")
+                    # plt.imsave(filename_h, pixel_map_h, cmap='gray', vmin=0, vmax=255)
+                    # print(f"      Saved: {filename_h}")
 
     print("\n--- Generating Band-limited Noise (Background) ---")
     # --- 帯域制限ノイズの生成 (背景距離に基づく) ---
@@ -264,7 +266,7 @@ if __name__ == "__main__":
         
         print(f"  Distance: {distance}cm (PPD: {my_ppd:.2f}, Size: {req_w}x{req_h}px)")
         
-        for cpd in SPATIAL_FREQS_CPD:
+        for cpd in BG_SPATIAL_FREQS_CPD:
             # 周波数ごとにノイズパターンを生成（輝度・コントラスト条件間でパターンを統一するためここで生成）
             stim_noise = create_band_limited_noise(req_w, req_h, my_ppd, f_center_cpd=cpd)
 
