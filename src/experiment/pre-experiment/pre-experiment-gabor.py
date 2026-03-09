@@ -366,6 +366,9 @@ class ExperimentApp:
         for bg_path, fg_path in itertools.product(bg_img_paths, fg_img_paths):
              block_trials.append({"bg_image": bg_path, "fg_image": fg_path})
 
+        # 総当たりを2回行う
+        block_trials = block_trials * 2
+
         random.shuffle(block_trials)
         self.trial_list = block_trials
             
