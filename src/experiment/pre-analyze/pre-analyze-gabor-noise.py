@@ -180,3 +180,89 @@ for fgcpd in unique_fg_cpds:
     plt.savefig(os.path.join(OUTPUT_DIR, filename))
     print(f"グラフ保存: {filename}")
     plt.close(fig)
+
+# --- 追加: 前景コントラストごとに分割 ---
+summary_contrast = final_df.groupby(['fg_contrast', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
+try:
+    summary_contrast['distance'] = pd.Categorical(summary_contrast['distance'], categories=custom_order, ordered=True)
+except ValueError:
+    pass
+
+unique_contrasts = sorted(summary_contrast['fg_contrast'].unique())
+
+for contrast in unique_contrasts:
+    plot_df = summary_contrast[summary_contrast['fg_contrast'] == contrast]
+    
+    pivot_table = plot_df.pivot(index='bg_cpd', columns='distance', values='Score')
+    pivot_table.sort_index(ascending=True, inplace=True)
+    pivot_table = pivot_table.reindex(columns=custom_order)
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    im = ax.imshow(pivot_table, cmap='coolwarm', vmin=1, vmax=5, origin='lower', aspect='auto')
+    
+    for i in range(len(pivot_table.index)):
+        for j in range(len(pivot_table.columns)):
+            val = pivot_table.iloc[i, j]
+            if not np.isnan(val):
+                text_color = "white" if (val < 2.5 or val > 4.0) else "black"
+                ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=10)
+    
+    ax.set_xticks(np.arange(len(pivot_table.columns)))
+    ax.set_yticks(np.arange(len(pivot_table.index)))
+    ax.set_xticklabels(pivot_table.columns)
+    ax.set_yticklabels(pivot_table.index)
+    ax.set_xlabel('Distance')
+    ax.set_ylabel('Background Spatial Frequency (cpd)')
+    ax.set_title(f'Average Score Heatmap (FG Contrast: {contrast})', fontsize=14)
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Average Score')
+    plt.tight_layout()
+    
+    filename = f'heatmap_score_contrast_{contrast}.png'
+    plt.savefig(os.path.join(OUTPUT_DIR, filename))
+    print(f"グラフ保存: {filename}")
+    plt.close(fig)
+
+# --- 追加: 輝度条件(FG/BG)ごとに分割 ---
+summary_lum = final_df.groupby(['fg_lum', 'bg_lum', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
+try:
+    summary_lum['distance'] = pd.Categorical(summary_lum['distance'], categories=custom_order, ordered=True)
+except ValueError:
+    pass
+
+unique_lum_pairs = summary_lum[['fg_lum', 'bg_lum']].drop_duplicates().sort_values(by=['fg_lum', 'bg_lum'])
+
+for idx, row in unique_lum_pairs.iterrows():
+    fglum = row['fg_lum']
+    bglum = row['bg_lum']
+    
+    plot_df = summary_lum[(summary_lum['fg_lum'] == fglum) & (summary_lum['bg_lum'] == bglum)]
+    pivot_table = plot_df.pivot(index='bg_cpd', columns='distance', values='Score')
+    pivot_table.sort_index(ascending=True, inplace=True)
+    pivot_table = pivot_table.reindex(columns=custom_order)
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    im = ax.imshow(pivot_table, cmap='coolwarm', vmin=1, vmax=5, origin='lower', aspect='auto')
+    
+    for i in range(len(pivot_table.index)):
+        for j in range(len(pivot_table.columns)):
+            val = pivot_table.iloc[i, j]
+            if not np.isnan(val):
+                text_color = "white" if (val < 2.5 or val > 4.0) else "black"
+                ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=10)
+    
+    ax.set_xticks(np.arange(len(pivot_table.columns)))
+    ax.set_yticks(np.arange(len(pivot_table.index)))
+    ax.set_xticklabels(pivot_table.columns)
+    ax.set_yticklabels(pivot_table.index)
+    ax.set_xlabel('Distance')
+    ax.set_ylabel('Background Spatial Frequency (cpd)')
+    ax.set_title(f'Average Score Heatmap (FG: {fglum}nit, BG: {bglum}nit)', fontsize=14)
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Average Score')
+    plt.tight_layout()
+    
+    filename = f'heatmap_score_lum_fg{fglum}_bg{bglum}.png'
+    plt.savefig(os.path.join(OUTPUT_DIR, filename))
+    print(f"グラフ保存: {filename}")
+    plt.close(fig)
