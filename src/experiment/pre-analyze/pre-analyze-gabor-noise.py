@@ -13,7 +13,7 @@ lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 
 # 入力データのベースディレクトリ (実験名に合わせてフォルダ名を指定)
 # generate_gabor_and_noise_stimuli.py を使用した実験の結果を想定
-DATA_BASE_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor-noise")
+DATA_BASE_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor")
 
 parser = argparse.ArgumentParser(description='Analyze Gabor and Noise experiment results.')
 parser.add_argument('target_dir', nargs='?', help='Path to the target directory')
