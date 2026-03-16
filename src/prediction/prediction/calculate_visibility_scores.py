@@ -5,9 +5,14 @@ import numpy as np
 import cv2
 import pandas as pd
 import sys
+import torch.nn.functional as F
 from datetime import datetime
+from unittest.mock import MagicMock
 
-# プロジェクトルートをパスに追加
+# --- 外部依存関係の回避策 ---
+sys.modules["pyiqa"] = MagicMock()
+# ---------------------------
+
 PROJECT_ROOT = r"C:\Users\HamaKazu\Desktop\GradSchool\lab"
 VIS_BLEND_PATH = os.path.join(PROJECT_ROOT, "visibility_blend_2025-main")
 sys.path.append(VIS_BLEND_PATH)
@@ -32,6 +37,30 @@ def ensure_bgr(img):
         return img[:, :, :3]
     return img
 
+def center_crop(img, target_h, target_w):
+    """画像を中央で指定サイズにクロップする"""
+    h, w = img.shape[:2]
+    cx, cy = w // 2, h // 2
+    x1 = cx - target_w // 2
+    y1 = cy - target_h // 2
+    x2 = x1 + target_w
+    y2 = y1 + target_h
+    
+    # 範囲外チェック（念のため）
+    x1, y1 = max(0, x1), max(0, y1)
+    x2, y2 = min(w, x2), min(h, y2)
+    
+    return img[y1:y2, x1:x2]
+
+def pad_to_multiple(tensor, multiple=32):
+    """テンソルの H, W を指定の倍数にパディングする"""
+    _, _, h, w = tensor.shape
+    pad_h = (multiple - h % multiple) % multiple
+    pad_w = (multiple - w % multiple) % multiple
+    if pad_h > 0 or pad_w > 0:
+        tensor = F.pad(tensor, (0, pad_w, 0, pad_h), mode='reflect')
+    return tensor, h, w
+
 def np_to_tensor(img, device):
     if img.ndim == 2:
         img = img[:, :, None]
@@ -40,28 +69,24 @@ def np_to_tensor(img, device):
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"--- 視認性スコア計算開始 ---")
+    print(f"--- 視認性スコア計算開始 (Center Crop対応版) ---")
     print(f"デバイス: {device}")
 
-    # モデルのロード
     model_name = "vismlp_norm"
     print(f"モデル '{model_name}' をロード中...")
     vismodel = load_vismodel(model_name, device, load_param=True)
     vismodel.eval()
 
-    # データディレクトリの設定
     base_data_dir = os.path.join(PROJECT_ROOT, "data", "processed", "images", "pre-experiment-gabor")
     overlapped_dir = os.path.join(base_data_dir, "overlapped")
     fg_gabor_dir = os.path.join(base_data_dir, "fg_gabor")
     bg_noise_dir = os.path.join(base_data_dir, "bg_noise")
     
-    # 出力先の設定
     output_dir = os.path.join(PROJECT_ROOT, "results", "tables", "pre-experiment-gabor", "visibility_score")
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = os.path.join(output_dir, f"{timestamp}.csv")
 
-    # overlappedディレクトリ内の全画像をリストアップ
     all_image_files = []
     sub_dirs = [d for d in os.listdir(overlapped_dir) if os.path.isdir(os.path.join(overlapped_dir, d))]
     for sub_dir in sub_dirs:
@@ -75,20 +100,16 @@ def main():
     print(f"結果保存先: {output_path}")
     print("-" * 50)
 
-    results = []
-
     for i, (sub_dir, img_path) in enumerate(all_image_files, 1):
         filename = os.path.basename(img_path)
         
         try:
-            # 命名規則: overlap_FG-{fg_name}_BG-{bg_name}.png
             parts = filename.replace("overlap_FG-", "").replace(".png", "").split("_BG-")
             if len(parts) != 2:
-                print(f"[{i}/{total_files}] スキップ (不正なファイル名): {filename}")
+                print(f"[{i}/{total_files}] スキップ: {filename}")
                 continue
             fg_name, bg_name = parts
 
-            # FG画像のパスを探索
             fg_base = os.path.join(fg_gabor_dir, sub_dir)
             fg_img_path = None
             for root, dirs, files in os.walk(fg_base):
@@ -96,7 +117,6 @@ def main():
                     fg_img_path = os.path.join(root, f"{fg_name}.png")
                     break
             
-            # BG画像のパスを探索
             bg_base = os.path.join(bg_noise_dir, sub_dir)
             bg_img_path = None
             for root, dirs, files in os.walk(bg_base):
@@ -105,24 +125,46 @@ def main():
                     break
 
             if not fg_img_path or not bg_img_path:
-                print(f"[{i}/{total_files}] 失敗 (元画像未検出): {filename}")
+                print(f"[{i}/{total_files}] 未検出: {filename}")
                 continue
 
-            # 画像の読み込みと推論
-            bg_tensor = np_to_tensor(ensure_bgr(read_image(bg_img_path)), device)
-            fg_tensor = np_to_tensor(ensure_bgr(read_image(fg_img_path)), device)
-            blend_tensor = np_to_tensor(ensure_bgr(read_image(img_path)), device)
-            mask_tensor = np_to_tensor(np.ones(bg_tensor.shape[2:], dtype=np.float32)[..., None], device)
+            # 画像読み込み
+            bg_img_raw = read_image(bg_img_path)
+            fg_img_raw = read_image(fg_img_path)
+            blend_img_raw = read_image(img_path)
+
+            # OVL (Blend) のサイズを取得
+            th, tw = blend_img_raw.shape[:2]
+
+            # BG をクロップ
+            bg_img_cropped = center_crop(bg_img_raw, th, tw)
+            
+            # FG もサイズが違う場合はクロップ (通常は一致しているはず)
+            fg_img_cropped = fg_img_raw
+            if fg_img_raw.shape[:2] != (th, tw):
+                fg_img_cropped = center_crop(fg_img_raw, th, tw)
+
+            # テンソル変換
+            bg_tensor = np_to_tensor(ensure_bgr(bg_img_cropped), device)
+            fg_tensor = np_to_tensor(ensure_bgr(fg_img_cropped), device)
+            blend_tensor = np_to_tensor(ensure_bgr(blend_img_raw), device)
+            mask_tensor = np_to_tensor(np.ones((th, tw), dtype=np.float32)[..., None], device)
+
+            # --- パディング処理 (32の倍数) ---
+            bg_tensor, orig_h, orig_w = pad_to_multiple(bg_tensor, 32)
+            fg_tensor, _, _ = pad_to_multiple(fg_tensor, 32)
+            blend_tensor, _, _ = pad_to_multiple(blend_tensor, 32)
+            mask_tensor, _, _ = pad_to_multiple(mask_tensor, 32)
 
             with torch.no_grad():
                 vismodel.set_inputs_tg_ref_blended(fg_tensor, bg_tensor, blend_tensor, mask_tensor)
                 vismodel.compute_weights()
                 vismodel.compute_visibility_wo_weight()
 
-            # スコア算出
-            avg_score = float(vismodel.norm_vismap.mean().cpu().numpy())
+            vismap = vismodel.norm_vismap
+            vismap_cropped = vismap[:, :, :orig_h, :orig_w]
+            avg_score = float(vismap_cropped.mean().cpu().numpy())
             
-            # 記録
             res_dict = {
                 "directory": sub_dir,
                 "filename": filename,
@@ -130,18 +172,15 @@ def main():
                 "bg_name": bg_name,
                 "visibility_score": avg_score
             }
-            results.append(res_dict)
-
-            # 逐次保存（ヘッダーは初回のみ）
-            pd.DataFrame([res_dict]).to_csv(output_path, mode='a', index=False, header=not os.path.exists(output_path))
             
-            print(f"[{i}/{total_files}] 完了: {filename} -> スコア: {avg_score:.4f}")
+            pd.DataFrame([res_dict]).to_csv(output_path, mode='a', index=False, header=not os.path.exists(output_path))
+            print(f"[{i}/{total_files}] 完了: {filename} -> {avg_score:.4f}")
 
         except Exception as e:
-            print(f"[{i}/{total_files}] エラー発生 ({filename}): {e}")
+            print(f"[{i}/{total_files}] エラー ({filename}): {e}")
 
     print("-" * 50)
-    print(f"全工程が完了しました。結果は {output_path} に保存されています。")
+    print(f"完了。結果: {output_path}")
 
 if __name__ == "__main__":
     main()
