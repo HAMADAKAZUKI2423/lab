@@ -5,6 +5,7 @@ from scipy.fft import fft2, ifft2, fftshift, ifftshift
 import os
 import glob
 import csv
+import datetime
 
 # ==========================================
 # 1. ユーザー環境設定 (ここを書き換えてください)
@@ -202,6 +203,9 @@ def create_band_limited_noise(width_px, height_px, ppd, f_center_cpd, bandwidth_
 # 4. メイン実行ブロック
 # ==========================================
 if __name__ == "__main__":
+    # 保存用の日時フォルダ名を生成 (例: 20231024_123456)
+    now_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+
     # --- [新規] 輝度-ピクセル変換の準備 ---
     # 最新のキャリブレーション結果を読み込む (Foreground)
     fg_sorted_lums, fg_sorted_pixels = get_calibrated_map_arrays(FG_CALIBRATION_LOG_DIR, "Foreground")
@@ -231,7 +235,7 @@ if __name__ == "__main__":
                     print(f"    Generating for L_mean={mean_lum}, C={contrast}, f={cpd} cpd...")
 
                     # 保存先フォルダの準備
-                    gabor_dir = os.path.join(OUTPUT_DIR, "fg_gabor", f"{distance}cm")
+                    gabor_dir = os.path.join(OUTPUT_DIR, "fg_gabor", now_str, f"{distance}cm")
                     os.makedirs(gabor_dir, exist_ok=True)
 
                     # --- C-1. 垂直方向のガボールパッチ (Vertical, orientation=0) ---
@@ -278,7 +282,7 @@ if __name__ == "__main__":
                     pixel_map_noise = luminance_to_pixel(lum_map_noise, bg_sorted_lums, bg_sorted_pixels)
 
                     # E. 保存先フォルダの準備
-                    noise_dir = os.path.join(OUTPUT_DIR, "bg_noise", f"{distance}cm")
+                    noise_dir = os.path.join(OUTPUT_DIR, "bg_noise", now_str, f"{distance}cm")
                     os.makedirs(noise_dir, exist_ok=True)
 
                     # F. ファイル名の設定と保存

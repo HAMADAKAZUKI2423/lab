@@ -1,4 +1,5 @@
-# py .\src\experiment\pre-experiment\pre-experiment-gabor.py
+# 実行例: 
+# py .\src\experiment\pre-experiment\pre-experiment-gabor.py --stim_folder 20260316_120000
 import tkinter as tk
 from tkinter import ttk, messagebox
 import os
@@ -8,6 +9,7 @@ from PIL import Image, ImageTk, ImageEnhance
 import glob
 import random
 import math
+import argparse
 
 # ==========================================
 # 定数設定エリア (実験条件やデザインはここを変更)
@@ -16,8 +18,8 @@ import math
 VISUAL_ANGLE_DEG = 7.9   # 画像の視角 (degree)
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
-IMG_DIR_1 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_noise")
-IMG_DIR_2 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "fg_gabor")
+BASE_IMG_DIR_1 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_noise")
+BASE_IMG_DIR_2 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "fg_gabor")
 RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor")
 
 # --- 時間設定 (ミリ秒) ---
@@ -38,7 +40,7 @@ WIN2_MARKER_COLOR = 'white'    # Window 2 (実験者側) のマーカー色
 # ==========================================
 
 class ExperimentApp:
-    def __init__(self, root):
+    def __init__(self, root, stim_folder):
         self.root = root
         self.root.title("Controller (Window 2)")
         self.root.configure(bg=BG_COLOR)
@@ -51,6 +53,8 @@ class ExperimentApp:
         self.participant_gender = tk.StringVar()
         self.participant_ipd = tk.StringVar()
         self.participant_id = tk.StringVar()
+
+        self.selected_folder = stim_folder
 
         # --- 実験条件用変数 ---
         self.distance1 = tk.IntVar(value=50)
@@ -299,8 +303,10 @@ class ExperimentApp:
         # --- 1. Get experiment parameters and load image paths ---
         d_fg = self.distance1.get()
         d_bg = self.distance2.get()
-        bg_img_dir = os.path.join(IMG_DIR_1, f'{d_bg}cm')
-        fg_img_dir = os.path.join(IMG_DIR_2, f'{d_fg}cm')
+        selected_folder = self.selected_folder
+            
+        bg_img_dir = os.path.join(BASE_IMG_DIR_1, selected_folder, f'{d_bg}cm')
+        fg_img_dir = os.path.join(BASE_IMG_DIR_2, selected_folder, f'{d_fg}cm')
 
         bg_img_paths = sorted(glob.glob(os.path.join(bg_img_dir, '*')))
         fg_img_paths = sorted(glob.glob(os.path.join(fg_img_dir, '*')))
@@ -544,6 +550,10 @@ class ExperimentApp:
         self.root.destroy()
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Pre-experiment Gabor")
+    parser.add_argument("--stim_folder", type=str, required=True, help="Stimulus folder name (e.g., 20231024_123456)")
+    args = parser.parse_args()
+
     root = tk.Tk()
-    app = ExperimentApp(root)
+    app = ExperimentApp(root, args.stim_folder)
     root.mainloop()
