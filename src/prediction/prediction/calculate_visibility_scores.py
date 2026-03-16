@@ -5,6 +5,7 @@ import numpy as np
 import cv2
 import pandas as pd
 import sys
+from datetime import datetime
 
 # プロジェクトルートをパスに追加
 PROJECT_ROOT = r"C:\Users\HamaKazu\Desktop\GradSchool\lab"
@@ -39,10 +40,12 @@ def np_to_tensor(img, device):
 
 def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print(f"Using device: {device}")
+    print(f"--- 視認性スコア計算開始 ---")
+    print(f"デバイス: {device}")
 
     # モデルのロード
     model_name = "vismlp_norm"
+    print(f"モデル '{model_name}' をロード中...")
     vismodel = load_vismodel(model_name, device, load_param=True)
     vismodel.eval()
 
@@ -52,38 +55,41 @@ def main():
     fg_gabor_dir = os.path.join(base_data_dir, "fg_gabor")
     bg_noise_dir = os.path.join(base_data_dir, "bg_noise")
     
-    # 記録用リスト
+    # 出力先の設定
+    output_dir = os.path.join(PROJECT_ROOT, "results", "tables", "pre-experiment-gabor", "visibility_score")
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_path = os.path.join(output_dir, f"{timestamp}.csv")
+
+    # overlappedディレクトリ内の全画像をリストアップ
+    all_image_files = []
+    sub_dirs = [d for d in os.listdir(overlapped_dir) if os.path.isdir(os.path.join(overlapped_dir, d))]
+    for sub_dir in sub_dirs:
+        current_path = os.path.join(overlapped_dir, sub_dir)
+        files = glob.glob(os.path.join(current_path, "*.png"))
+        for f in files:
+            all_image_files.append((sub_dir, f))
+
+    total_files = len(all_image_files)
+    print(f"総処理対象ファイル数: {total_files}")
+    print(f"結果保存先: {output_path}")
+    print("-" * 50)
+
     results = []
 
-    # overlappedディレクトリ内の各サブディレクトリを走査
-    sub_dirs = [d for d in os.listdir(overlapped_dir) if os.path.isdir(os.path.join(overlapped_dir, d))]
-    
-    for sub_dir in sub_dirs:
-        current_overlapped_path = os.path.join(overlapped_dir, sub_dir)
-        # 画像ファイルを取得
-        image_files = glob.glob(os.path.join(current_overlapped_path, "*.png"))
-        print(f"Processing directory: {sub_dir} ({len(image_files)} files)")
-
-        # FG, BGの検索用ベースパス
-        # ここでは sub_dir (2260314_163430など) が一致すると仮定
-        fg_base = os.path.join(fg_gabor_dir, sub_dir)
-        bg_base = os.path.join(bg_noise_dir, sub_dir)
-
-        for img_path in image_files:
-            filename = os.path.basename(img_path)
+    for i, (sub_dir, img_path) in enumerate(all_image_files, 1):
+        filename = os.path.basename(img_path)
+        
+        try:
             # 命名規則: overlap_FG-{fg_name}_BG-{bg_name}.png
-            # "overlap_FG-" と ".png" を除いて "BG-" で分割
-            try:
-                parts = filename.replace("overlap_FG-", "").replace(".png", "").split("_BG-")
-                if len(parts) != 2:
-                    print(f"Skipping invalid filename: {filename}")
-                    continue
-                fg_name, bg_name = parts
-            except Exception as e:
-                print(f"Error parsing filename {filename}: {e}")
+            parts = filename.replace("overlap_FG-", "").replace(".png", "").split("_BG-")
+            if len(parts) != 2:
+                print(f"[{i}/{total_files}] スキップ (不正なファイル名): {filename}")
                 continue
+            fg_name, bg_name = parts
 
-            # FG画像のパスを探索 (50cm, 60cm, 81cmなどのサブディレクトリ内を探す)
+            # FG画像のパスを探索
+            fg_base = os.path.join(fg_gabor_dir, sub_dir)
             fg_img_path = None
             for root, dirs, files in os.walk(fg_base):
                 if f"{fg_name}.png" in files:
@@ -91,6 +97,7 @@ def main():
                     break
             
             # BG画像のパスを探索
+            bg_base = os.path.join(bg_noise_dir, sub_dir)
             bg_img_path = None
             for root, dirs, files in os.walk(bg_base):
                 if f"{bg_name}.png" in files:
@@ -98,67 +105,43 @@ def main():
                     break
 
             if not fg_img_path or not bg_img_path:
-                print(f"Source files not found for {filename} (FG: {fg_img_path}, BG: {bg_img_path})")
+                print(f"[{i}/{total_files}] 失敗 (元画像未検出): {filename}")
                 continue
 
-            # 画像の読み込み
-            bg_img = read_image(bg_img_path)
-            bg_bgr = ensure_bgr(bg_img)
-            
-            fg_img = read_image(fg_img_path)
-            fg_bgr = ensure_bgr(fg_img)
-            
-            blend_img = read_image(img_path)
-            blend_bgr = ensure_bgr(blend_img)
-
-            # アルファマップの生成（ガボールパッチ画像は背景がグレーなので、
-            # 視認性モデルの要件に合わせて、輝度変化がある場所をマスクとするなどの処理が必要な場合があるが、
-            # ここではモデルに画像をそのまま渡し、アルファは0.5（典型的な重ね合わせ）または
-            # 重ね合わせ画像から逆算する形式になる。
-            # 今回は、bg, fg, blendが既にあるので、set_inputs_tg_ref_blended を使用する。
-            
-            # マスクの作成 (ここでは全域 1.0 または ガボールパッチの範囲)
-            mask_np = np.ones(bg_bgr.shape[:2], dtype=np.float32)
-
-            # テンソル変換
-            bg_tensor = np_to_tensor(bg_bgr, device)
-            fg_tensor = np_to_tensor(fg_bgr, device)
-            blend_tensor = np_to_tensor(blend_bgr, device)
-            mask_tensor = np_to_tensor(mask_np[..., None], device)
+            # 画像の読み込みと推論
+            bg_tensor = np_to_tensor(ensure_bgr(read_image(bg_img_path)), device)
+            fg_tensor = np_to_tensor(ensure_bgr(read_image(fg_img_path)), device)
+            blend_tensor = np_to_tensor(ensure_bgr(read_image(img_path)), device)
+            mask_tensor = np_to_tensor(np.ones(bg_tensor.shape[2:], dtype=np.float32)[..., None], device)
 
             with torch.no_grad():
-                # vismlp_norm は target_type="content" を期待
-                # tg = fg, ref = bg としてセット
-                vismodel.set_inputs_tg_ref_blended(
-                    fg_tensor,
-                    bg_tensor,
-                    blend_tensor,
-                    mask_tensor
-                )
+                vismodel.set_inputs_tg_ref_blended(fg_tensor, bg_tensor, blend_tensor, mask_tensor)
                 vismodel.compute_weights()
                 vismodel.compute_visibility_wo_weight()
 
-            # 視認性マップの取得
-            vismap = vismodel.norm_vismap # [0, 1] に正規化されたマップ
-            avg_score = float(vismap.mean().cpu().numpy())
-
-            results.append({
+            # スコア算出
+            avg_score = float(vismodel.norm_vismap.mean().cpu().numpy())
+            
+            # 記録
+            res_dict = {
                 "directory": sub_dir,
                 "filename": filename,
                 "fg_name": fg_name,
                 "bg_name": bg_name,
                 "visibility_score": avg_score
-            })
-            print(f"Score for {filename}: {avg_score:.4f}")
+            }
+            results.append(res_dict)
 
-    # 結果の保存
-    if results:
-        df = pd.DataFrame(results)
-        output_dir = os.path.join(PROJECT_ROOT, "results", "tables", "pre-experiment-gabor")
-        os.makedirs(output_dir, exist_ok=True)
-        output_path = os.path.join(output_dir, "visibility_scores.csv")
-        df.to_csv(output_path, index=False)
-        print(f"Results saved to {output_path}")
+            # 逐次保存（ヘッダーは初回のみ）
+            pd.DataFrame([res_dict]).to_csv(output_path, mode='a', index=False, header=not os.path.exists(output_path))
+            
+            print(f"[{i}/{total_files}] 完了: {filename} -> スコア: {avg_score:.4f}")
+
+        except Exception as e:
+            print(f"[{i}/{total_files}] エラー発生 ({filename}): {e}")
+
+    print("-" * 50)
+    print(f"全工程が完了しました。結果は {output_path} に保存されています。")
 
 if __name__ == "__main__":
     main()
