@@ -18,8 +18,8 @@ SCREEN_RES_X_PX     = 2560    # 画面の横解像度 (px)
 # 論文 (Table 1) に基づく刺激パラメータ
 STIM_WIDTH_DEG      = 7.9     # 刺激の幅 (度)
 STIM_HEIGHT_DEG     = 7.9     # 刺激の高さ (度)
-SPATIAL_FREQS_CPD   = [2, 4] # 生成する空間周波数のリスト (cpd)
-BG_SPATIAL_FREQS_CPD = [2, 4, 8, 16] # 背景ノイズ用の空間周波数リスト (cpd)
+SPATIAL_FREQS_CPD   = [1, 2, 4, 8] # 生成する空間周波数のリスト (cpd)
+BG_SPATIAL_FREQS_CPD = [1, 2, 4, 8] # 背景ノイズ用の空間周波数リスト (cpd)
 GABOR_SIGMA_DEG     = 1.0     # ガボールパッチの標準偏差 (度)
 
 # --- [新規] 輝度・コントラスト設定 ---
@@ -32,8 +32,8 @@ FG_CALIBRATION_LOG_DIR = os.path.join(lab_root, "results", "tables", "pre-experi
 # 背景 (ディスプレイ用)
 BG_CALIBRATION_LOG_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor", "bg_calibration_log")
 
-FG_MEAN_LUMINANCES_CDM2 = [50, 5]   # 前景用平均輝度リスト (cd/m^2)
-BG_MEAN_LUMINANCES_CDM2 = [15, 5]   # 背景用平均輝度リスト (cd/m^2)
+FG_MEAN_LUMINANCES_CDM2 = [50]   # 前景用平均輝度リスト (cd/m^2)
+BG_MEAN_LUMINANCES_CDM2 = [15]   # 背景用平均輝度リスト (cd/m^2)
 FG_CONTRASTS = [0.2, 0.6, 1.0]      # 前景用コントラストリスト
 BG_CONTRASTS = [1.0]      # 背景用コントラストリスト
 
