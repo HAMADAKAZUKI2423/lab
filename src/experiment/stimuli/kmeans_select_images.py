@@ -57,8 +57,8 @@ def main():
 
     image_paths = []
     for ext in EXTENSIONS:
-        # 指定フォルダ直下のファイルを探す
-        image_paths.extend(glob.glob(os.path.join(INPUT_DIR, ext)))
+        # フォルダ内のすべてのサブフォルダから画像ファイルを探す（再帰的）
+        image_paths.extend(glob.glob(os.path.join(INPUT_DIR, "**", ext), recursive=True))
     
     if not image_paths:
         print(f"エラー: 指定されたフォルダ '{INPUT_DIR}' に画像ファイルが見つかりませんでした。")
