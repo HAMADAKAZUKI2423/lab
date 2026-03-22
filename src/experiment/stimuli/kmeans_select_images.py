@@ -15,7 +15,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 
 # 入力画像のフォルダパス
-INPUT_DIR = os.path.join(lab_root, "data", "raw", "images", "McGill Calibrated Color Image Database", "Textures", "Textures")
+INPUT_DIR = os.path.join(lab_root, "data", "raw", "images")
 
 # 出力先のフォルダパス (BGとFG)
 OUTPUT_BG_DIR = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-image", "bg_imgs")
