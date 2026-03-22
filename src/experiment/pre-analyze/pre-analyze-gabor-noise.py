@@ -266,3 +266,48 @@ for idx, row in unique_lum_pairs.iterrows():
     plt.savefig(os.path.join(OUTPUT_DIR, filename))
     print(f"グラフ保存: {filename}")
     plt.close(fig)
+
+# --- 追加: 距離ごとに x=前景cpd, y=背景cpd のヒートマップを作成 ---
+for distance in custom_order:
+    dist_df = final_df[final_df['distance'] == distance]
+    if dist_df.empty:
+        print(f"距離 '{distance}' のデータがありません。スキップします。")
+        continue
+
+    summary_dist = dist_df.groupby(['fg_cpd', 'bg_cpd'])['Score'].mean().reset_index()
+    pivot_table = summary_dist.pivot(index='bg_cpd', columns='fg_cpd', values='Score')
+
+    if pivot_table.empty:
+        print(f"距離 '{distance}' で有効な集計がありません。スキップします。")
+        continue
+
+    pivot_table.sort_index(ascending=True, inplace=True)
+    pivot_table = pivot_table.reindex(columns=sorted(pivot_table.columns))
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    im = ax.imshow(pivot_table, cmap='coolwarm', vmin=1, vmax=5, origin='lower', aspect='auto')
+
+    for i in range(len(pivot_table.index)):
+        for j in range(len(pivot_table.columns)):
+            val = pivot_table.iloc[i, j]
+            if not np.isnan(val):
+                text_color = "white" if (val < 2.5 or val > 4.0) else "black"
+                ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=10)
+
+    ax.set_xticks(np.arange(len(pivot_table.columns)))
+    ax.set_yticks(np.arange(len(pivot_table.index)))
+    ax.set_xticklabels(pivot_table.columns)
+    ax.set_yticklabels(pivot_table.index)
+
+    ax.set_xlabel('Foreground Spatial Frequency (cpd)')
+    ax.set_ylabel('Background Spatial Frequency (cpd)')
+    ax.set_title(f'Average Score Heatmap (Distance: {distance})', fontsize=14)
+
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Average Score')
+    plt.tight_layout()
+
+    filename = f'heatmap_score_dist_{distance.replace(" ", "_").replace("-", "to")}.png'
+    plt.savefig(os.path.join(OUTPUT_DIR, filename))
+    print(f"グラフ保存: {filename}")
+    plt.close(fig)
