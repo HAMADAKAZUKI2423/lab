@@ -159,18 +159,27 @@ def main():
     print(f"出力フォルダ(FG): {OUTPUT_FG_DIR}")
 
     # 5. 各グループから画像を抽出して保存
-    # final_groups は既に [Tex1-Lum1, Tex1-Lum2, ..., Tex3-Lum3] の順で追加されているはずだが念のためソート
+    # final_groups は既に [Tex1-Lum1, Tex1-Lum2, ..., Tex3-Lum9] の順で追加されているはずだが念のためソート
     # ソートキー: テクスチャランク優先、次に輝度ランク
     final_groups.sort(key=lambda x: (x['tex_rank'], x['lum_rank']))
 
+    # 下位3クラスをFG、上位3クラスをBGに抽出 (各テクスチャクラスあたり9枚ずつ -> 合計18枚)
+    selected_groups = [
+        group for group in final_groups
+        if group['lum_rank'] < 3 or group['lum_rank'] >= N_LUM_CLUSTERS - 3
+    ]
+
     print("\n--- 選択された画像 ---")
-    for global_rank, group in enumerate(final_groups):
+    for global_rank, group in enumerate(selected_groups):
         cluster_items = group['items']
+        if not cluster_items:
+            print(f"警告: Tex{group['tex_rank']+1} Lum{group['lum_rank']+1} に画像がありません。スキップします。")
+            continue
+
         tex_r = group['tex_rank'] + 1
         lum_r = group['lum_rank'] + 1
         lum_label = f"L{lum_r}"
 
-        # 前景: 下位3クラスタ(0,1,2), 背景: 上位3クラスタ(3,4,5)
         if group['lum_rank'] < 3:
             target_dir = OUTPUT_FG_DIR
             prefix = "fg"
@@ -178,15 +187,13 @@ def main():
             target_dir = OUTPUT_BG_DIR
             prefix = "bg"
 
-        # 1グループあたり2枚選択 (画像が足りない場合はあるだけ)
-        n_select = min(2, len(cluster_items))
-        selected_items = random.sample(cluster_items, n_select)
+        # 1グループあたり1枚選択 (前景/背景それぞれ9枚になるように)
+        selected_item = random.choice(cluster_items)
 
-        for item in selected_items:
-            new_name = f"{global_rank+1}_{prefix}_Tex{tex_r}_Lum{lum_label}_{os.path.basename(item['path'])}"
-            dst_path = os.path.join(target_dir, new_name)
-            shutil.copy2(item['path'], dst_path)
-            print(f"Class {global_rank+1} [Tex{tex_r}-Lum{lum_label}] ({prefix}): {new_name}")
+        new_name = f"{global_rank+1}_{prefix}_Tex{tex_r}_Lum{lum_label}_{os.path.basename(selected_item['path'])}"
+        dst_path = os.path.join(target_dir, new_name)
+        shutil.copy2(selected_item['path'], dst_path)
+        print(f"Class {global_rank+1} [Tex{tex_r}-Lum{lum_label}] ({prefix}): {new_name}")
 
 if __name__ == "__main__":
     main()
