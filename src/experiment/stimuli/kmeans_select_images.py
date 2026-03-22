@@ -23,8 +23,8 @@ OUTPUT_FG_DIR = os.path.join(lab_root, "data", "processed", "images", "pre-exper
 
 # クラスタ設定
 N_TEX_CLUSTERS = 3  # テクスチャ（ラプラシアン）のクラス数
-N_LUM_CLUSTERS = 3  # 各テクスチャクラス内の輝度クラス数
-# 合計クラス数 = 3 * 3 = 9
+N_LUM_CLUSTERS = 6  # 各テクスチャクラス内の輝度クラス数 (3→6へ拡張)
+# 合計クラス数 = 3 * 6 = 18
 
 # 対象とする画像の拡張子
 EXTENSIONS = ['*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tif']
@@ -168,26 +168,23 @@ def main():
         cluster_items = group['items']
         tex_r = group['tex_rank'] + 1
         lum_r = group['lum_rank'] + 1
-        lum_label = ["L", "M", "H"][group['lum_rank']]
+        lum_label = f"L{lum_r}"
 
-        # ランダムに2枚選択 (画像が足りない場合はあるだけ選択)
+        # 前景: 下位3クラスタ(0,1,2), 背景: 上位3クラスタ(3,4,5)
+        if group['lum_rank'] < 3:
+            target_dir = OUTPUT_FG_DIR
+            prefix = "fg"
+        else:
+            target_dir = OUTPUT_BG_DIR
+            prefix = "bg"
+
+        # 1グループあたり2枚選択 (画像が足りない場合はあるだけ)
         n_select = min(2, len(cluster_items))
         selected_items = random.sample(cluster_items, n_select)
-        
-        for i, item in enumerate(selected_items):
-            # 1枚目をBG、2枚目をFGに振り分け
-            # ファイル名の先頭をランク番号(1-5)にすることで、実験プログラム側でペアリング可能にする
-            if i == 0:
-                target_dir = OUTPUT_BG_DIR
-                prefix = "bg"
-            else:
-                target_dir = OUTPUT_FG_DIR
-                prefix = "fg"
 
-            # ファイル名: {通し番号1-9}_Tex{1-3}_Lum{L/M/H}_{元ファイル名}
+        for item in selected_items:
             new_name = f"{global_rank+1}_{prefix}_Tex{tex_r}_Lum{lum_label}_{os.path.basename(item['path'])}"
             dst_path = os.path.join(target_dir, new_name)
-            
             shutil.copy2(item['path'], dst_path)
             print(f"Class {global_rank+1} [Tex{tex_r}-Lum{lum_label}] ({prefix}): {new_name}")
 
