@@ -98,27 +98,26 @@ def extract_label(filename, prefix):
     
     return str(filename)
 
-# 元のファイル名でソートして順序を決定（ファイル名先頭の番号が輝度ランク順になっているため）
-unique_files = sorted(final_df['Image_Win2'].unique())
-fg_labels = []
-seen = set()
-for f in unique_files:
-    lbl = extract_label(f, "fg")
-    if lbl not in seen:
-        fg_labels.append(lbl)
-        seen.add(lbl)
+# カテゴリの順序をTex -> Lumの順に明示的にソートする関数
+def get_sort_key(label):
+    tex_match = re.search(r'tex(\d+)', str(label), re.IGNORECASE)
+    tex_val = int(tex_match.group(1)) if tex_match else 999
+    
+    lum_match = re.search(r'lum[a-zA-Z]*(\d+)', str(label), re.IGNORECASE)
+    lum_val = int(lum_match.group(1)) if lum_match else 999
+    
+    return (tex_val, lum_val)
+
+# FG画像のラベル抽出とソート
+fg_raw_labels = final_df['Image_Win2'].apply(lambda x: extract_label(x, "fg")).unique()
+fg_labels = sorted(fg_raw_labels, key=get_sort_key)
 
 final_df['fg_image'] = final_df['Image_Win2'].apply(lambda x: extract_label(x, "fg"))
 final_df['fg_image'] = pd.Categorical(final_df['fg_image'], categories=fg_labels, ordered=True)
 
-unique_bg_files = sorted(final_df['Image_Win1'].unique())
-bg_labels = []
-seen_bg = set()
-for f in unique_bg_files:
-    lbl = extract_label(f, "bg")
-    if lbl not in seen_bg:
-        bg_labels.append(lbl)
-        seen_bg.add(lbl)
+# BG画像のラベル抽出とソート
+bg_raw_labels = final_df['Image_Win1'].apply(lambda x: extract_label(x, "bg")).unique()
+bg_labels = sorted(bg_raw_labels, key=get_sort_key)
 
 final_df['bg_image'] = final_df['Image_Win1'].apply(lambda x: extract_label(x, "bg"))
 final_df['bg_image'] = pd.Categorical(final_df['bg_image'], categories=bg_labels, ordered=True)
