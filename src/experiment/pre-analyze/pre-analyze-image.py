@@ -73,25 +73,27 @@ if not all_data:
     exit()
 final_df = pd.concat(all_data, ignore_index=True)
 
-# 3. 画像名からラベルを抽出 (ファイル名の番号で一意に識別)
+# 3. 画像名からラベルを抽出
 def extract_label(filename, prefix):
     # ファイル名先頭の番号を抽出 (e.g., "1_fg_...", "10_bg_...")
-    match = re.search(r'^(\d+)_', str(filename))
-    if match:
-        num = match.group(1)
-        return f"{prefix}_{num}"
+    num_match = re.search(r'^(\d+)_', str(filename))
     
-    # フォールバック: texX と LumX を抽出
+    # texX と LumX を抽出
     tex_match = re.search(r'(tex\d+)', str(filename), re.IGNORECASE)
-    lum_match = re.search(r'(Lum[LMH])', str(filename), re.IGNORECASE)
+    lum_match = re.search(r'(Lum[a-zA-Z0-9]+)', str(filename), re.IGNORECASE)
     
-    parts = [prefix]
+    parts = []
+    if num_match:
+        parts.append(f"{prefix}_{num_match.group(1)}")
+    else:
+        parts.append(prefix)
+        
     if tex_match:
         parts.append(tex_match.group(1))
     if lum_match:
         parts.append(lum_match.group(1))
     
-    if len(parts) > 1:
+    if len(parts) > 1 or num_match:
         return "_".join(parts)
     
     return str(filename)
