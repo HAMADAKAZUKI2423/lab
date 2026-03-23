@@ -73,9 +73,15 @@ if not all_data:
     exit()
 final_df = pd.concat(all_data, ignore_index=True)
 
-# 3. 画像名からラベルを抽出 (fg/bg_texX_LumX)
+# 3. 画像名からラベルを抽出 (ファイル名の番号で一意に識別)
 def extract_label(filename, prefix):
-    # ファイル名から texX と LumX を抽出
+    # ファイル名先頭の番号を抽出 (e.g., "1_fg_...", "10_bg_...")
+    match = re.search(r'^(\d+)_', str(filename))
+    if match:
+        num = match.group(1)
+        return f"{prefix}_{num}"
+    
+    # フォールバック: texX と LumX を抽出
     tex_match = re.search(r'(tex\d+)', str(filename), re.IGNORECASE)
     lum_match = re.search(r'(Lum[LMH])', str(filename), re.IGNORECASE)
     
@@ -88,10 +94,6 @@ def extract_label(filename, prefix):
     if len(parts) > 1:
         return "_".join(parts)
     
-    # 旧形式などのフォールバック
-    match = re.search(r'lum(\d+\.?\d*)', str(filename), re.IGNORECASE)
-    if match:
-        return f"{prefix}_{match.group(1)}nit"
     return str(filename)
 
 # 元のファイル名でソートして順序を決定（ファイル名先頭の番号が輝度ランク順になっているため）
