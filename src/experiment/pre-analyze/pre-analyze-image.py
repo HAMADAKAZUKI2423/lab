@@ -73,40 +73,50 @@ if not all_data:
     exit()
 final_df = pd.concat(all_data, ignore_index=True)
 
-# 3. 前景画像(Image_Win2)のファイル名をカテゴリとして使用
-# ファイル名から輝度部分(lumXXX)を抽出してラベルにする
-def extract_luminance_label(filename):
-    # ファイル名形式: 01_2_lum51.9_pippin...
-    match = re.search(r'lum(\d+\.?\d*)', str(filename))
+# 3. 画像名からラベルを抽出 (fg/bg_texX_LumX)
+def extract_label(filename, prefix):
+    # ファイル名から texX と LumX を抽出
+    tex_match = re.search(r'(tex\d+)', str(filename), re.IGNORECASE)
+    lum_match = re.search(r'(Lum[LMH])', str(filename), re.IGNORECASE)
+    
+    parts = [prefix]
+    if tex_match:
+        parts.append(tex_match.group(1))
+    if lum_match:
+        parts.append(lum_match.group(1))
+    
+    if len(parts) > 1:
+        return "_".join(parts)
+    
+    # 旧形式などのフォールバック
+    match = re.search(r'lum(\d+\.?\d*)', str(filename), re.IGNORECASE)
     if match:
-        return f"{match.group(1)} nit"
-    return filename
+        return f"{prefix}_{match.group(1)}nit"
+    return str(filename)
 
 # 元のファイル名でソートして順序を決定（ファイル名先頭の番号が輝度ランク順になっているため）
 unique_files = sorted(final_df['Image_Win2'].unique())
-new_labels = []
+fg_labels = []
 seen = set()
 for f in unique_files:
-    lbl = extract_luminance_label(f)
+    lbl = extract_label(f, "fg")
     if lbl not in seen:
-        new_labels.append(lbl)
+        fg_labels.append(lbl)
         seen.add(lbl)
 
-final_df['fg_image'] = final_df['Image_Win2'].apply(extract_luminance_label)
-final_df['fg_image'] = pd.Categorical(final_df['fg_image'], categories=new_labels, ordered=True)
+final_df['fg_image'] = final_df['Image_Win2'].apply(lambda x: extract_label(x, "fg"))
+final_df['fg_image'] = pd.Categorical(final_df['fg_image'], categories=fg_labels, ordered=True)
 
-# 背景画像(Image_Win1)についても同様に輝度ラベルを作成
-final_df['bg_image'] = final_df['Image_Win1'].apply(extract_luminance_label)
-
-# 背景画像の輝度順序を決定
 unique_bg_files = sorted(final_df['Image_Win1'].unique())
 bg_labels = []
 seen_bg = set()
 for f in unique_bg_files:
-    lbl = extract_luminance_label(f)
+    lbl = extract_label(f, "bg")
     if lbl not in seen_bg:
         bg_labels.append(lbl)
         seen_bg.add(lbl)
+
+final_df['bg_image'] = final_df['Image_Win1'].apply(lambda x: extract_label(x, "bg"))
 final_df['bg_image'] = pd.Categorical(final_df['bg_image'], categories=bg_labels, ordered=True)
 
 # 4. 条件ごとの平均値と標準誤差を算出
@@ -135,7 +145,7 @@ ax.set_xlabel('Distance Combination', fontsize=12)
 ax.set_ylabel('Average Score', fontsize=12)
 ax.set_title('Average Score by Distance and Foreground Image', fontsize=14)
 ax.set_ylim(0, 5.5) # スコアの範囲に合わせて調整
-ax.legend(title='Luminance', bbox_to_anchor=(1.05, 1), loc='upper left')
+ax.legend(title='FG Image', bbox_to_anchor=(1.05, 1), loc='upper left')
 ax.grid(axis='y', linestyle='--', alpha=0.7)
 
 plt.tight_layout()
@@ -157,7 +167,7 @@ ax_bg.set_xlabel('Distance Combination', fontsize=12)
 ax_bg.set_ylabel('Average Score', fontsize=12)
 ax_bg.set_title('Average Score by Distance and Background Luminance', fontsize=14)
 ax_bg.set_ylim(0, 5.5)
-ax_bg.legend(title='Background Luminance', bbox_to_anchor=(1.05, 1), loc='upper left')
+ax_bg.legend(title='BG Image', bbox_to_anchor=(1.05, 1), loc='upper left')
 ax_bg.grid(axis='y', linestyle='--', alpha=0.7)
 
 plt.tight_layout()
@@ -201,5 +211,35 @@ for dist in sorted_distances:
     plt.tight_layout()
     safe_dist = str(dist).replace(' ', '_')
     plt.savefig(os.path.join(OUTPUT_DIR, f'score_heatmap_fg_bg_{safe_dist}.png'))
+
+# --- 追加: 全距離平均のヒートマップ ---
+heatmap_all_df = final_df.groupby(['bg_image', 'fg_image'])['Score'].mean().reset_index()
+heatmap_all_pivot = heatmap_all_df.pivot(index='bg_image', columns='fg_image', values='Score')
+# カテゴリ順序を保持して再インデックス
+heatmap_all_pivot = heatmap_all_pivot.reindex(index=final_df['bg_image'].cat.categories, columns=final_df['fg_image'].cat.categories)
+
+fig_hm_all, ax_hm_all = plt.subplots(figsize=(8, 8))
+im_all = ax_hm_all.imshow(heatmap_all_pivot, cmap='Reds', vmin=1, vmax=5, origin='lower')
+
+ax_hm_all.set_xticks(np.arange(len(heatmap_all_pivot.columns)))
+ax_hm_all.set_yticks(np.arange(len(heatmap_all_pivot.index)))
+ax_hm_all.set_xticklabels(heatmap_all_pivot.columns, rotation=45, ha="right")
+ax_hm_all.set_yticklabels(heatmap_all_pivot.index)
+ax_hm_all.set_xlabel('Foreground Luminance')
+ax_hm_all.set_ylabel('Background Luminance')
+ax_hm_all.set_title('Average Score Heatmap (FG vs BG)\nDistance: ALL')
+
+for i in range(len(heatmap_all_pivot.index)):
+    for j in range(len(heatmap_all_pivot.columns)):
+        val = heatmap_all_pivot.iloc[i, j]
+        if not np.isnan(val):
+            text_color = "white" if val > 3.5 else "black"
+            ax_hm_all.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color)
+
+cbar_all = ax_hm_all.figure.colorbar(im_all, ax=ax_hm_all)
+cbar_all.set_label('Average Score')
+
+plt.tight_layout()
+plt.savefig(os.path.join(OUTPUT_DIR, 'score_heatmap_fg_bg_ALL.png'))
 
 plt.show()
