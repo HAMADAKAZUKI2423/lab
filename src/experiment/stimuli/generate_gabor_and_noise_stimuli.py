@@ -2,6 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.fft import fft2, ifft2, fftshift, ifftshift
+import argparse
 import os
 import glob
 import csv
@@ -37,7 +38,8 @@ FG_CONTRASTS = [0.2, 0.6, 1.0]      # 前景用コントラストリスト
 BG_CONTRASTS = [1.0]      # 背景用コントラストリスト
 
 # --- 保存設定 ---
-OUTPUT_DIR = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor")
+OUTPUT_DIR_PRE = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor")
+OUTPUT_DIR_MAIN = os.path.join(lab_root, "data", "processed", "images", "main-experiment-gabor")
 
 # ==========================================
 # 2. 計算用関数
@@ -202,6 +204,21 @@ def create_band_limited_noise(width_px, height_px, ppd, f_center_cpd, bandwidth_
 # 4. メイン実行ブロック
 # ==========================================
 if __name__ == "__main__":
+    # --- コマンドライン引数解析 ---
+    parser = argparse.ArgumentParser(description="Gabor/noise stimuli generator: choose output target folder")
+    parser.add_argument("--target", choices=["main", "pre"], required=True,
+                        help="保存先を選択します: main または pre (必須)")
+    args = parser.parse_args()
+
+    if args.target == "main":
+        OUTPUT_DIR = OUTPUT_DIR_MAIN
+    elif args.target == "pre":
+        OUTPUT_DIR = OUTPUT_DIR_PRE
+    else:
+        raise ValueError("不正なtarget指定です。mainかpreを指定してください。")
+
+    print(f"OUTPUT_DIR = {OUTPUT_DIR}")
+
     # --- [新規] 輝度-ピクセル変換の準備 ---
     # 最新のキャリブレーション結果を読み込む (Foreground)
     fg_sorted_lums, fg_sorted_pixels = get_calibrated_map_arrays(FG_CALIBRATION_LOG_DIR, "Foreground")

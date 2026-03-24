@@ -16,9 +16,11 @@ import math
 VISUAL_ANGLE_DEG = 7.9   # 画像の視角 (degree)
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
-IMG_DIR_1 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_noise")
-IMG_DIR_2 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "fg_gabor")
-RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor")
+
+# デフォルトは必須引数で指定されるが、念のための初期値
+IMG_DIR_1 = os.path.join(lab_root, "data", "processed", "images", "main-experiment-gabor", "bg_noise")
+IMG_DIR_2 = os.path.join(lab_root, "data", "processed", "images", "main-experiment-gabor", "fg_gabor")
+RESULT_DIR = os.path.join(lab_root, "results", "tables", "main-experiment-gabor")
 
 # --- 時間設定 (ミリ秒) ---
 TIME_PHASE_1 = 1600    # Phase 1: Image display only on Win2
