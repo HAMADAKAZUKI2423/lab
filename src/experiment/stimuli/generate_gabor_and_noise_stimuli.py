@@ -20,6 +20,7 @@ SCREEN_RES_X_PX     = 2560    # 画面の横解像度 (px)
 STIM_WIDTH_DEG      = 7.9     # 刺激の幅 (度)
 STIM_HEIGHT_DEG     = 7.9     # 刺激の高さ (度)
 SPATIAL_FREQS_CPD   = [2, 8] # 生成する空間周波数のリスト (cpd)
+SPATIAL_FREQS_CPD = [2, 8] # 背景ノイズの空間周波数リスト (cpd) - ※追加
 GABOR_SIGMA_DEG     = 1.0     # ガボールパッチの標準偏差 (度)
 
 # --- [新規] 輝度・コントラスト設定 ---
@@ -275,7 +276,7 @@ if __name__ == "__main__":
         
         print(f"  Distance: {distance}cm (PPD: {my_ppd:.2f}, Size: {req_w}x{req_h}px)")
         
-        for cpd in BG_SPATIAL_FREQS_CPD:
+        for cpd in SPATIAL_FREQS_CPD:
             # 周波数ごとにノイズパターンを生成（輝度・コントラスト条件間でパターンを統一するためここで生成）
             stim_noise = create_band_limited_noise(req_w, req_h, my_ppd, f_center_cpd=cpd)
 
