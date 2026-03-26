@@ -53,7 +53,10 @@ class TrainingSessionApp:
         self.distance2 = tk.IntVar(value=70)  # デフォルト値（変更不可）
         self.trial_list = []
         self.current_trial_index = 0
-        
+        self.evaluation_val = tk.IntVar(value=3)
+        self.eval_results = []
+        self.key_bindings = {}
+        self.eval_buttons = []
         # --- 画像ファイルの読み込み ---
         # 現在の試行で表示する画像を保持する変数 (Tkinterで画像を表示する際の必須処理)
         self.current_img_path_1 = None
@@ -377,18 +380,91 @@ class TrainingSessionApp:
         self.root.after(TIME_PHASE_2, self.phase_end_trial)
 
     def phase_end_trial(self):
-        """試行終了処理。両画面の画像を消去し、次の試行に進む。"""
+        """試行終了処理。両画面の画像を消去し、評価UIを表示する。"""
         self.canvas1.delete("img")
         self.canvas2.delete("img")
-        
+        self.show_evaluation_ui()
+
+    def show_evaluation_ui(self):
+        """評価UIを表示し、被験者にスコアを入力させる"""
+        self.eval_frame = tk.Frame(self.root, bg='white', padx=20, pady=20, relief='solid', borderwidth=1)
+        self.eval_frame.place(relx=0.5, rely=0.5, anchor='center')
+
+        tk.Label(self.eval_frame, text=f"Trial No.{self.current_trial_index + 1} の評価", font=("Arial", 16), bg='white').pack(pady=(0, 20))
+
+        # 初期値は3
+        self.evaluation_val.set(3)
+
+        options_frame = tk.Frame(self.eval_frame, bg='white')
+        options_frame.pack(pady=10, padx=20)
+
+        self.eval_buttons.clear()
+        for i in range(5, 0, -1):
+            option_frame = tk.Frame(options_frame, bg='white')
+            option_frame.pack(side='left', padx=15)
+
+            canvas = tk.Canvas(option_frame, width=30, height=30, bg='white', highlightthickness=0)
+            canvas.pack()
+            canvas.create_oval(5, 5, 25, 25, outline='black', width=2)
+            dot_item = canvas.create_oval(10, 10, 20, 20, fill='white', outline='white')
+
+            tk.Label(option_frame, text=str(i), font=("Arial", 12), bg='white').pack()
+            self.eval_buttons.append({'canvas': canvas, 'dot': dot_item, 'label': i})
+
+        desc_frame = tk.Frame(self.eval_frame, bg='white')
+        desc_frame.pack(fill='x', padx=10, pady=(5, 10))
+        tk.Label(desc_frame, text='5: Very clear', bg='white').pack(side='left')
+        tk.Label(desc_frame, text='1: Invisible', bg='white').pack(side='right')
+
+        tk.Label(self.eval_frame, text='◀ / ▶ で選択, ▼ で決定', font=("Arial", 10), bg='white').pack(pady=(10, 0))
+
+        self._update_eval_highlight()
+
+        self.key_bindings['<Left>'] = self.root.bind('<Left>', lambda e: self._move_selection(-1))
+        self.key_bindings['<Right>'] = self.root.bind('<Right>', lambda e: self._move_selection(1))
+        self.key_bindings['<Down>'] = self.root.bind('<Down>', lambda e: self.save_and_next())
+        self.root.focus_set()
+
+    def _update_eval_highlight(self):
+        """評価選択のハイライト更新"""
+        current = self.evaluation_val.get()
+        for btn in self.eval_buttons:
+            if btn['label'] == current:
+                btn['canvas'].itemconfig(btn['dot'], fill='black', outline='black')
+            else:
+                btn['canvas'].itemconfig(btn['dot'], fill='white', outline='white')
+
+    def _move_selection(self, delta):
+        val = self.evaluation_val.get() + delta
+        if val < 1:
+            val = 1
+        elif val > 5:
+            val = 5
+        self.evaluation_val.set(val)
+        self._update_eval_highlight()
+
+    def save_and_next(self):
+        for key, binding_id in self.key_bindings.items():
+            self.root.unbind(key, binding_id)
+        self.key_bindings.clear()
+
+        score = self.evaluation_val.get()
+        self.eval_results.append({
+            'trial': self.current_trial_index + 1,
+            'bg_image': os.path.basename(self.current_img_path_1) if self.current_img_path_1 else '',
+            'fg_image': os.path.basename(self.current_img_path_2) if self.current_img_path_2 else '',
+            'score': score,
+            'offset_x': self.offset_x.get(),
+            'offset_y': self.offset_y.get()
+        })
+
+        self.eval_frame.destroy()
         self.current_trial_index += 1
-        
-        # 少し待ってから次の試行を開始 (UIの応答性を保つため)
         self.root.after(500, self.run_trial)
 
     def finish_training(self):
         """トレーニング終了処理"""
-        messagebox.showinfo("Finished", f"Training session finished.\n{NUM_TRAINING_TRIALS} trials completed.")
+        messagebox.showinfo("Finished", f"Training session finished.\n{NUM_TRAINING_TRIALS} trials completed.\nNo data file is written.")
         self.root.destroy()
 
 if __name__ == "__main__":
