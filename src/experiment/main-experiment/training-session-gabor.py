@@ -99,20 +99,25 @@ class TrainingSessionApp:
         tk.Label(self.setup_frame, text="Training Session Setup", font=("Arial", 16)).grid(row=0, column=0, columnspan=2, pady=10)
 
         tk.Label(self.setup_frame, text="Foreground Distance (cm):").grid(row=1, column=0, sticky='w', padx=5, pady=5)
-        entry_distance = tk.Entry(self.setup_frame, textvariable=self.distance1, width=10)
-        entry_distance.grid(row=1, column=1, padx=5, pady=5)
-        entry_distance.focus_set()
+        entry_distance1 = tk.Entry(self.setup_frame, textvariable=self.distance1, width=10)
+        entry_distance1.grid(row=1, column=1, padx=5, pady=5)
+        entry_distance1.focus_set()
+
+        tk.Label(self.setup_frame, text="Background Distance (cm):").grid(row=2, column=0, sticky='w', padx=5, pady=5)
+        entry_distance2 = tk.Entry(self.setup_frame, textvariable=self.distance2, width=10)
+        entry_distance2.grid(row=2, column=1, padx=5, pady=5)
 
         btn = tk.Button(self.setup_frame, text="Setup Complete, Next", command=self.start_calibration)
-        btn.grid(row=2, column=0, columnspan=2, pady=20)
+        btn.grid(row=3, column=0, columnspan=2, pady=20)
         btn.bind('<Return>', lambda event: self.start_calibration())
 
     def start_calibration(self):
         """距離入力の検証を行い、キャリブレーションステップに進む"""
         try:
             self.distance1.get()
+            self.distance2.get()
         except (ValueError, tk.TclError):
-            messagebox.showwarning("Input Error", "Please enter a valid number for distance.")
+            messagebox.showwarning("Input Error", "Please enter valid numbers for both distances.")
             return
 
         # Window 1 (被験者用画面) の実際のサイズを取得して更新する
