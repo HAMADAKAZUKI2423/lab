@@ -275,7 +275,7 @@ if __name__ == "__main__":
         
         print(f"  Distance: {distance}cm (PPD: {my_ppd:.2f}, Size: {req_w}x{req_h}px)")
         
-        for cpd in SPATIAL_FREQS_CPD:
+        for cpd in BG_SPATIAL_FREQS_CPD:
             # 周波数ごとにノイズパターンを生成（輝度・コントラスト条件間でパターンを統一するためここで生成）
             stim_noise = create_band_limited_noise(req_w, req_h, my_ppd, f_center_cpd=cpd)
 
