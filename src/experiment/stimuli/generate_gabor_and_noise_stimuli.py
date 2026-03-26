@@ -2,6 +2,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.fft import fft2, ifft2, fftshift, ifftshift
+import argparse
 import os
 import glob
 import csv
@@ -18,7 +19,7 @@ SCREEN_RES_X_PX     = 2560    # 画面の横解像度 (px)
 # 論文 (Table 1) に基づく刺激パラメータ
 STIM_WIDTH_DEG      = 7.9     # 刺激の幅 (度)
 STIM_HEIGHT_DEG     = 7.9     # 刺激の高さ (度)
-SPATIAL_FREQS_CPD   = [2, 4] # 生成する空間周波数のリスト (cpd)
+SPATIAL_FREQS_CPD   = [2, 8] # 生成する空間周波数のリスト (cpd)
 GABOR_SIGMA_DEG     = 1.0     # ガボールパッチの標準偏差 (度)
 
 # --- [新規] 輝度・コントラスト設定 ---
@@ -26,18 +27,17 @@ GABOR_SIGMA_DEG     = 1.0     # ガボールパッチの標準偏差 (度)
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 
-# 前景 (HMD用)
-FG_CALIBRATION_LOG_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor", "fg_calibration_log")
-# 背景 (ディスプレイ用)
-BG_CALIBRATION_LOG_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor", "bg_calibration_log")
+# キャリブレーションログのベースパス
+CALIB_LOG_BASE_DIR = os.path.join(lab_root, "results", "tables")
 
 FG_MEAN_LUMINANCES_CDM2 = [50, 5]   # 前景用平均輝度リスト (cd/m^2)
 BG_MEAN_LUMINANCES_CDM2 = [15, 5]   # 背景用平均輝度リスト (cd/m^2)
-FG_CONTRASTS = [0.2, 0.6, 1.0]      # 前景用コントラストリスト
+FG_CONTRASTS = [0.4, 0.8]      # 前景用コントラストリスト
 BG_CONTRASTS = [1.0]      # 背景用コントラストリスト
 
 # --- 保存設定 ---
-OUTPUT_DIR = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor")
+OUTPUT_DIR_PRE = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor")
+OUTPUT_DIR_MAIN = os.path.join(lab_root, "data", "processed", "images", "main-experiment-gabor")
 
 # ==========================================
 # 2. 計算用関数
@@ -202,12 +202,31 @@ def create_band_limited_noise(width_px, height_px, ppd, f_center_cpd, bandwidth_
 # 4. メイン実行ブロック
 # ==========================================
 if __name__ == "__main__":
+    # --- コマンドライン引数解析 ---
+    parser = argparse.ArgumentParser(description="Gabor/noise stimuli generator: choose output target folder")
+    parser.add_argument("--target", choices=["main", "pre"], required=True,
+                        help="保存先を選択します: main または pre (必須)")
+    args = parser.parse_args()
+
+    if args.target == "main":
+        OUTPUT_DIR = OUTPUT_DIR_MAIN
+        fg_calib_dir = os.path.join(CALIB_LOG_BASE_DIR, "main-experiment-gabor", "fg_calibration_log")
+        bg_calib_dir = os.path.join(CALIB_LOG_BASE_DIR, "main-experiment-gabor", "bg_calibration_log")
+    elif args.target == "pre":
+        OUTPUT_DIR = OUTPUT_DIR_PRE
+        fg_calib_dir = os.path.join(CALIB_LOG_BASE_DIR, "pre-experiment-gabor", "fg_calibration_log")
+        bg_calib_dir = os.path.join(CALIB_LOG_BASE_DIR, "pre-experiment-gabor", "bg_calibration_log")
+    else:
+        raise ValueError("不正なtarget指定です。mainかpreを指定してください。")
+
+    print(f"OUTPUT_DIR = {OUTPUT_DIR}")
+
     # --- [新規] 輝度-ピクセル変換の準備 ---
     # 最新のキャリブレーション結果を読み込む (Foreground)
-    fg_sorted_lums, fg_sorted_pixels = get_calibrated_map_arrays(FG_CALIBRATION_LOG_DIR, "Foreground")
+    fg_sorted_lums, fg_sorted_pixels = get_calibrated_map_arrays(fg_calib_dir, "Foreground")
     
     # 最新のキャリブレーション結果を読み込む (Background)
-    bg_sorted_lums, bg_sorted_pixels = get_calibrated_map_arrays(BG_CALIBRATION_LOG_DIR, "Background")
+    bg_sorted_lums, bg_sorted_pixels = get_calibrated_map_arrays(bg_calib_dir, "Background")
     
     if fg_sorted_lums is None or bg_sorted_lums is None:
         print("エラー: 有効なキャリブレーションデータがないため、処理を中断します。")
@@ -245,14 +264,6 @@ if __name__ == "__main__":
                     filename_v = os.path.join(gabor_dir, f"{cpd}cpd_{mean_lum}nit_{contrast}_v.png")
                     plt.imsave(filename_v, pixel_map_v, cmap='gray', vmin=0, vmax=255)
                     print(f"      Saved: {filename_v}")
-
-                    # --- C-2. 水平方向のガボールパッチ (Horizontal, orientation=90) ---
-                    gabor_mod_h = create_gabor(req_w, req_h, my_ppd, cpd, GABOR_SIGMA_DEG, orientation_deg=90)
-                    lum_map_h = mean_lum * (1 + contrast * gabor_mod_h)
-                    pixel_map_h = luminance_to_pixel(lum_map_h, fg_sorted_lums, fg_sorted_pixels)
-                    filename_h = os.path.join(gabor_dir, f"{cpd}cpd_{mean_lum}nit_{contrast}_h.png")
-                    plt.imsave(filename_h, pixel_map_h, cmap='gray', vmin=0, vmax=255)
-                    print(f"      Saved: {filename_h}")
 
     print("\n--- Generating Band-limited Noise (Background) ---")
     # --- 帯域制限ノイズの生成 (背景距離に基づく) ---
