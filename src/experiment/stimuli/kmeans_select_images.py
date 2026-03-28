@@ -22,9 +22,8 @@ OUTPUT_BG_DIR = os.path.join(lab_root, "data", "processed", "images", "pre-exper
 OUTPUT_FG_DIR = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-image", "fg_imgs")
 
 # クラスタ設定
-N_TEX_CLUSTERS = 3  # テクスチャ（ラプラシアン）のクラス数
-N_LUM_CLUSTERS = 6  # 各テクスチャクラス内の輝度クラス数 (3→6へ拡張)
-# 合計クラス数 = 3 * 6 = 18
+N_TEX_CLUSTERS = 5  # テクスチャ（ラプラシアン）のクラス数
+N_SELECT_PER_TEX_CLUSTER = 1 # 各テクスチャクラスタから選択する前景・背景画像の数
 
 # 対象とする画像の拡張子
 EXTENSIONS = ['*.png', '*.jpg', '*.jpeg', '*.bmp', '*.tif']
@@ -96,7 +95,7 @@ def main():
 
     # 3. 階層的クラスタリングを実行 (1 + 3回)
     
-    # --- Step 1: テクスチャ（ラプラシアン特徴量）で3クラスに分類 ---
+    # --- Step 1: テクスチャ（ラプラシアン特徴量）で5クラスに分類 ---
     print(f"Step 1: テクスチャに基づいて {N_TEX_CLUSTERS} クラスに分類中...")
     X_tex = np.array(features_list)
     kmeans_tex = KMeans(n_clusters=N_TEX_CLUSTERS, random_state=42, n_init=10)
@@ -114,42 +113,6 @@ def main():
         rank = tex_rank_map[tex_labels[i]]
         tex_clusters[rank].append(item)
 
-    # --- Step 2: 各テクスチャクラス内で輝度で3クラスに分類 ---
-    final_groups = [] # (tex_rank, lum_rank, items) のリスト
-    
-    for t_rank in range(N_TEX_CLUSTERS):
-        items = tex_clusters[t_rank]
-        print(f"Step 2: Texture Class {t_rank+1} (n={len(items)}) を輝度で {N_LUM_CLUSTERS} 分割中...")
-        
-        if len(items) < N_LUM_CLUSTERS:
-            print(f"  警告: 画像数が足りないためスキップします。")
-            continue
-
-        # 輝度データの準備
-        X_lum = np.array([item['lum'] for item in items]).reshape(-1, 1)
-        
-        kmeans_lum = KMeans(n_clusters=N_LUM_CLUSTERS, random_state=42, n_init=10)
-        lum_labels = kmeans_lum.fit_predict(X_lum)
-        
-        # 輝度でソート (暗 -> 明)
-        lum_centers = kmeans_lum.cluster_centers_.flatten()
-        lum_sorted_indices = np.argsort(lum_centers)
-        lum_rank_map = {label: rank for rank, label in enumerate(lum_sorted_indices)}
-        
-        # グループ化して保存
-        lum_subclusters = {rank: [] for rank in range(N_LUM_CLUSTERS)}
-        for i, item in enumerate(items):
-            l_rank = lum_rank_map[lum_labels[i]]
-            lum_subclusters[l_rank].append(item)
-            
-        for l_rank in range(N_LUM_CLUSTERS):
-            final_groups.append({
-                'tex_rank': t_rank,
-                'lum_rank': l_rank,
-                'items': lum_subclusters[l_rank],
-                'avg_lum': lum_centers[lum_sorted_indices[l_rank]]
-            })
-
     # 4. 出力フォルダの準備
     for d in [OUTPUT_BG_DIR, OUTPUT_FG_DIR]:
         if not os.path.exists(d):
@@ -158,42 +121,72 @@ def main():
     print(f"出力フォルダ(BG): {OUTPUT_BG_DIR}")
     print(f"出力フォルダ(FG): {OUTPUT_FG_DIR}")
 
-    # 5. 各グループから画像を抽出して保存
-    # final_groups は既に [Tex1-Lum1, Tex1-Lum2, ..., Tex3-Lum9] の順で追加されているはずだが念のためソート
-    # ソートキー: テクスチャランク優先、次に輝度ランク
-    final_groups.sort(key=lambda x: (x['tex_rank'], x['lum_rank']))
-
-    # 下位3クラスをFG、上位3クラスをBGに抽出 (各テクスチャクラスあたり9枚ずつ -> 合計18枚)
-    selected_groups = [
-        group for group in final_groups
-        if group['lum_rank'] < 3 or group['lum_rank'] >= N_LUM_CLUSTERS - 3
-    ]
-
+    # 5. 各テクスチャクラスタから画像をランダムに抽出して保存
     print("\n--- 選択された画像 ---")
-    for global_rank, group in enumerate(selected_groups):
-        cluster_items = group['items']
-        if not cluster_items:
-            print(f"警告: Tex{group['tex_rank']+1} Lum{group['lum_rank']+1} に画像がありません。スキップします。")
+    global_img_idx = 0
+
+    # テクスチャランクでループ (t_rankは 0:平坦 -> 4:複雑)
+    for t_rank in range(N_TEX_CLUSTERS):
+        items_in_cluster = tex_clusters[t_rank]
+
+        num_required = N_SELECT_PER_TEX_CLUSTER * 2
+        if len(items_in_cluster) < num_required:
+            print(f"警告: Texture Class {t_rank+1} (n={len(items_in_cluster)}) の画像数が足りないためスキップします。 ({num_required}枚以上必要)")
             continue
 
-        tex_r = group['tex_rank'] + 1
-        lum_r = group['lum_rank'] + 1
-        lum_label = f"L{lum_r}"
+        # 輝度を考慮せず、クラスタからランダムに画像を選択
+        selected_items = random.sample(items_in_cluster, num_required)
 
-        if group['lum_rank'] < 3:
-            target_dir = OUTPUT_FG_DIR
+        # 選択した画像を前景用と背景用に半分ずつ分ける
+        fg_items = selected_items[:N_SELECT_PER_TEX_CLUSTER]
+        bg_items = selected_items[N_SELECT_PER_TEX_CLUSTER:]
+
+        # 前景画像をコピー
+        for i, item in enumerate(fg_items):
+            global_img_idx += 1
+            tex_r = t_rank + 1
             prefix = "fg"
-        else:
-            target_dir = OUTPUT_BG_DIR
+            original_path = item['path']
+            original_basename = os.path.basename(original_path)
+
+            # 元の画像をコピー
+            new_name = f"{global_img_idx}_{prefix}_Tex{tex_r}_{original_basename}"
+            dst_path = os.path.join(OUTPUT_FG_DIR, new_name)
+            shutil.copy2(original_path, dst_path)
+            print(f"Selected ({prefix.upper()}) [Tex{tex_r}]: {new_name}")
+
+            # 輝度を半分にした画像を生成して保存
+            try:
+                img = cv2.imread(original_path)
+                if img is None:
+                    print(f"  警告: 輝度変更のため {original_basename} を読み込めませんでした。")
+                    continue
+
+                # HSV色空間に変換し、輝度(V)を半分にする
+                hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+                hsv[:, :, 2] //= 2
+                darker_img = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+
+                # 新しいファイル名を生成して保存
+                darker_basename = f"dark_{original_basename}"
+                darker_new_name = f"{global_img_idx}_{prefix}_Tex{tex_r}_{darker_basename}"
+                darker_dst_path = os.path.join(OUTPUT_FG_DIR, darker_new_name)
+                cv2.imwrite(darker_dst_path, darker_img)
+                print(f"  -> Generated darker version: {darker_new_name}")
+            except Exception as e:
+                print(f"  エラー: 輝度変更処理中にエラーが発生しました ({original_basename}): {e}")
+
+        # 背景画像をコピー
+        for i, item in enumerate(bg_items):
+            global_img_idx += 1
+            tex_r = t_rank + 1
             prefix = "bg"
 
-        # 1グループあたり1枚選択 (前景/背景それぞれ9枚になるように)
-        selected_item = random.choice(cluster_items)
+            new_name = f"{global_img_idx}_{prefix}_Tex{tex_r}_{os.path.basename(item['path'])}"
+            dst_path = os.path.join(OUTPUT_BG_DIR, new_name)
+            shutil.copy2(item['path'], dst_path)
+            print(f"Selected ({prefix.upper()}) [Tex{tex_r}]: {new_name}")
 
-        new_name = f"{global_rank+1}_{prefix}_Tex{tex_r}_Lum{lum_label}_{os.path.basename(selected_item['path'])}"
-        dst_path = os.path.join(target_dir, new_name)
-        shutil.copy2(selected_item['path'], dst_path)
-        print(f"Class {global_rank+1} [Tex{tex_r}-Lum{lum_label}] ({prefix}): {new_name}")
 
 if __name__ == "__main__":
     main()
