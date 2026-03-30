@@ -161,11 +161,11 @@ def main():
                 if img is None:
                     print(f"  警告: 輝度変更のため {original_basename} を読み込めませんでした。")
                     continue
-
-                # HSV色空間に変換し、輝度(V)を半分にする
-                hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-                hsv[:, :, 2] //= 2
-                darker_img = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+                
+                # Lab色空間に変換し、輝度(L*)を半分にする
+                lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+                lab[:, :, 0] = (lab[:, :, 0] * 0.5).astype(np.uint8)
+                darker_img = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
                 # 新しいファイル名を生成して保存
                 darker_basename = f"dark_{original_basename}"
