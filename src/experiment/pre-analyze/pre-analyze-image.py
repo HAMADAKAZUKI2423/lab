@@ -75,11 +75,21 @@ final_df = pd.concat(all_data, ignore_index=True)
 
 # 3. 画像名からラベルを抽出
 def extract_label(filename, prefix):
+    # kmeans_select_images.py の命名規則 (e.g., ..._Tex1_..., ..._Tex1_dark_...) に対応
+    tex_match = re.search(r'(Tex\d+)', str(filename))
+    if tex_match:
+        label = tex_match.group(1)
+        # 前景画像にのみ 'dark' が存在しうる
+        if 'dark' in str(filename).lower():
+            label = f"{label}_dark"
+        return label
+
+    # 従来のLum/tex形式にも対応するためのフォールバック
     # ファイル名先頭の番号を抽出 (e.g., "1_fg_...", "10_bg_...")
     num_match = re.search(r'^(\d+)_', str(filename))
     
     # texX と LumX を抽出
-    tex_match = re.search(r'(tex\d+)', str(filename), re.IGNORECASE)
+    tex_match_old = re.search(r'(tex\d+)', str(filename), re.IGNORECASE)
     lum_match = re.search(r'(Lum[a-zA-Z0-9]+)', str(filename), re.IGNORECASE)
     
     parts = []
@@ -88,8 +98,8 @@ def extract_label(filename, prefix):
     else:
         parts.append(prefix)
         
-    if tex_match:
-        parts.append(tex_match.group(1))
+    if tex_match_old:
+        parts.append(tex_match_old.group(1))
     if lum_match:
         parts.append(lum_match.group(1))
     
@@ -97,16 +107,26 @@ def extract_label(filename, prefix):
         return "_".join(parts)
     
     return str(filename)
-
+    
 # カテゴリの順序をTex -> Lumの順に明示的にソートする関数
 def get_sort_key(label):
-    tex_match = re.search(r'tex(\d+)', str(label), re.IGNORECASE)
-    tex_val = int(tex_match.group(1)) if tex_match else 999
+    # 新しい形式 (Tex1, Tex1_dark)
+    tex_match = re.search(r'Tex(\d+)', str(label))
+    if tex_match:
+        is_dark = 0 if 'dark' in str(label) else 1 # darkあり=0, なし=1
+        tex_val = int(tex_match.group(1))
+        # (形式識別, dark有無, tex番号)
+        return (0, is_dark, tex_val)
+
+    # 古い形式 (tex1, Lum100)
+    tex_match_old = re.search(r'tex(\d+)', str(label), re.IGNORECASE)
+    tex_val_old = int(tex_match_old.group(1)) if tex_match_old else 999
     
     lum_match = re.search(r'lum[a-zA-Z]*(\d+)', str(label), re.IGNORECASE)
     lum_val = int(lum_match.group(1)) if lum_match else 999
     
-    return (tex_val, lum_val)
+    # (形式識別, tex番号, lum値)
+    return (1, tex_val_old, lum_val)
 
 # FG画像のラベル抽出とソート
 fg_raw_labels = final_df['Image_Win2'].apply(lambda x: extract_label(x, "fg")).unique()
