@@ -161,18 +161,30 @@ def main():
                 if img is None:
                     print(f"  警告: 輝度変更のため {original_basename} を読み込めませんでした。")
                     continue
-                
-                # Lab色空間に変換し、輝度(L*)を半分にする
-                lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-                lab[:, :, 0] = (lab[:, :, 0] * 0.5).astype(np.uint8)
-                darker_img = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
-                # 新しいファイル名を生成して保存
-                darker_basename = f"dark_{original_basename}"
-                darker_new_name = f"{global_img_idx}_{prefix}_Tex{tex_r}_{darker_basename}"
-                darker_dst_path = os.path.join(OUTPUT_FG_DIR, darker_new_name)
-                cv2.imwrite(darker_dst_path, darker_img)
-                print(f"  -> Generated darker version: {darker_new_name}")
+                # Lab色空間に変換
+                lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
+                original_l_channel = lab[:, :, 0].copy()
+
+                # 輝度を半分(0.5)にした画像を生成
+                lab[:, :, 0] = (original_l_channel * 0.5).astype(np.uint8)
+                dark_img_05 = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+                dark_basename_05 = f"dark0.5_{original_basename}"
+                dark_new_name_05 = f"{global_img_idx}_{prefix}_Tex{tex_r}_{dark_basename_05}"
+                dark_dst_path_05 = os.path.join(OUTPUT_FG_DIR, dark_new_name_05)
+                cv2.imwrite(dark_dst_path_05, dark_img_05)
+                print(f"  -> Generated 0.5 luminance version: {dark_new_name_05}")
+
+                # 輝度を1/4(0.25)にした画像を生成
+                lab[:, :, 0] = (original_l_channel * 0.25).astype(np.uint8)
+                dark_img_025 = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+                dark_basename_025 = f"dark0.25_{original_basename}"
+                dark_new_name_025 = f"{global_img_idx}_{prefix}_Tex{tex_r}_{dark_basename_025}"
+                dark_dst_path_025 = os.path.join(OUTPUT_FG_DIR, dark_new_name_025)
+                cv2.imwrite(dark_dst_path_025, dark_img_025)
+                print(f"  -> Generated 0.25 luminance version: {dark_new_name_025}")
             except Exception as e:
                 print(f"  エラー: 輝度変更処理中にエラーが発生しました ({original_basename}): {e}")
 

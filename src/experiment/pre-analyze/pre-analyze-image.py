@@ -75,13 +75,14 @@ final_df = pd.concat(all_data, ignore_index=True)
 
 # 3. 画像名からラベルを抽出
 def extract_label(filename, prefix):
-    # kmeans_select_images.py の命名規則 (e.g., ..._Tex1_..., ..._Tex1_dark_...) に対応
+    # kmeans_select_images.py の命名規則 (e.g., ..._Tex1_..., ..._Tex1_dark0.5_...) に対応
     tex_match = re.search(r'(Tex\d+)', str(filename))
     if tex_match:
         label = tex_match.group(1)
-        # 前景画像にのみ 'dark' が存在しうる
-        if 'dark' in str(filename).lower():
-            label = f"{label}_dark"
+        # 前景画像にのみ 'dark' が存在しうる (e.g., dark0.5)
+        dark_match = re.search(r'dark(\d+\.?\d*)', str(filename).lower())
+        if dark_match:
+            label = f"{label}_dark{dark_match.group(1)}"
         return label
 
     # 従来のLum/tex形式にも対応するためのフォールバック
@@ -110,13 +111,16 @@ def extract_label(filename, prefix):
     
 # カテゴリの順序をTex -> Lumの順に明示的にソートする関数
 def get_sort_key(label):
-    # 新しい形式 (Tex1, Tex1_dark)
+    # 新しい形式 (Tex1, Tex1_dark0.5)
     tex_match = re.search(r'Tex(\d+)', str(label))
     if tex_match:
-        is_dark = 0 if 'dark' in str(label) else 1 # darkあり=0, なし=1
+        dark_level = 1.0  # 通常画像
+        dark_match = re.search(r'dark(\d+\.?\d*)', str(label))
+        if dark_match:
+            dark_level = float(dark_match.group(1))
         tex_val = int(tex_match.group(1))
-        # (形式識別, dark有無, tex番号)
-        return (0, is_dark, tex_val)
+        # (形式識別, tex番号, darkレベル(降順ソートのため負数))
+        return (0, tex_val, -dark_level)
 
     # 古い形式 (tex1, Lum100)
     tex_match_old = re.search(r'tex(\d+)', str(label), re.IGNORECASE)
