@@ -14,6 +14,7 @@ import math
 # ==========================================
 # --- 実験設定 ---
 VISUAL_ANGLE_DEG = 7.9   # 画像の視角 (degree)
+NUM_TRIALS_BEFORE_BREAK = 50 # 休憩に入るまでの試行回数
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 IMG_DIR_1 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_noise")
@@ -246,7 +247,7 @@ class ExperimentApp:
         self.update_calibration_view()
         return "break" # デフォルトのイベント処理（スライダーの移動など）を停止する
 
-    def setup_calibration_ui(self):
+    def setup_calibration_ui(self, is_break=False):
         """ステップ1: キャリブレーション用UIを構築し表示する"""
         self.update_calibration_view()
         
@@ -254,19 +255,40 @@ class ExperimentApp:
         self.ctrl_frame = tk.Frame(self.root, bg='gray')
         self.ctrl_frame.place(relx=0.5, rely=0.8, anchor='center')
 
+        if is_break:
+            instruction_text = "This is a break. You can adjust the position if needed.\nPress 'Resume Experiment' to continue."
+            button_text = "Resume Experiment"
+            button_command = self.resume_experiment
+        else:
+            instruction_text = "Use the arrow keys to adjust the position of the red frame."
+            button_text = "Start Experiment"
+            button_command = self.start_experiment
+
         # 位置調整の指示ラベル
-        instruction_text = "Use the arrow keys to adjust the position of the red frame."
         tk.Label(self.ctrl_frame, text=instruction_text, bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
 
-        # 実験開始ボタン
-        btn = tk.Button(self.ctrl_frame, text="Start Experiment", command=self.start_experiment)
+        # 実験開始/再開ボタン
+        btn = tk.Button(self.ctrl_frame, text=button_text, command=button_command)
         btn.pack(pady=10)
         btn.focus_set() # ボタンにフォーカスを当ててキー入力を受け付ける
-        btn.bind('<Return>', lambda event: self.start_experiment())
+        btn.bind('<Return>', lambda event: button_command())
         btn.bind('<Left>', lambda e: self.adjust_offset(-1, 0))
         btn.bind('<Right>', lambda e: self.adjust_offset(1, 0))
         btn.bind('<Up>', lambda e: self.adjust_offset(0, -1))
         btn.bind('<Down>', lambda e: self.adjust_offset(0, 1))
+
+    def resume_experiment(self):
+        """休憩を終了し、実験を再開する"""
+        self.ctrl_frame.destroy()
+        self.canvas1.delete("all")
+        self.canvas2.delete("all")
+        self.run_trial()
+
+    def start_break(self):
+        """休憩を開始し、キャリブレーションUIを表示する"""
+        self.canvas1.delete("all")
+        self.canvas2.delete("all")
+        self.setup_calibration_ui(is_break=True)
 
     def _update_eval_highlight(self):
         """Highlights the currently selected evaluation button."""
@@ -513,8 +535,16 @@ class ExperimentApp:
         self.eval_frame.destroy()
         self.current_trial_index += 1
         
-        # 少し待ってから次の試行を開始 (UIの応答性を保つため)
-        self.root.after(500, self.run_trial)
+        # 休憩を挟むかチェック
+        is_break_time = (self.current_trial_index > 0) and \
+                        (self.current_trial_index % NUM_TRIALS_BEFORE_BREAK == 0) and \
+                        (self.current_trial_index < len(self.trial_list))
+
+        if is_break_time:
+            self.root.after(500, self.start_break)
+        else:
+            # 少し待ってから次の試行を開始 (UIの応答性を保つため)
+            self.root.after(500, self.run_trial)
 
     def finish_experiment(self):
         """実験終了処理。結果をCSVファイルに保存する"""
