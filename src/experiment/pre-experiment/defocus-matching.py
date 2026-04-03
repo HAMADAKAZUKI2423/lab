@@ -251,66 +251,164 @@ class optics_model:
 if __name__ == '__main__':
     # ================================================================
     # スライダーでぼけ具合（ディオプトリ差 D）をインタラクティブに変更するデモ
+    # から、画像のぼけ具合を調整し、中央の枠と比較するデモへ変更
     # ================================================================
+    import matplotlib.image as mpimg
+    from PIL import Image
+
     # --- 1. デモ用の設定 ---
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    
-    # ダミーの画像を作成 (中央に輝点がある画像)
-    img_size = 256
-    dummy_img = torch.zeros(1, 3, 1, img_size, img_size, device=device)
-    dummy_img[:, :, :, img_size//2, img_size//2] = 1.0
+
+    # --- 画像と表示の設定 ---
+    # TODO: 表示したい画像のパスに変更してください
+    IMG_PATH = 'path/to/your/image.png' # 表示する画像のパス
+    VIEWING_DISTANCE_CM = 57  # 観察距離 (cm)
+    FRAME_VISUAL_ANGLE_DEG = 5.0 # 中央の枠の視角 (degree)
+    IMAGE_VISUAL_ANGLE_DEG = 5.0 # 画像の視角 (degree)
+    CANVAS_SIZE_PX = 512 # 全体の画像サイズ (pixel)
 
     # ダミーのディスプレイ設定
     class DummyDisplay:
         def __init__(self, distance_cm, resolution_wh):
             self.distance_m = distance_cm / 100.0
-            self.resolution = resolution_wh
-            self.display_size_m = (resolution_wh[1] * 0.00023, resolution_wh[0] * 0.00023) # 適当なピクセルピッチ
+            self.resolution = resolution_wh # (W, H)
+            pixel_pitch_m = 0.00023 # 1ピクセルが0.23mmと仮定 (一般的なモニタ)
+            self.display_size_m = (resolution_wh[0] * pixel_pitch_m, resolution_wh[1] * pixel_pitch_m) # (width_m, height_m)
             self.rgb2xyz_list = [0, [0.2126, 0.7152, 0.0722]] # sRGBの輝度係数
 
     # --- 2. optics_model の初期化 ---
-    # ここでの距離はDの初期値を決めるためだけに使用
+    # この時点でのフレームはダミーでOK
+    dummy_frame = torch.zeros(1, 3, 1, CANVAS_SIZE_PX, CANVAS_SIZE_PX, device=device)
     model = optics_model(
         age=30,
-        test_frame=dummy_img,
-        bkg_frame=dummy_img,
-        test_dg=DummyDisplay(distance_cm=50, resolution_wh=(img_size, img_size)),
-        bkg_dg=DummyDisplay(distance_cm=100, resolution_wh=(img_size, img_size)),
+        test_frame=dummy_frame,
+        bkg_frame=dummy_frame,
+        test_dg=DummyDisplay(distance_cm=VIEWING_DISTANCE_CM, resolution_wh=(CANVAS_SIZE_PX, CANVAS_SIZE_PX)),
+        bkg_dg=DummyDisplay(distance_cm=VIEWING_DISTANCE_CM * 2, resolution_wh=(CANVAS_SIZE_PX, CANVAS_SIZE_PX)), # bkgは遠方と仮定
         device=device
     )
-    # 瞳孔径は固定値として設定
-    model.pd = 4.0 # 4mm
+    model.pd = 4.0 # 瞳孔径を4mmに固定
 
-    # --- 3. Matplotlib UI のセットアップ ---
+    # --- 3. 表示要素の準備 ---
+    
+    # 視角からピクセルサイズを計算
+    display_height_deg = model.display_size_deg[0]
+    pixels_per_deg = CANVAS_SIZE_PX / display_height_deg
+    frame_size_px = int(FRAME_VISUAL_ANGLE_DEG * pixels_per_deg)
+    image_size_px = int(IMAGE_VISUAL_ANGLE_DEG * pixels_per_deg)
+
+    # (1) ぼかす対象の画像を読み込んで配置
+    try:
+        img_np = mpimg.imread(IMG_PATH)
+        # チャンネル数とデータ型を正規化
+        if len(img_np.shape) == 2: # Grayscale
+            img_np = np.stack([img_np]*3, axis=-1)
+        if img_np.shape[2] == 4: # RGBA
+            img_np = img_np[:, :, :3]
+        if img_np.dtype == np.uint8: # 0-255 to 0-1
+            img_np = img_np / 255.0
+    except (FileNotFoundError, OSError):
+        print(f"警告: 画像ファイルが見つかりません '{IMG_PATH}'. ダミーの市松模様を使用します。")
+        # ダミー画像（チェッカーボード）を作成
+        c = np.zeros((image_size_px, image_size_px))
+        s = max(1, image_size_px // 8)
+        for i in range(8):
+            for j in range(8):
+                if (i + j) % 2 == 0:
+                    c[i*s:(i+1)*s, j*s:(j+1)*s] = 1
+        img_np = np.stack([c, c, c], axis=-1)
+
+    # PILを使ってリサイズ
+    img_pil = Image.fromarray((img_np * 255).astype(np.uint8))
+    img_pil = img_pil.resize((image_size_px, image_size_px), Image.LANCZOS)
+    img_resized_np = np.array(img_pil) / 255.0
+
+    # キャンバス上に画像を配置
+    image_plane_np = np.zeros((CANVAS_SIZE_PX, CANVAS_SIZE_PX, 3))
+    center_y, center_x = CANVAS_SIZE_PX // 2, CANVAS_SIZE_PX // 2
+
+    # ご要望に基づき、画像を白い枠と重なるように中央に配置します
+    img_top_y = center_y - image_size_px // 2
+    img_left_x = center_x - image_size_px // 2
+    image_plane_np[img_top_y:img_top_y + image_size_px, img_left_x:img_left_x + image_size_px, :] = img_resized_np
+
+    image_plane_torch = torch.from_numpy(image_plane_np).permute(2, 0, 1).unsqueeze(0).unsqueeze(2).float().to(device)
+
+    # (2) 中央の四角い枠を作成
+    frame_plane_np = np.zeros((CANVAS_SIZE_PX, CANVAS_SIZE_PX, 3))
+    y0, x0 = center_y - frame_size_px // 2, center_x - frame_size_px // 2
+    y1, x1 = center_y + frame_size_px // 2, center_x + frame_size_px // 2
+    line_width = 2 # 枠の線の太さ
+    frame_plane_np[y0:y1, x0:x0+line_width, :] = 1.0 # Left
+    frame_plane_np[y0:y1, x1-line_width:x1, :] = 1.0 # Right
+    frame_plane_np[y0:y0+line_width, x0:x1, :] = 1.0 # Top
+    frame_plane_np[y1-line_width:y1, x0:x1, :] = 1.0 # Bottom
+    frame_plane_torch = torch.from_numpy(frame_plane_np).permute(2, 0, 1).unsqueeze(0).unsqueeze(2).float().to(device)
+
+
+    # --- 4. Matplotlib UI のセットアップ ---
     fig, ax = plt.subplots()
     plt.subplots_adjust(left=0.1, bottom=0.25)
     
-    # 初期状態のPSFとぼけ画像を表示
-    initial_D = 1.0 # 初期ディオプトリ
+    # 前景画像の表示状態を管理するフラグ
+    image_visible = True
+
+    # 初期状態の画像を表示
+    initial_D = 0.0 # 初期ディオプトリ
     psf = model.calculate_psf_ray(D=initial_D)
-    blurred_img = model.get_blur_image(dummy_img, psf)
+    blurred_img_torch = model.get_blur_image(image_plane_torch, psf)
+    
+    # 枠と合成
+    combined_img_torch = blurred_img_torch + frame_plane_torch
     
     # 表示用に画像をnumpy配列に変換
-    img_to_show = blurred_img.cpu().squeeze().permute(1, 2, 0).numpy()
-    img_to_show = img_to_show / np.max(img_to_show) # 正規化
+    img_to_show = combined_img_torch.cpu().squeeze().permute(1, 2, 0).numpy()
+    img_to_show = np.clip(img_to_show, 0, 1) # 念のためクリッピング
     
     im = ax.imshow(img_to_show)
-    ax.set_title(f'Defocus Demo (D = {initial_D:.2f} diopters)')
+    ax.set_title(f'Defocus Matching (D = {initial_D:.2f})')
+    ax.axis('off') # 軸を非表示に
 
     # スライダーを追加
     ax_slider = plt.axes([0.1, 0.1, 0.8, 0.05])
     d_slider = Slider(ax=ax_slider, label='Diopter (D)', valmin=0.0, valmax=2.0, valinit=initial_D)
+    plt.text(0.5, -0.8, '← : Less Blur / → : More Blur,   ↑ / ↓: Toggle Image',
+             horizontalalignment='center', verticalalignment='center', transform=ax_slider.transAxes)
 
     # スライダーが動いたときの処理
     def update(val):
         D = d_slider.val
         psf = model.calculate_psf_ray(D=D)
-        blurred_img = model.get_blur_image(dummy_img, psf)
-        img_to_show = blurred_img.cpu().squeeze().permute(1, 2, 0).numpy()
-        img_to_show = img_to_show / (np.max(img_to_show) + 1e-8) # ゼロ除算を避ける
+        blurred_img_torch = model.get_blur_image(image_plane_torch, psf)
+
+        # 枠と合成
+        if image_visible:
+            combined_img_torch = blurred_img_torch + frame_plane_torch
+        else:
+            combined_img_torch = frame_plane_torch.clone()
+
+        img_to_show = combined_img_torch.cpu().squeeze().permute(1, 2, 0).numpy()
+        img_to_show = np.clip(img_to_show, 0, 1)
+        
         im.set_data(img_to_show)
-        ax.set_title(f'Defocus Demo (D = {D:.2f} diopters)')
+        ax.set_title(f'Defocus Matching (D = {D:.2f})')
         fig.canvas.draw_idle()
 
     d_slider.on_changed(update)
+
+    def on_key_press(event):
+        global image_visible
+        step = 0.05  # スライダーの1ステップの変化量
+
+        if event.key == 'up' or event.key == 'down':
+            image_visible = not image_visible
+            update(d_slider.val)
+        elif event.key == 'right':  # 値を増やす
+            new_val = min(d_slider.valmax, d_slider.val + step)
+            d_slider.set_val(new_val)
+        elif event.key == 'left':  # 値を減らす
+            new_val = max(d_slider.valmin, d_slider.val - step)
+            d_slider.set_val(new_val)
+
+    fig.canvas.mpl_connect('key_press_event', on_key_press)
     plt.show()
