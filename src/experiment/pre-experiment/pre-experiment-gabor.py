@@ -310,64 +310,22 @@ class ExperimentApp:
             self._reset_to_setup_ui()
             return
 
-        # --- 2. Group background images by filename prefix ('2' or '4') ---
-        # 一時的にコメントアウト: 総当たりに変更
-        # def group_images_by_prefix(paths):
-        #     grouped = {}
-        #     for path in paths:
-        #         prefix = os.path.basename(path).split('cpd')[0]
-        #         if prefix not in grouped:
-        #             grouped[prefix] = []
-        #         grouped[prefix].append(path)
-        #     return grouped
-
-        # bg_images_by_prefix = group_images_by_prefix(bg_img_paths)
-        
-        # # Check if background image groups exist for every foreground image prefix
-        # fg_prefixes = {os.path.basename(p).split('cpd')[0] for p in fg_img_paths}
-        # if not all(key in bg_images_by_prefix for key in fg_prefixes):
-        #      messagebox.showerror("Error", "前景画像の接頭辞に対応する背景画像のグループが見つかりません。")
-        #      self._reset_to_setup_ui()
-        #      return
-
-        # --- 3. Build the final trial list ---
+        # --- 3. Build the trial list ---
         block_trials = []
         
-        # 一時的にコメントアウト: 総当たりに変更
-        # # 各前景画像について、背景の各輝度条件を網羅する
-        # for fg_path in fg_img_paths:
-        #     prefix = os.path.basename(fg_path).split('cpd')[0]
-        #     if prefix not in bg_images_by_prefix or not bg_images_by_prefix[prefix]:
-        #         messagebox.showerror("Error", f"前景画像 '{os.path.basename(fg_path)}' に対応する\n"
-        #                                       f"接頭辞 '{prefix}' を持つ背景画像が見つかりません。")
-        #         self._reset_to_setup_ui()
-        #         return
-            
-        #     # 背景画像を輝度ごとにグループ化 (ファイル名形式: {cpd}cpd_{lum}nit_{contrast}.png)
-        #     bgs_by_lum = {}
-        #     for bg_path in bg_images_by_prefix[prefix]:
-        #         # ファイル名を '_' で分割し、2番目の要素 (例: "15nit") をキーにする
-        #         lum_key = os.path.basename(bg_path).split('_')[1]
-        #         if lum_key not in bgs_by_lum:
-        #             bgs_by_lum[lum_key] = []
-        #         bgs_by_lum[lum_key].append(bg_path)
-            
-        #     # 各輝度グループからランダムに1枚選んで試行に追加
-        #     for lum_key, bg_list in bgs_by_lum.items():
-        #         if bg_list:
-        #             selected_bg = random.choice(bg_list)
-        #             block_trials.append({"bg_image": selected_bg, "fg_image": fg_path})
+        # Create a dictionary of background images for quick lookup
+        bg_path_dict = {os.path.basename(p): p for p in bg_img_paths}
 
-        # block_trials = block_trials * 2
+        # For each foreground image, find the background image with the same name to create a pair
+        for fg_path in fg_img_paths:
+            fg_basename = os.path.basename(fg_path)
+            if fg_basename in bg_path_dict:
+                bg_path = bg_path_dict[fg_basename]
+                block_trials.append({"bg_image": bg_path, "fg_image": fg_path})
+            else:
+                print(f"Warning: Corresponding background image not found for '{fg_basename}'. Skipping.")
 
-        # --- [Temporary] Full Factorial Design ---
-        import itertools
-        # 全ての組み合わせを生成
-        for bg_path, fg_path in itertools.product(bg_img_paths, fg_img_paths):
-             block_trials.append({"bg_image": bg_path, "fg_image": fg_path})
-
-        # 総当たりを2回行う
-        block_trials = block_trials * 3
+        print(f"Total trials generated: {len(block_trials)}") # 64試行になるはず
 
         random.shuffle(block_trials)
         self.trial_list = block_trials

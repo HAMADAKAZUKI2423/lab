@@ -11,30 +11,30 @@ import csv
 # 1. ユーザー環境設定 (ここを書き換えてください)
 # ==========================================
 # 実験環境の物理パラメータ
-FOREGROUND_DISTANCES_CM = [50, 60, 81] # 前景用の距離リスト (cm)
-BACKGROUND_DISTANCES_CM = [70,100, 150] # 背景用の距離リスト (cm)
-SCREEN_WIDTH_CM     = 59.67    # 画面の横幅実寸 (cm) ※ベゼルを含まない表示領域
-SCREEN_RES_X_PX     = 2560    # 画面の横解像度 (px)
+FG_DISTANCES_CM = [50, 60, 81] # 前景用の距離リスト (cm)
+BG_DISTANCES_CM = [70, 100, 150] # 背景用の距離リスト (cm)
+SCREEN_WIDTH_CM = 59.67    # 画面の横幅実寸 (cm) ※ベゼルを含まない表示領域
+SCREEN_RES_X_PX = 2560    # 画面の横解像度 (px)
+STIM_WIDTH_DEG = 7.9     # 刺激の幅 (度)
+STIM_HEIGHT_DEG = 7.9     # 刺激の高さ (度)
 
-# 論文 (Table 1) に基づく刺激パラメータ
-STIM_WIDTH_DEG      = 7.9     # 刺激の幅 (度)
-STIM_HEIGHT_DEG     = 7.9     # 刺激の高さ (度)
-SPATIAL_FREQS_CPD   = [2, 8] # 生成する空間周波数のリスト (cpd)
-SPATIAL_FREQS_CPD = [2, 8] # 背景ノイズの空間周波数リスト (cpd) - ※追加
-GABOR_SIGMA_DEG     = 1.0     # ガボールパッチの標準偏差 (度)
+# 刺激画像パラメータ
+FG_SPATIAL_FREQS_CPD = [2, 4] # 前景ガボールパッチの空間周波数のリスト (cpd)
+BG_SPATIAL_FREQS_CPD = [2, 4] # 背景ノイズの空間周波数リスト (cpd)
+FG_MEAN_LUMINANCES_CDM2 = [50, 5]   # 前景用平均輝度リスト (cd/m^2)
+BG_MEAN_LUMINANCES_CDM2 = [15, 5]   # 背景用平均輝度リスト (cd/m^2)
+FG_CONTRASTS = [0.5, 1.0]      # 前景用コントラストリスト
+BG_CONTRASTS = [0.5, 1.0]      # 背景用コントラストリスト
 
-# --- [新規] 輝度・コントラスト設定 ---
+# ガボールパッチパラメータ 
+GABOR_SIGMA_DEG = 1.0     # ガボールパッチの標準偏差 (度)
+
 # キャリブレーション結果の保存先ディレクトリ (create_calibrated_gray_patches.py の出力先)
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 
 # キャリブレーションログのベースパス
 CALIB_LOG_BASE_DIR = os.path.join(lab_root, "results", "tables")
-
-FG_MEAN_LUMINANCES_CDM2 = [50, 5]   # 前景用平均輝度リスト (cd/m^2)
-BG_MEAN_LUMINANCES_CDM2 = [15, 5]   # 背景用平均輝度リスト (cd/m^2)
-FG_CONTRASTS = [0.4, 0.8]      # 前景用コントラストリスト
-BG_CONTRASTS = [1.0]      # 背景用コントラストリスト
 
 # --- 保存設定 ---
 OUTPUT_DIR_PRE = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor")
@@ -235,68 +235,69 @@ if __name__ == "__main__":
 
     # --- ガボールパッチの生成 (前景距離に基づく) ---
     print("--- Generating Gabor Patches (Foreground) ---")
-    for distance in FOREGROUND_DISTANCES_CM:
+    for fg_distance in FG_DISTANCES_CM:
         # A. 環境に応じたPPDの計算
-        my_ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
+        fg_ppd = calculate_ppd(fg_distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
         
         # B. 生成すべき画像サイズの計算 (px)
-        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG, my_ppd)
+        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG, fg_ppd)
         
-        print(f"  Distance: {distance}cm (PPD: {my_ppd:.2f}, Size: {req_w}x{req_h}px)")
+        print(f"  Distance: {fg_distance}cm (PPD: {fg_ppd:.2f}, Size: {req_w}x{req_h}px)")
         
-        # C. パラメータでループ
-        for mean_lum in FG_MEAN_LUMINANCES_CDM2:
-            for contrast in FG_CONTRASTS:
-                for cpd in SPATIAL_FREQS_CPD:
-                    print(f"    Generating for L_mean={mean_lum}, C={contrast}, f={cpd} cpd...")
+        # 保存先フォルダの準備
+        gabor_dir = os.path.join(OUTPUT_DIR, "fg_gabor", f"{fg_distance}cm")
+        os.makedirs(gabor_dir, exist_ok=True)
 
-                    # 保存先フォルダの準備
-                    gabor_dir = os.path.join(OUTPUT_DIR, "fg_gabor", f"{distance}cm")
-                    os.makedirs(gabor_dir, exist_ok=True)
-
-                    # --- C-1. 垂直方向のガボールパッチ (Vertical, orientation=0) ---
-                    # ガボール変調器 (-1から1) を生成
-                    gabor_mod_v = create_gabor(req_w, req_h, my_ppd, cpd, GABOR_SIGMA_DEG, orientation_deg=0)
-                    # 輝度マップの計算: L(x,y) = L_mean * (1 + C * modulator)
-                    lum_map_v = mean_lum * (1 + contrast * gabor_mod_v)
-                    # 輝度マップをピクセル値マップに変換
+        # C. 前景パラメータでループ (8通り)
+        for fg_cpd in FG_SPATIAL_FREQS_CPD:
+            for fg_mean_lum in FG_MEAN_LUMINANCES_CDM2:
+                for fg_contrast in FG_CONTRASTS:
+                    # --- この前景条件に対するガボール画像を1枚生成 ---
+                    gabor_mod_v = create_gabor(req_w, req_h, fg_ppd, fg_cpd, GABOR_SIGMA_DEG, orientation_deg=0)
+                    lum_map_v = fg_mean_lum * (1 + fg_contrast * gabor_mod_v)
                     pixel_map_v = luminance_to_pixel(lum_map_v, fg_sorted_lums, fg_sorted_pixels)
-                    # ファイル名の設定と保存
-                    filename_v = os.path.join(gabor_dir, f"{cpd}cpd_{mean_lum}nit_{contrast}_v.png")
-                    plt.imsave(filename_v, pixel_map_v, cmap='gray', vmin=0, vmax=255)
-                    print(f"      Saved: {filename_v}")
+
+                    # D. 背景パラメータでループし (8通り)、同じ画像を異なる名前で保存
+                    for bg_cpd in BG_SPATIAL_FREQS_CPD:
+                        for bg_mean_lum in BG_MEAN_LUMINANCES_CDM2:
+                            for bg_contrast in BG_CONTRASTS:
+                                print(f"    Generating Gabor for FG(f={fg_cpd},L={fg_mean_lum},C={fg_contrast}) BG(f={bg_cpd},L={bg_mean_lum},C={bg_contrast})")
+
+                                # ファイル名の設定と保存
+                                gabor_filename = os.path.join(gabor_dir, f"FG_{fg_cpd}_{fg_mean_lum}_{fg_contrast}_BG_{bg_cpd}_{bg_mean_lum}_{bg_contrast}.png")
+                                plt.imsave(gabor_filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
 
     print("\n--- Generating Band-limited Noise (Background) ---")
     # --- 帯域制限ノイズの生成 (背景距離に基づく) ---
-    for distance in BACKGROUND_DISTANCES_CM:
+    for bg_distance in BG_DISTANCES_CM:
         # A. 環境に応じたPPDの計算
-        my_ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
+        bg_ppd = calculate_ppd(bg_distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
         # B. 生成すべき画像サイズの計算 (px) - 横長にする
-        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG * 2, STIM_HEIGHT_DEG, my_ppd)
+        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG * 2, STIM_HEIGHT_DEG, bg_ppd)
         
-        print(f"  Distance: {distance}cm (PPD: {my_ppd:.2f}, Size: {req_w}x{req_h}px)")
+        print(f"  Distance: {bg_distance}cm (PPD: {bg_ppd:.2f}, Size: {req_w}x{req_h}px)")
         
-        for cpd in SPATIAL_FREQS_CPD:
-            # 周波数ごとにノイズパターンを生成（輝度・コントラスト条件間でパターンを統一するためここで生成）
-            stim_noise = create_band_limited_noise(req_w, req_h, my_ppd, f_center_cpd=cpd)
+        # E. 保存先フォルダの準備
+        noise_dir = os.path.join(OUTPUT_DIR, "bg_noise", f"{bg_distance}cm")
+        os.makedirs(noise_dir, exist_ok=True)
 
-            for mean_lum in BG_MEAN_LUMINANCES_CDM2:
-                for contrast in BG_CONTRASTS:
-                    print(f"    Generating for L_mean={mean_lum}, C={contrast}, f={cpd} cpd...")
-                    
-                    # D. 輝度マップの計算
-                    lum_map_noise = mean_lum * (1 + contrast * stim_noise)
-                    # 輝度マップをピクセル値マップに変換
-                    pixel_map_noise = luminance_to_pixel(lum_map_noise, bg_sorted_lums, bg_sorted_pixels)
+        # C. 前景と背景の全パラメータでループし、64通りの画像を生成
+        for fg_cpd in FG_SPATIAL_FREQS_CPD:
+            for fg_mean_lum in FG_MEAN_LUMINANCES_CDM2:
+                for fg_contrast in FG_CONTRASTS:
+                    for bg_cpd in BG_SPATIAL_FREQS_CPD:
+                        for bg_mean_lum in BG_MEAN_LUMINANCES_CDM2:
+                            for bg_contrast in BG_CONTRASTS:
+                                # このループの内部で毎回ノイズを生成し、全条件で異なるパターンにする
+                                stim_noise = create_band_limited_noise(req_w, req_h, bg_ppd, f_center_cpd=bg_cpd)
+                                print(f"    Generating for FG(f={fg_cpd},L={fg_mean_lum},C={fg_contrast}) BG(f={bg_cpd},L={bg_mean_lum},C={bg_contrast})")
 
-                    # E. 保存先フォルダの準備
-                    noise_dir = os.path.join(OUTPUT_DIR, "bg_noise", f"{distance}cm")
-                    os.makedirs(noise_dir, exist_ok=True)
+                                # D. 輝度マップの計算とピクセル値への変換
+                                lum_map_noise = bg_mean_lum * (1 + bg_contrast * stim_noise)
+                                pixel_map_noise = luminance_to_pixel(lum_map_noise, bg_sorted_lums, bg_sorted_pixels)
 
-                    # F. ファイル名の設定と保存
-                    noise_filename = os.path.join(noise_dir, f"{cpd}cpd_{mean_lum}nit_{contrast}.png")
-                    plt.imsave(noise_filename, pixel_map_noise, cmap='gray', vmin=0, vmax=255)
-                    
-                    print(f"      Saved: {noise_filename}")
+                                # F. ファイル名の設定と保存
+                                noise_filename = os.path.join(noise_dir, f"FG_{fg_cpd}_{fg_mean_lum}_{fg_contrast}_BG_{bg_cpd}_{bg_mean_lum}_{bg_contrast}.png")
+                                plt.imsave(noise_filename, pixel_map_noise, cmap='gray', vmin=0, vmax=255)
 
     print("\n--- 全ての刺激画像の生成が完了しました ---")
