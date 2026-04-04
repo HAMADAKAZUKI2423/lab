@@ -73,75 +73,48 @@ if not all_data:
     exit()
 final_df = pd.concat(all_data, ignore_index=True)
 
-# 3. 画像名からラベルを抽出
+# 3. 画像名からラベルを抽出 (fg/bg_texX_LumX)
 def extract_label(filename, prefix):
-    # kmeans_select_images.py の命名規則 (e.g., ..._Tex1_..., ..._Tex1_dark0.5_...) に対応
-    tex_match = re.search(r'(Tex\d+)', str(filename))
+    # ファイル名から texX と LumX を抽出
+    tex_match = re.search(r'(tex\d+)', str(filename), re.IGNORECASE)
+    lum_match = re.search(r'(Lum[LMH])', str(filename), re.IGNORECASE)
+    
+    parts = [prefix]
     if tex_match:
-        label = tex_match.group(1)
-        # 前景画像にのみ 'dark' が存在しうる (e.g., dark0.5)
-        dark_match = re.search(r'dark(\d+\.?\d*)', str(filename).lower())
-        if dark_match:
-            label = f"{label}_dark{dark_match.group(1)}"
-        return label
-
-    # 従来のLum/tex形式にも対応するためのフォールバック
-    # ファイル名先頭の番号を抽出 (e.g., "1_fg_...", "10_bg_...")
-    num_match = re.search(r'^(\d+)_', str(filename))
-    
-    # texX と LumX を抽出
-    tex_match_old = re.search(r'(tex\d+)', str(filename), re.IGNORECASE)
-    lum_match = re.search(r'(Lum[a-zA-Z0-9]+)', str(filename), re.IGNORECASE)
-    
-    parts = []
-    if num_match:
-        parts.append(f"{prefix}_{num_match.group(1)}")
-    else:
-        parts.append(prefix)
-        
-    if tex_match_old:
-        parts.append(tex_match_old.group(1))
+        parts.append(tex_match.group(1))
     if lum_match:
         parts.append(lum_match.group(1))
     
-    if len(parts) > 1 or num_match:
+    if len(parts) > 1:
         return "_".join(parts)
     
+    # 旧形式などのフォールバック
+    match = re.search(r'lum(\d+\.?\d*)', str(filename), re.IGNORECASE)
+    if match:
+        return f"{prefix}_{match.group(1)}nit"
     return str(filename)
-    
-# カテゴリの順序をTex -> Lumの順に明示的にソートする関数
-def get_sort_key(label):
-    # 新しい形式 (Tex1, Tex1_dark0.5)
-    tex_match = re.search(r'Tex(\d+)', str(label))
-    if tex_match:
-        dark_level = 1.0  # 通常画像
-        dark_match = re.search(r'dark(\d+\.?\d*)', str(label))
-        if dark_match:
-            dark_level = float(dark_match.group(1))
-        tex_val = int(tex_match.group(1))
-        # (形式識別, tex番号, darkレベル(降順ソートのため負数))
-        return (0, tex_val, -dark_level)
 
-    # 古い形式 (tex1, Lum100)
-    tex_match_old = re.search(r'tex(\d+)', str(label), re.IGNORECASE)
-    tex_val_old = int(tex_match_old.group(1)) if tex_match_old else 999
-    
-    lum_match = re.search(r'lum[a-zA-Z]*(\d+)', str(label), re.IGNORECASE)
-    lum_val = int(lum_match.group(1)) if lum_match else 999
-    
-    # (形式識別, tex番号, lum値)
-    return (1, tex_val_old, lum_val)
-
-# FG画像のラベル抽出とソート
-fg_raw_labels = final_df['Image_Win2'].apply(lambda x: extract_label(x, "fg")).unique()
-fg_labels = sorted(fg_raw_labels, key=get_sort_key)
+# 元のファイル名でソートして順序を決定（ファイル名先頭の番号が輝度ランク順になっているため）
+unique_files = sorted(final_df['Image_Win2'].unique())
+fg_labels = []
+seen = set()
+for f in unique_files:
+    lbl = extract_label(f, "fg")
+    if lbl not in seen:
+        fg_labels.append(lbl)
+        seen.add(lbl)
 
 final_df['fg_image'] = final_df['Image_Win2'].apply(lambda x: extract_label(x, "fg"))
 final_df['fg_image'] = pd.Categorical(final_df['fg_image'], categories=fg_labels, ordered=True)
 
-# BG画像のラベル抽出とソート
-bg_raw_labels = final_df['Image_Win1'].apply(lambda x: extract_label(x, "bg")).unique()
-bg_labels = sorted(bg_raw_labels, key=get_sort_key)
+unique_bg_files = sorted(final_df['Image_Win1'].unique())
+bg_labels = []
+seen_bg = set()
+for f in unique_bg_files:
+    lbl = extract_label(f, "bg")
+    if lbl not in seen_bg:
+        bg_labels.append(lbl)
+        seen_bg.add(lbl)
 
 final_df['bg_image'] = final_df['Image_Win1'].apply(lambda x: extract_label(x, "bg"))
 final_df['bg_image'] = pd.Categorical(final_df['bg_image'], categories=bg_labels, ordered=True)

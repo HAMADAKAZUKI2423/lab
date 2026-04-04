@@ -4,9 +4,10 @@ import cv2
 import os
 import csv
 import datetime
+import argparse
  
 
-def generate_calibrated_gray_patches(cd_m2_levels, max_cd_m2, min_cd_m2, offset=0.0, gamma=2.2, size=(400, 300), create_images=True):
+def generate_calibrated_gray_patches(cd_m2_levels, max_cd_m2, min_cd_m2, offset=0.0, gamma=2.2, size=(400, 300), create_images=True, base_output_dir=None):
     """
     指定された物理輝度(cd/m^2)に対応するグレーパッチ画像を生成し、対応するピクセル値のリストを返す。
     ディスプレイの最大輝度(白)と最小輝度(黒)を考慮して計算する。
@@ -26,7 +27,8 @@ def generate_calibrated_gray_patches(cd_m2_levels, max_cd_m2, min_cd_m2, offset=
     # 保存用ディレクトリの作成
     script_dir = os.path.dirname(os.path.abspath(__file__))
     lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
-    output_dir = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_calibrated_gray_patches")
+    default_output_dir = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_calibrated_gray_patches")
+    output_dir = base_output_dir if base_output_dir is not None else default_output_dir
     if create_images:
         os.makedirs(output_dir, exist_ok=True)
         offset_str = f"{offset:.2f}" if np.isscalar(offset) else "variable"
@@ -104,6 +106,19 @@ def get_measured_values_from_user(target_levels):
  
 # --- 実行部分 ---
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="BG calibrated gray patch generator")
+    parser.add_argument("--target", choices=["main", "pre"], required=True, help="保存先を選択します: main または pre (必須)")
+    args = parser.parse_args()
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+    if args.target == "main":
+        csv_log_dir = os.path.join(lab_root, "results", "tables", "main-experiment-gabor", "bg_calibration_log")
+        image_dir = os.path.join(lab_root, "data", "processed", "images", "main-experiment-gabor", "bg_calibrated_gray_patches")
+    else:
+        csv_log_dir = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor", "bg_calibration_log")
+        image_dir = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_calibrated_gray_patches")
+
     start_time = datetime.datetime.now()
     # --- 基本設定 (背景ディスプレイ用に必要に応じて調整してください) ---
     MAX_LUMINANCE = 30.0
@@ -175,7 +190,8 @@ if __name__ == "__main__":
     
     final_pixel_values = generate_calibrated_gray_patches(
         cd_m2_levels=TARGET_LUMINANCE_LEVELS, max_cd_m2=MAX_LUMINANCE, min_cd_m2=MIN_LUMINANCE,
-        offset=correction_offsets, gamma=GAMMA, size=IMAGE_SIZE, create_images=False
+        offset=correction_offsets, gamma=GAMMA, size=IMAGE_SIZE, create_images=False,
+        base_output_dir=image_dir
     )
     
     print("--- [Background] 【最終結果】目標輝度とピクセル値の対応表 ---")
@@ -189,10 +205,9 @@ if __name__ == "__main__":
     # --- 結果をCSVに保存 ---
     script_dir = os.path.dirname(os.path.abspath(__file__))
     lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
-    output_dir = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor", "bg_calibration_log")
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(csv_log_dir, exist_ok=True)
     
-    log_filename = os.path.join(output_dir, start_time.strftime("%Y%m%d_%H%M%S") + ".csv")
+    log_filename = os.path.join(csv_log_dir, start_time.strftime("%Y%m%d_%H%M%S") + ".csv")
     now_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
 
     try:
