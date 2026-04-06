@@ -113,10 +113,10 @@ if __name__ == "__main__":
     script_dir = os.path.dirname(os.path.abspath(__file__))
     lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
     if args.target == "main":
-        csv_log_dir = os.path.join(lab_root, "results", "tables", "main-experiment-gabor", "bg_calibration_log")
+        csv_log_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "bg_calibration_log")
         image_dir = os.path.join(lab_root, "data", "processed", "images", "main-experiment-gabor", "bg_calibrated_gray_patches")
     else:
-        csv_log_dir = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor", "bg_calibration_log")
+        csv_log_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "bg_calibration_log")
         image_dir = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_calibrated_gray_patches")
 
     start_time = datetime.datetime.now()
