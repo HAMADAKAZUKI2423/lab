@@ -8,6 +8,7 @@ from itertools import product
 import glob
 import csv
 import shutil
+import datetime
 
 # ==========================================
 # 1. ユーザー環境設定 (ここを書き換えてください)
