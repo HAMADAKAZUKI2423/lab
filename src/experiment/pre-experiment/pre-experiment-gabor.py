@@ -325,7 +325,7 @@ class ExperimentApp:
         self.key_bindings['<Return>'] = self.root.bind('<Return>', lambda event: self.start_experiment())
 
         # 指示
-        instruction_text = "Adjust the slider (Left/Right arrow keys) until the blur on Window 1 (simulated) matches Window 2 (natural blur).\n" \
+        instruction_text = "Adjust the slider (Left/Right arrow keys) until the blur on Window 2 (simulated) matches Window 1 (natural blur).\n" \
                            "Toggle simulated image visibility (Up/Down arrow keys)."
         tk.Label(self.ctrl_frame, text=instruction_text, 
                  bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
@@ -396,6 +396,7 @@ class ExperimentApp:
         img_fg = img_base.resize((fg_size, fg_size), Image.LANCZOS)
         if sigma_pixels > 0:
             img_fg = img_fg.filter(ImageFilter.GaussianBlur(radius=sigma_pixels))
+        img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT) # 実験者ビュー用に左右反転
         self.photo_match_fg = ImageTk.PhotoImage(img_fg)
 
         # 背景用 (Sharp)
