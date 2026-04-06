@@ -323,7 +323,7 @@ class ExperimentApp:
 
         # 指示
         instruction_text = "Adjust the slider (Left/Right arrow keys) until the blur on Window 2 (simulated) matches Window 1 (natural blur).\n" \
-                           "Toggle simulated image visibility (Up/Down arrow keys)."
+                           "Switch between natural (Win1) and simulated (Win2) views (Up/Down arrow keys)."
         tk.Label(self.ctrl_frame, text=instruction_text, 
                  bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
 
@@ -403,13 +403,15 @@ class ExperimentApp:
         # 3. 描画
         # Window 1 (Background Display)
         ox, oy = self.offset_x.get(), self.offset_y.get()
-        self.canvas1.create_image(self.width//2 + ox, self.height//2 + oy, image=self.photo_match_bg, anchor='center', tags="match")
 
-        # Window 2 (Foreground Display)
+        # self.match_image_visible の状態に応じて表示を切り替える
         if self.match_image_visible:
+            # Window 2 (Foreground/Simulated) を表示し、Window 1 を非表示
             self.canvas2.create_image(self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2, image=self.photo_match_fg, anchor='center', tags="match")
         else:
-            # 画像が非表示の時、中央に十字を表示
+            # Window 1 (Background/Natural) を表示し、Window 2 を非表示
+            self.canvas1.create_image(self.width//2 + ox, self.height//2 + oy, image=self.photo_match_bg, anchor='center', tags="match")
+            # Window 2 には十字を表示
             self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
         
         # 枠も再描画 (白い枠を表示したままで)
