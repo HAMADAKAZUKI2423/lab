@@ -58,13 +58,10 @@ if not file_paths:
 all_data = []
 
 for file in file_paths:
-    # ヘッダー列名定義
-    col_names = [
-        "ID", "Age", "Gender", "IPD(mm)", "Distance1(cm)", "Distance2(cm)",
-        "Offset_X", "Offset_Y", "Trial_ID", "Image_Win1", "Image_Win2", "Score"
-    ]
-    # header=0 で既存ヘッダーを無視して names で上書き
-    df = pd.read_csv(file, encoding='utf-8', header=0, names=col_names)
+    df = pd.read_csv(file, encoding='utf-8')
+
+    if 'Viewing_Condition' not in df.columns:
+        df['Viewing_Condition'] = 'Binocular'
 
     d1 = df['Distance1(cm)'].iloc[0]
     d2 = df['Distance2(cm)'].iloc[0]
@@ -177,6 +174,50 @@ for fgcpd in unique_fg_cpds:
     plt.tight_layout()
 
     filename = f'heatmap_score_fgcpd_{fgcpd}.png'
+    plt.savefig(os.path.join(OUTPUT_DIR, filename))
+    print(f"グラフ保存: {filename}")
+    plt.close(fig)
+
+# --- 追加: 単眼・両眼(Viewing_Condition)ごとに分割したヒートマップ ---
+summary_view = final_df.groupby(['Viewing_Condition', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
+try:
+    summary_view['distance'] = pd.Categorical(summary_view['distance'], categories=custom_order, ordered=True)
+except ValueError:
+    pass
+
+unique_views = sorted(summary_view['Viewing_Condition'].unique())
+
+for view_cond in unique_views:
+    plot_df = summary_view[summary_view['Viewing_Condition'] == view_cond]
+    if plot_df.empty:
+        continue
+    
+    pivot_table = plot_df.pivot(index='bg_cpd', columns='distance', values='Score')
+    pivot_table.sort_index(ascending=True, inplace=True)
+    pivot_table = pivot_table.reindex(columns=custom_order)
+    
+    fig, ax = plt.subplots(figsize=(8, 6))
+    im = ax.imshow(pivot_table, cmap='coolwarm', vmin=1, vmax=5, origin='lower', aspect='auto')
+    
+    for i in range(len(pivot_table.index)):
+        for j in range(len(pivot_table.columns)):
+            val = pivot_table.iloc[i, j]
+            if not np.isnan(val):
+                text_color = "white" if (val < 2.5 or val > 4.0) else "black"
+                ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=10)
+    
+    ax.set_xticks(np.arange(len(pivot_table.columns)))
+    ax.set_yticks(np.arange(len(pivot_table.index)))
+    ax.set_xticklabels(pivot_table.columns)
+    ax.set_yticklabels(pivot_table.index)
+    ax.set_xlabel('Distance')
+    ax.set_ylabel('Background Spatial Frequency (cpd)')
+    ax.set_title(f'Average Score Heatmap ({view_cond})', fontsize=14)
+    cbar = plt.colorbar(im, ax=ax)
+    cbar.set_label('Average Score')
+    plt.tight_layout()
+    
+    filename = f'heatmap_score_view_{view_cond}.png'
     plt.savefig(os.path.join(OUTPUT_DIR, filename))
     print(f"グラフ保存: {filename}")
     plt.close(fig)
