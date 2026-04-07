@@ -60,6 +60,7 @@ class ExperimentApp:
         self.participant_gender = tk.StringVar()
         self.participant_ipd = tk.StringVar()
         self.participant_id = tk.StringVar()
+        self.viewing_condition = tk.StringVar(value="Binocular")
 
         # --- 実験条件用変数 ---
         self.distance1 = tk.IntVar(value=50)
@@ -139,8 +140,13 @@ class ExperimentApp:
         tk.Label(self.participant_frame, text="Background Distance (cm):").grid(row=6, column=0, sticky='w', padx=5, pady=5)
         tk.Entry(self.participant_frame, textvariable=self.distance2).grid(row=6, column=1, padx=5, pady=5)
 
+        tk.Label(self.participant_frame, text="Viewing Condition:").grid(row=7, column=0, sticky='w', padx=5, pady=5)
+        view_combo = ttk.Combobox(self.participant_frame, textvariable=self.viewing_condition, values=["Binocular", "Monocular"])
+        view_combo.grid(row=7, column=1, padx=5, pady=5)
+        view_combo.set("Binocular")
+
         btn = tk.Button(self.participant_frame, text="Setup Complete, Next", command=self.start_calibration)
-        btn.grid(row=7, column=0, columnspan=2, pady=20)
+        btn.grid(row=8, column=0, columnspan=2, pady=20)
         btn.bind('<Return>', lambda event: self.start_calibration())
 
     def start_calibration(self):
@@ -633,6 +639,7 @@ class ExperimentApp:
         
         self.results.append([
             self.participant_id.get(), self.participant_age.get(), self.participant_gender.get(), self.participant_ipd.get(),
+            self.viewing_condition.get(),
             self.distance1.get(), self.distance2.get(),
             self.offset_x.get(), self.offset_y.get(), self.defocus_val.get(),
             self.current_trial_index + 1,
@@ -673,7 +680,7 @@ class ExperimentApp:
         with open(filename, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             header = [
-                "ID", "Age", "Gender", "IPD(mm)", "Distance1(cm)", "Distance2(cm)",
+                "ID", "Age", "Gender", "IPD(mm)", "Viewing_Condition", "Distance1(cm)", "Distance2(cm)",
                 "Offset_X", "Offset_Y", "Defocus_D", "Trial_ID", "Image_Win1", "Image_Win2", "Score"
             ]
             writer.writerow(header)
