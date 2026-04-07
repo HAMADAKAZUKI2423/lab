@@ -16,6 +16,7 @@ import math
 # --- 実験設定 ---
 VISUAL_ANGLE_DEG = 7.9   # 画像の視角 (degree)
 NUM_TRIALS_BEFORE_BREAK = 50 # 休憩に入るまでの試行回数
+NUM_REPETITIONS = 1      # 試行の反復回数 (総試行回数を指定した倍数にする)
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 BASE_IMG_DIR_1 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_noise")
@@ -490,7 +491,10 @@ class ExperimentApp:
             else:
                 print(f"Warning: Corresponding background image not found for '{fg_basename}'. Skipping.")
 
-        print(f"Total trials generated: {len(block_trials)}") # 64試行になるはず
+        # 指定した反復回数分だけ試行リストを拡張する
+        block_trials = block_trials * NUM_REPETITIONS
+
+        print(f"Total trials generated: {len(block_trials)}")
 
         random.shuffle(block_trials)
         self.trial_list = block_trials
