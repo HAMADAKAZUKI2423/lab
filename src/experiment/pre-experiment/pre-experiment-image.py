@@ -14,7 +14,7 @@ import math
 # ==========================================
 # --- 実験設定 ---
 VISUAL_ANGLE_DEG = 7.9   # 画像の視角 (degree)
-NUM_TRIALS_BEFORE_BREAK = 37 # 休憩に入るまでの試行回数
+NUM_TRIALS_BEFORE_BREAK = 38 # 休憩に入るまでの試行回数
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 IMG_DIR_1 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-image", "bg_imgs")
@@ -266,17 +266,17 @@ class ExperimentApp:
             button_command = self.resume_experiment
         else:
             instruction_text = "Use the arrow keys to adjust the position of the red frame."
-            button_text = "Start Experiment"
-            button_command = self.start_experiment
+            button_text = "Calibration Done, Next"
+            button_command = self.setup_defocus_matching_ui
 
         # 位置調整の指示ラベル
         tk.Label(self.ctrl_frame, text=instruction_text, bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
 
-        # 実験開始ボタン
-        btn = tk.Button(self.ctrl_frame, text="Calibration Done, Next", command=self.setup_defocus_matching_ui)
+        # ボタン
+        btn = tk.Button(self.ctrl_frame, text=button_text, command=button_command)
         btn.pack(pady=10)
         btn.focus_set() # ボタンにフォーカスを当ててキー入力を受け付ける
-        btn.bind('<Return>', lambda event: self.setup_defocus_matching_ui())
+        btn.bind('<Return>', lambda event: button_command())
         btn.bind('<Left>', lambda e: self.adjust_offset(-1, 0))
         btn.bind('<Right>', lambda e: self.adjust_offset(1, 0))
         btn.bind('<Up>', lambda e: self.adjust_offset(0, -1))
