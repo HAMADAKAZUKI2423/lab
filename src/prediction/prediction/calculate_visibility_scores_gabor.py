@@ -82,7 +82,7 @@ def main():
     fg_gabor_dir = os.path.join(base_data_dir, "fg_gabor")
     bg_noise_dir = os.path.join(base_data_dir, "bg_noise")
     
-    output_dir = os.path.join(PROJECT_ROOT, "results", "tables", "pre-experiment-gabor", "visibility_score")
+    output_dir = os.path.join(PROJECT_ROOT, "results", "tables", "pre-experiment-gabor", "predicted_visibility_score")
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     output_path = os.path.join(output_dir, f"{timestamp}.csv")
