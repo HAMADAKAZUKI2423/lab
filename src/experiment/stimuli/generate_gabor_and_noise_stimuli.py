@@ -215,11 +215,15 @@ def generate_gabor_stimuli(output_dir, distances, fg_params_list, bg_params_list
         req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG, ppd)
         print(f"  Distance: {distance}cm (PPD: {ppd:.2f}, Size: {req_w}x{req_h}px)")
         
-        gabor_dir = os.path.join(output_dir, "fg_gabor", f"{distance}cm")
-        os.makedirs(gabor_dir, exist_ok=True)
+        gabor_base_dir = os.path.join(output_dir, "fg_gabor", f"{distance}cm")
+        os.makedirs(gabor_base_dir, exist_ok=True)
 
         # 前景パラメータでループ
         for fg_cpd, fg_mean_lum, fg_contrast in fg_params_list:
+            # 空間周波数のフォルダを作成
+            gabor_dir = os.path.join(gabor_base_dir, f"{fg_cpd}cpd")
+            os.makedirs(gabor_dir, exist_ok=True)
+
             # この前景条件に対するガボール画像を1枚生成
             gabor_mod_v = create_gabor(req_w, req_h, ppd, fg_cpd, GABOR_SIGMA_DEG, orientation_deg=0)
             lum_map_v = fg_mean_lum * (1 + fg_contrast * gabor_mod_v)
@@ -227,10 +231,13 @@ def generate_gabor_stimuli(output_dir, distances, fg_params_list, bg_params_list
 
             # 背景パラメータでループし、同じ画像を異なる名前で保存
             for bg_cpd, bg_mean_lum, bg_contrast in bg_params_list:
+                # 前景と背景の空間周波数が同じ場合のみ生成
+                if fg_cpd != bg_cpd:
+                    continue
                 print(f"    Generating Gabor for FG(f={fg_cpd},L={fg_mean_lum},C={fg_contrast}) BG(f={bg_cpd},L={bg_mean_lum},C={bg_contrast})")
 
                 # ファイル名の設定と保存
-                gabor_filename = os.path.join(gabor_dir, f"FG_{fg_cpd}_{fg_mean_lum}_{fg_contrast}_BG_{bg_cpd}_{bg_mean_lum}_{bg_contrast}.png")
+                gabor_filename = os.path.join(gabor_dir, f"FG_{fg_mean_lum}_{fg_contrast}_BG_{bg_mean_lum}_{bg_contrast}.png")
                 plt.imsave(gabor_filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
 
 def generate_noise_stimuli(output_dir, distances, fg_params_list, bg_params_list, calib_data):
@@ -244,12 +251,20 @@ def generate_noise_stimuli(output_dir, distances, fg_params_list, bg_params_list
         req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG * 2, STIM_HEIGHT_DEG, ppd)
         print(f"  Distance: {distance}cm (PPD: {ppd:.2f}, Size: {req_w}x{req_h}px)")
         
-        noise_dir = os.path.join(output_dir, "bg_noise", f"{distance}cm")
-        os.makedirs(noise_dir, exist_ok=True)
+        noise_base_dir = os.path.join(output_dir, "bg_noise", f"{distance}cm")
+        os.makedirs(noise_base_dir, exist_ok=True)
 
         # 全パラメータの組み合わせでループ
         for fg_cpd, fg_mean_lum, fg_contrast in fg_params_list:
             for bg_cpd, bg_mean_lum, bg_contrast in bg_params_list:
+                # 前景と背景の空間周波数が同じ場合のみ生成
+                if fg_cpd != bg_cpd:
+                    continue
+
+                # 空間周波数のフォルダを作成
+                noise_dir = os.path.join(noise_base_dir, f"{bg_cpd}cpd")
+                os.makedirs(noise_dir, exist_ok=True)
+
                 # このループの内部で毎回ノイズを生成し、全条件で異なるパターンにする
                 stim_noise = create_band_limited_noise(req_w, req_h, ppd, f_center_cpd=bg_cpd)
                 print(f"    Generating for FG(f={fg_cpd},L={fg_mean_lum},C={fg_contrast}) BG(f={bg_cpd},L={bg_mean_lum},C={bg_contrast})")
@@ -259,7 +274,7 @@ def generate_noise_stimuli(output_dir, distances, fg_params_list, bg_params_list
                 pixel_map_noise = luminance_to_pixel(lum_map_noise, sorted_lums, sorted_pixels)
 
                 # ファイル名の設定と保存
-                noise_filename = os.path.join(noise_dir, f"FG_{fg_cpd}_{fg_mean_lum}_{fg_contrast}_BG_{bg_cpd}_{bg_mean_lum}_{bg_contrast}.png")
+                noise_filename = os.path.join(noise_dir, f"FG_{fg_mean_lum}_{fg_contrast}_BG_{bg_mean_lum}_{bg_contrast}.png")
                 plt.imsave(noise_filename, pixel_map_noise, cmap='gray', vmin=0, vmax=255)
 
 # ==========================================

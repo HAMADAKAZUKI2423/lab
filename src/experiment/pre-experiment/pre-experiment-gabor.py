@@ -62,6 +62,7 @@ class ExperimentApp:
         self.participant_ipd = tk.StringVar()
         self.participant_id = tk.StringVar()
         self.viewing_condition = tk.StringVar(value="Binocular")
+        self.spatial_freq = tk.StringVar(value="2")
 
         # --- 実験条件用変数 ---
         self.distance1 = tk.IntVar(value=50)
@@ -146,8 +147,13 @@ class ExperimentApp:
         view_combo.grid(row=7, column=1, padx=5, pady=5)
         view_combo.set("Binocular")
 
+        tk.Label(self.participant_frame, text="Spatial Frequency (cpd):").grid(row=8, column=0, sticky='w', padx=5, pady=5)
+        cpd_combo = ttk.Combobox(self.participant_frame, textvariable=self.spatial_freq, values=["2", "8"])
+        cpd_combo.grid(row=8, column=1, padx=5, pady=5)
+        cpd_combo.set("2")
+
         btn = tk.Button(self.participant_frame, text="Setup Complete, Next", command=self.start_calibration)
-        btn.grid(row=8, column=0, columnspan=2, pady=20)
+        btn.grid(row=9, column=0, columnspan=2, pady=20)
         btn.bind('<Return>', lambda event: self.start_calibration())
 
     def start_calibration(self):
@@ -159,6 +165,7 @@ class ExperimentApp:
         try:
             self.distance1.get()
             self.distance2.get()
+            int(self.spatial_freq.get())
         except (ValueError, tk.TclError):
             messagebox.showwarning("Input Error", "Please enter valid numbers for experiment settings.")
             return
@@ -392,9 +399,15 @@ class ExperimentApp:
         pixels_per_deg_fg = self.get_size_for_visual_angle(d_fg, 1.0)
         sigma_pixels = sigma_deg * pixels_per_deg_fg
 
+        # --- 動的にマッチング用画像を取得 ---
+        cpd = self.spatial_freq.get()
+        bg_img_dir = os.path.join(BASE_IMG_DIR_1, f'{d_bg}cm', f'{cpd}cpd')
+        sample_images = glob.glob(os.path.join(bg_img_dir, '*'))
+        matching_img_path = sample_images[0] if sample_images else MATCHING_IMG_PATH
+
         # 2. 画像の読み込みと加工
         try:
-            img_base = Image.open(MATCHING_IMG_PATH)
+            img_base = Image.open(matching_img_path)
         except Exception as e:
             # 画像がない場合のフォールバック（白い正方形）
             img_base = Image.new('RGB', (100, 100), (255, 255, 255))
@@ -464,9 +477,10 @@ class ExperimentApp:
         # --- 1. Get experiment parameters and load image paths ---
         d_fg = self.distance1.get()
         d_bg = self.distance2.get()
+        cpd = self.spatial_freq.get()
             
-        bg_img_dir = os.path.join(BASE_IMG_DIR_1, f'{d_bg}cm')
-        fg_img_dir = os.path.join(BASE_IMG_DIR_2, f'{d_fg}cm')
+        bg_img_dir = os.path.join(BASE_IMG_DIR_1, f'{d_bg}cm', f'{cpd}cpd')
+        fg_img_dir = os.path.join(BASE_IMG_DIR_2, f'{d_fg}cm', f'{cpd}cpd')
 
         bg_img_paths = sorted(glob.glob(os.path.join(bg_img_dir, '*')))
         fg_img_paths = sorted(glob.glob(os.path.join(fg_img_dir, '*')))
@@ -645,6 +659,7 @@ class ExperimentApp:
             self.participant_id.get(), self.participant_age.get(), self.participant_gender.get(), self.participant_ipd.get(),
             self.viewing_condition.get(),
             self.distance1.get(), self.distance2.get(),
+            self.spatial_freq.get(),
             self.offset_x.get(), self.offset_y.get(), self.defocus_val.get(),
             self.current_trial_index + 1,
             f1, f2, score
@@ -685,6 +700,7 @@ class ExperimentApp:
             writer = csv.writer(f)
             header = [
                 "ID", "Age", "Gender", "IPD(mm)", "Viewing_Condition", "Distance1(cm)", "Distance2(cm)",
+                "Spatial_Freq(cpd)",
                 "Offset_X", "Offset_Y", "Defocus_D", "Trial_ID", "Image_Win1", "Image_Win2", "Score"
             ]
             writer.writerow(header)
