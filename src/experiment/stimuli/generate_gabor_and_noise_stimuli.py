@@ -22,12 +22,12 @@ STIM_WIDTH_DEG = 7.9     # 刺激の幅 (度)
 STIM_HEIGHT_DEG = 7.9     # 刺激の高さ (度)
 
 # 刺激画像パラメータ
-FG_SPATIAL_FREQS_CPD = [2, 4] # 前景ガボールパッチの空間周波数のリスト (cpd)
-BG_SPATIAL_FREQS_CPD = [2, 4] # 背景ノイズの空間周波数リスト (cpd)
+FG_SPATIAL_FREQS_CPD = [2, 8] # 前景ガボールパッチの空間周波数のリスト (cpd)
+BG_SPATIAL_FREQS_CPD = [2, 8] # 背景ノイズの空間周波数リスト (cpd)
 FG_MEAN_LUMINANCES_CDM2 = [50, 5]   # 前景用平均輝度リスト (cd/m^2)
 BG_MEAN_LUMINANCES_CDM2 = [15, 5]   # 背景用平均輝度リスト (cd/m^2)
-FG_CONTRASTS = [0.5, 1.0]      # 前景用コントラストリスト
-BG_CONTRASTS = [0.5, 1.0]      # 背景用コントラストリスト
+FG_CONTRASTS = [1.0]      # 前景用コントラストリスト
+BG_CONTRASTS = [1.0]      # 背景用コントラストリスト
 
 # ガボールパッチパラメータ 
 GABOR_SIGMA_DEG = 1.0     # ガボールパッチの標準偏差 (度)

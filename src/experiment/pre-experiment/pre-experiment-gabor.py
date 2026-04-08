@@ -24,15 +24,15 @@ BASE_IMG_DIR_2 = os.path.join(lab_root, "data", "processed", "images", "pre-expe
 RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor")
 
 # --- デフォーカスマッチング設定 ---
-MATCHING_IMG_PATH = os.path.join(lab_root, "visibility_blend_2025-main", "imgs", "cat.png")
+MATCHING_IMG_PATH = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor","bg_noise", "70cm","FG_8_5_0.5_BG_2_15_1.0.png") # デフォーカスマッチングに使用する画像のパス
 DEFOCUS_BLUR_SCALE_FACTOR = 0.55
 PUPIL_DIAMETER_MM = 4.0 # 瞳孔径 (mm)
 
 
 # --- 時間設定 (ミリ秒) ---
-TIME_PHASE_1 = 1600    # Phase 1: Image display only on Win2
+TIME_PHASE_1 = 500    # Phase 1: Image display only on Win2
 TIME_ISI = 1000        # Phase 2: Inter Stimulus Interval (black screen)
-TIME_PHASE_2 = 1600    # Phase 3: Image display on both windows
+TIME_PHASE_2 = 500    # Phase 3: Image display on both windows
 
 # --- UIデザイン設定 ---
 BG_COLOR = 'black'     # 全体の背景色
