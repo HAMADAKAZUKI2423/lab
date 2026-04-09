@@ -68,8 +68,11 @@ class ExperimentApp:
         self.distance1 = tk.IntVar(value=50)
         self.distance2 = tk.IntVar(value=70)
         self.trial_list = []
-        self.num_trials_per_block = 0
-        self.current_trial_index = 0
+        self.blocks = []
+        self.current_block_index = 0
+        self.current_trial_in_block = 0
+        self.current_trial_in_experiment = 0
+        self.current_block_cond = None
         self.match_image_visible = True # For defocus matching UI
         self.results = []
         self.key_bindings = {}
@@ -142,12 +145,12 @@ class ExperimentApp:
         tk.Label(self.participant_frame, text="Background Distance (cm):").grid(row=6, column=0, sticky='w', padx=5, pady=5)
         tk.Entry(self.participant_frame, textvariable=self.distance2).grid(row=6, column=1, padx=5, pady=5)
 
-        tk.Label(self.participant_frame, text="Viewing Condition:").grid(row=7, column=0, sticky='w', padx=5, pady=5)
+        tk.Label(self.participant_frame, text="First Viewing Condition:").grid(row=7, column=0, sticky='w', padx=5, pady=5)
         view_combo = ttk.Combobox(self.participant_frame, textvariable=self.viewing_condition, values=["Binocular", "Monocular"])
         view_combo.grid(row=7, column=1, padx=5, pady=5)
         view_combo.set("Binocular")
 
-        tk.Label(self.participant_frame, text="Spatial Frequency (cpd):").grid(row=8, column=0, sticky='w', padx=5, pady=5)
+        tk.Label(self.participant_frame, text="First Spatial Freq (cpd):").grid(row=8, column=0, sticky='w', padx=5, pady=5)
         cpd_combo = ttk.Combobox(self.participant_frame, textvariable=self.spatial_freq, values=["2", "8"])
         cpd_combo.grid(row=8, column=1, padx=5, pady=5)
         cpd_combo.set("2")
@@ -157,7 +160,7 @@ class ExperimentApp:
         btn.bind('<Return>', lambda event: self.start_calibration())
 
     def start_calibration(self):
-        """実験設定の入力を検証し、問題なければキャリブレーションステップに進む"""
+        """実験設定の入力を検証し、問題なければブロックを初期化して開始する"""
         if not self.participant_id.get() or not self.participant_age.get() or not self.participant_ipd.get():
             messagebox.showwarning("Input Error", "Please enter ID, Age, and IPD.")
             return
@@ -175,8 +178,38 @@ class ExperimentApp:
         self.width = self.win1.winfo_width()
         self.height = self.win1.winfo_height()
 
+        # ブロック構成の作成 (全4ブロック)
+        first_view = self.viewing_condition.get()
+        second_view = "Monocular" if first_view == "Binocular" else "Binocular"
+        
+        first_cpd = self.spatial_freq.get()
+        second_cpd = "8" if first_cpd == "2" else "2"
+
+        self.blocks = [
+            {"viewing_condition": first_view, "spatial_freq": first_cpd},
+            {"viewing_condition": first_view, "spatial_freq": second_cpd},
+            {"viewing_condition": second_view, "spatial_freq": first_cpd},
+            {"viewing_condition": second_view, "spatial_freq": second_cpd},
+        ]
+        self.current_block_index = 0
+        self.current_trial_in_experiment = 0
+
         self.participant_frame.destroy()
-        self.setup_calibration_ui()
+        self.start_block()
+
+    def start_block(self):
+        """新しいブロックを開始する"""
+        self.canvas1.delete("all")
+        self.canvas2.delete("all")
+        
+        if self.current_block_index >= len(self.blocks):
+            self.finish_experiment()
+            return
+            
+        self.current_block_cond = self.blocks[self.current_block_index]
+        self.current_trial_in_block = 0
+        
+        self.setup_calibration_ui(is_new_block=True)
 
     def _reset_to_setup_ui(self):
         """UIをクリアし、初期設定画面に戻る"""
@@ -229,11 +262,22 @@ class ExperimentApp:
         canvas.create_line(tx(x1), y1 - s, tx(x1), y1, fill=color, width=line_width, tags="calib")
 
     def draw_center_cross(self, canvas, color='white'):
-        """画面中央に十字マーカーを描画する"""
+        """画面中央に一点へ向かう4つの矢尻（棒なし）を描画する"""
         cx, cy = canvas.winfo_width() // 2, canvas.winfo_height() // 2
-        l = CROSS_SIZE // 2
-        canvas.create_line(cx - l, cy, cx + l, cy, fill=color, width=5, tags="calib")
-        canvas.create_line(cx, cy - l, cx, cy + l, fill=color, width=5, tags="calib")
+        
+        # 矢尻の形状パラメータ（CROSS_SIZEを基準にサイズを大きく設定）
+        d2 = int(CROSS_SIZE * 1.2)  # 先端から底辺までの距離
+        d1 = int(CROSS_SIZE * 0.9)  # 先端から凹みまでの距離
+        d3 = int(CROSS_SIZE * 0.5)  # 幅の半分
+
+        # 4方向の矢尻の頂点座標
+        pts_left = [cx, cy, cx - d2, cy - d3, cx - d1, cy, cx - d2, cy + d3]
+        pts_right = [cx, cy, cx + d2, cy - d3, cx + d1, cy, cx + d2, cy + d3]
+        pts_up = [cx, cy, cx - d3, cy - d2, cx, cy - d1, cx + d3, cy - d2]
+        pts_down = [cx, cy, cx - d3, cy + d2, cx, cy + d1, cx + d3, cy + d2]
+
+        for pts in [pts_left, pts_right, pts_up, pts_down]:
+            canvas.create_polygon(pts, fill=color, outline="black", width=2, tags="calib")
 
     def update_calibration_view(self, *args):
         """キャリブレーション画面の表示を更新する (スライダー操作時に呼ばれる)"""
@@ -270,7 +314,7 @@ class ExperimentApp:
         self.update_calibration_view()
         return "break" # デフォルトのイベント処理（スライダーの移動など）を停止する
 
-    def setup_calibration_ui(self, is_break=False):
+    def setup_calibration_ui(self, is_break=False, is_new_block=False):
         """ステップ1: キャリブレーション用UIを構築し表示する"""
         self.update_calibration_view()
         
@@ -282,6 +326,12 @@ class ExperimentApp:
             instruction_text = "This is a break. You can adjust the position if needed.\nPress 'Resume Experiment' to continue."
             button_text = "Resume Experiment"
             button_command = self.resume_experiment
+        elif is_new_block:
+            v_cond = self.current_block_cond["viewing_condition"]
+            cpd_cond = self.current_block_cond["spatial_freq"]
+            instruction_text = f"[Block {self.current_block_index + 1}/4]\nCondition: {v_cond}, Spatial Freq: {cpd_cond} cpd\n\nPlease set up for {v_cond} viewing.\nUse the arrow keys to adjust the position of the red frame."
+            button_text = "Calibration Done, Next"
+            button_command = self.setup_defocus_matching_ui
         else:
             instruction_text = "Use the arrow keys to adjust the position of the red frame."
             button_text = "Calibration Done, Next"
@@ -334,10 +384,10 @@ class ExperimentApp:
         slider.pack(pady=10)
 
         # 実験開始ボタン
-        btn = tk.Button(self.ctrl_frame, text="Start Experiment", command=self.start_experiment)
+        btn = tk.Button(self.ctrl_frame, text="Start Experiment", command=self.start_experiment_block)
         btn.pack(pady=10)
         btn.focus_set()
-        self.key_bindings['<Return>'] = self.root.bind('<Return>', lambda event: self.start_experiment())
+        self.key_bindings['<Return>'] = self.root.bind('<Return>', lambda event: self.start_experiment_block())
 
         # 指示
         instruction_text = "Adjust the slider (Left/Right arrow keys) until the blur on Window 2 (simulated) matches Window 1 (natural blur).\n" \
@@ -400,7 +450,7 @@ class ExperimentApp:
         sigma_pixels = sigma_deg * pixels_per_deg_fg
 
         # --- 動的にマッチング用画像を取得 ---
-        cpd = self.spatial_freq.get()
+        cpd = self.current_block_cond["spatial_freq"]
         bg_img_dir = os.path.join(BASE_IMG_DIR_1, f'{d_bg}cm', f'{cpd}cpd')
         sample_images = glob.glob(os.path.join(bg_img_dir, '*'))
         matching_img_path = sample_images[0] if sample_images else MATCHING_IMG_PATH
@@ -467,17 +517,17 @@ class ExperimentApp:
             self._update_eval_highlight()
         return "break" # Stop event propagation
 
-    def start_experiment(self):
+    def start_experiment_block(self):
+        """ブロックの実験ループを開始する"""
         # Clear key bindings from defocus matching phase
         for key, binding_id in self.key_bindings.items():
             self.root.unbind(key, binding_id)
         self.key_bindings.clear()
 
-        """実験ループを開始する"""
         # --- 1. Get experiment parameters and load image paths ---
         d_fg = self.distance1.get()
         d_bg = self.distance2.get()
-        cpd = self.spatial_freq.get()
+        cpd = self.current_block_cond["spatial_freq"]
             
         bg_img_dir = os.path.join(BASE_IMG_DIR_1, f'{d_bg}cm', f'{cpd}cpd')
         fg_img_dir = os.path.join(BASE_IMG_DIR_2, f'{d_fg}cm', f'{cpd}cpd')
@@ -521,13 +571,8 @@ class ExperimentApp:
         
     def run_trial(self):
         """1試行分の実験シーケンスを実行する"""
-        # 全ての試行が終了したら実験を終了
-        if self.current_trial_index >= len(self.trial_list):
-            self.finish_experiment()
-            return
-
         # --- 1. Get trial conditions and load/process images ---
-        trial_cond = self.trial_list[self.current_trial_index]
+        trial_cond = self.trial_list[self.current_trial_in_block]
         self.current_img_path_1 = trial_cond["bg_image"]
         self.current_img_path_2 = trial_cond["fg_image"]
         img1 = Image.open(self.current_img_path_1)
@@ -556,20 +601,23 @@ class ExperimentApp:
         
         self.canvas2.create_image(self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2, image=self.photo2, anchor='center', tags="img")
         
+        # 暗転時以外も白枠を表示
+        self.draw_image_corner_brackets(self.canvas2, fg_size, fg_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=True)
+        
         # 指定時間後に次のフェーズへ
         self.root.after(TIME_PHASE_1, self.phase_isi)
 
     def phase_isi(self):
         """フェーズ2: ISI (Inter Stimulus Interval)。両画面を暗転させる。"""
-        # Window 1は既に暗転している
         self.canvas2.delete("img") # Window 2の画像を削除
-        
+
         # 暗転中、Window 2には基準マーカーを表示
+        self.canvas2.delete("calib") # 重複描画を防ぐため一旦消去
         d_fg = self.distance1.get()
         fg_marker_size = self.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
         self.draw_image_corner_brackets(self.canvas2, fg_marker_size, fg_marker_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=True)
         self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
-
+        
         # 指定時間後に次のフェーズへ
         self.root.after(TIME_ISI, self.phase_both)
 
@@ -581,9 +629,14 @@ class ExperimentApp:
         # Window 1 に画像を表示 (キャリブレーションで調整したオフセットを適用)
         ox, oy = self.offset_x.get(), self.offset_y.get()
         self.canvas1.create_image(self.width//2 + ox, self.height//2 + oy, image=self.photo1, anchor='center', tags="img")
-        
+
         # Window 2 に画像を表示
         self.canvas2.create_image(self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2, image=self.photo2, anchor='center', tags="img")
+
+        # 暗転時以外も白枠を表示
+        d_fg = self.distance1.get()
+        fg_marker_size = self.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
+        self.draw_image_corner_brackets(self.canvas2, fg_marker_size, fg_marker_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=True)
 
         # 指定時間後に次のフェーズへ
         self.root.after(TIME_PHASE_2, self.phase_end_trial)
@@ -592,6 +645,7 @@ class ExperimentApp:
         """試行終了処理。両画面の画像を消去し、評価UIを表示する"""
         self.canvas1.delete("img")
         self.canvas2.delete("img")
+        self.canvas2.delete("calib") # 評価画面に被らないよう白枠も消去
         self.show_evaluation_ui()
 
     def show_evaluation_ui(self):
@@ -599,7 +653,7 @@ class ExperimentApp:
         self.eval_frame = tk.Frame(self.root, bg='white', padx=20, pady=20, relief="solid", borderwidth=1)
         self.eval_frame.place(relx=0.5, rely=0.5, anchor='center')
 
-        tk.Label(self.eval_frame, text=f"Trial No.{self.current_trial_index + 1} の評価", font=("Arial", 16), bg='white').pack(pady=(0, 20))
+        tk.Label(self.eval_frame, text=f"Trial No.{self.current_trial_in_experiment + 1} の評価", font=("Arial", 16), bg='white').pack(pady=(0, 20))
         
         # デフォルト値を3に設定
         self.evaluation_val.set(3) # Reset to default for each trial
@@ -657,23 +711,26 @@ class ExperimentApp:
         
         self.results.append([
             self.participant_id.get(), self.participant_age.get(), self.participant_gender.get(), self.participant_ipd.get(),
-            self.viewing_condition.get(),
+            self.current_block_cond["viewing_condition"],
             self.distance1.get(), self.distance2.get(),
-            self.spatial_freq.get(),
+            self.current_block_cond["spatial_freq"],
             self.offset_x.get(), self.offset_y.get(), self.defocus_val.get(),
-            self.current_trial_index + 1,
+            self.current_trial_in_experiment + 1,
             f1, f2, score
         ])
         
         self.eval_frame.destroy()
-        self.current_trial_index += 1
+        self.current_trial_in_block += 1
+        self.current_trial_in_experiment += 1
         
         # 休憩を挟むかチェック
-        is_break_time = (self.current_trial_index > 0) and \
-                        (self.current_trial_index % NUM_TRIALS_BEFORE_BREAK == 0) and \
-                        (self.current_trial_index < len(self.trial_list))
+        is_break_time = (self.current_trial_in_experiment > 0) and \
+                        (self.current_trial_in_experiment % NUM_TRIALS_BEFORE_BREAK == 0)
 
-        if is_break_time:
+        if self.current_trial_in_block >= len(self.trial_list):
+            self.current_block_index += 1
+            self.root.after(500, self.start_block)
+        elif is_break_time:
             self.root.after(500, self.start_break)
         else:
             # 少し待ってから次の試行を開始 (UIの応答性を保つため)
