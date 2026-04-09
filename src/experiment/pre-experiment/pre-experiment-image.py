@@ -28,9 +28,9 @@ PUPIL_DIAMETER_MM = 4.0 # 瞳孔径 (mm)
 
 
 # --- 時間設定 (ミリ秒) ---
-TIME_PHASE_1 = 1600    # Phase 1: Image display only on Win2
+TIME_PHASE_1 = 500    # Phase 1: Image display only on Win2
 TIME_ISI = 1000        # Phase 2: Inter Stimulus Interval (black screen)
-TIME_PHASE_2 = 1600    # Phase 3: Image display on both windows
+TIME_PHASE_2 = 500    # Phase 3: Image display on both windows
 
 # --- UIデザイン設定 ---
 BG_COLOR = 'black'     # 全体の背景色
@@ -213,11 +213,22 @@ class ExperimentApp:
         canvas.create_line(tx(x1), y1 - s, tx(x1), y1, fill=color, width=line_width, tags="calib")
 
     def draw_center_cross(self, canvas, color='white'):
-        """画面中央に十字マーカーを描画する"""
+        """画面中央に一点へ向かう4つの矢尻（棒なし）を描画する"""
         cx, cy = canvas.winfo_width() // 2, canvas.winfo_height() // 2
-        l = CROSS_SIZE // 2
-        canvas.create_line(cx - l, cy, cx + l, cy, fill=color, width=5, tags="calib")
-        canvas.create_line(cx, cy - l, cx, cy + l, fill=color, width=5, tags="calib")
+        
+        # 矢尻の形状パラメータ（CROSS_SIZEを基準にサイズを大きく設定）
+        d2 = int(CROSS_SIZE * 1.2)  # 先端から底辺までの距離
+        d1 = int(CROSS_SIZE * 0.9)  # 先端から凹みまでの距離
+        d3 = int(CROSS_SIZE * 0.5)  # 幅の半分
+
+        # 4方向の矢尻の頂点座標
+        pts_left = [cx, cy, cx - d2, cy - d3, cx - d1, cy, cx - d2, cy + d3]
+        pts_right = [cx, cy, cx + d2, cy - d3, cx + d1, cy, cx + d2, cy + d3]
+        pts_up = [cx, cy, cx - d3, cy - d2, cx, cy - d1, cx + d3, cy - d2]
+        pts_down = [cx, cy, cx - d3, cy + d2, cx, cy + d1, cx + d3, cy + d2]
+
+        for pts in [pts_left, pts_right, pts_up, pts_down]:
+            canvas.create_polygon(pts, fill=color, outline="black", width=2, tags="calib")
 
     def update_calibration_view(self, *args):
         """キャリブレーション画面の表示を更新する (スライダー操作時に呼ばれる)"""
