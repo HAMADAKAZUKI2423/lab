@@ -204,6 +204,22 @@ def create_band_limited_noise(width_px, height_px, ppd, f_center_cpd, bandwidth_
     
     return noise_filtered
 
+def create_checkerboard(width_px, height_px, ppd, cpd):
+    """
+    指定されたピクセルサイズと空間周波数(cpd)で白黒のチェッカーボードを作成する。
+    値は -1 と 1 で返す。
+    """
+    square_size = ppd / (2 * cpd)
+    
+    x = np.arange(width_px)
+    y = np.arange(height_px)
+    X, Y = np.meshgrid(x, y)
+    
+    checker = ((X // square_size).astype(int) + (Y // square_size).astype(int)) % 2
+    checker = checker * 2 - 1
+    
+    return checker
+
 def generate_gabor_stimuli(output_dir, distances, fg_params_list, bg_params_list, calib_data):
     """前景用のガボール刺激画像をまとめて生成する"""
     print("--- Generating Gabor Patches (Foreground) ---")
@@ -276,6 +292,45 @@ def generate_noise_stimuli(output_dir, distances, fg_params_list, bg_params_list
                 noise_filename = os.path.join(noise_dir, f"FG_{fg_mean_lum}_{fg_contrast}_BG_{bg_mean_lum}_{bg_contrast}.png")
                 plt.imsave(noise_filename, pixel_map_noise, cmap='gray', vmin=0, vmax=255)
 
+def generate_checkerboard_stimuli(output_dir, distances_fg, distances_bg, calib_data):
+    """デフォーカスマッチング用のチェッカーボード刺激を生成する"""
+    print("\n--- Generating Checkerboard Patches (Defocus Matching) ---")
+    fg_sorted_lums, fg_sorted_pixels = calib_data[0]
+    bg_sorted_lums, bg_sorted_pixels = calib_data[1]
+
+    matching_dir = os.path.join(output_dir, "defocus-matching")
+    os.makedirs(matching_dir, exist_ok=True)
+
+    cpd = 2  # チェッカーボードの空間周波数 (cpd)
+    mean_lum = 15
+    contrast = 1.0
+
+    # 前景用
+    for distance in distances_fg:
+        ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
+        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
+        
+        checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
+        lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
+        pixel_map_v = luminance_to_pixel(lum_map_v, fg_sorted_lums, fg_sorted_pixels)
+        
+        filename = os.path.join(matching_dir, f"FG_checker_{distance}cm.png")
+        plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
+        print(f"  Saved FG checker ({distance}cm): {filename}")
+
+    # 背景用
+    for distance in distances_bg:
+        ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
+        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
+        
+        checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
+        lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
+        pixel_map_v = luminance_to_pixel(lum_map_v, bg_sorted_lums, bg_sorted_pixels)
+        
+        filename = os.path.join(matching_dir, f"BG_checker_{distance}cm.png")
+        plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
+        print(f"  Saved BG checker ({distance}cm): {filename}")
+
 # ==========================================
 # 4. メイン実行ブロック
 # ==========================================
@@ -302,6 +357,7 @@ if __name__ == "__main__":
     # --- [追加] 既存の出力フォルダをクリーンアップ ---
     fg_output_base_dir = os.path.join(OUTPUT_DIR, "fg_gabor")
     bg_output_base_dir = os.path.join(OUTPUT_DIR, "bg_noise")
+    match_output_dir = os.path.join(OUTPUT_DIR, "defocus-matching")
 
     if os.path.exists(fg_output_base_dir):
         print(f"既存のフォルダを削除します: {fg_output_base_dir}")
@@ -310,6 +366,10 @@ if __name__ == "__main__":
     if os.path.exists(bg_output_base_dir):
         print(f"既存のフォルダを削除します: {bg_output_base_dir}")
         shutil.rmtree(bg_output_base_dir)
+
+    if os.path.exists(match_output_dir):
+        print(f"既存のフォルダを削除します: {match_output_dir}")
+        shutil.rmtree(match_output_dir)
 
     # --- [新規] 輝度-ピクセル変換の準備 ---
     # 最新のキャリブレーション結果を読み込む (Foreground)
@@ -344,6 +404,14 @@ if __name__ == "__main__":
         fg_params_list=fg_params_list,
         bg_params_list=bg_params_list,
         calib_data=(bg_sorted_lums, bg_sorted_pixels)
+    )
+
+    # --- デフォーカスマッチング用のチェッカー画像の生成 ---
+    generate_checkerboard_stimuli(
+        output_dir=OUTPUT_DIR,
+        distances_fg=FG_DISTANCES_CM,
+        distances_bg=BG_DISTANCES_CM,
+        calib_data=((fg_sorted_lums, fg_sorted_pixels), (bg_sorted_lums, bg_sorted_pixels))
     )
 
     print("\n--- 全ての刺激画像の生成が完了しました ---")
