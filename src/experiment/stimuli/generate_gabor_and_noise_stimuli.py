@@ -27,8 +27,7 @@ BG_SPATIAL_FREQS_CPD = [2, 8] # 背景ノイズの空間周波数リスト (cpd)
 FG_MEAN_LUMINANCES_CDM2 = [50, 5]   # 前景用平均輝度リスト (cd/m^2)
 BG_MEAN_LUMINANCES_CDM2 = [15, 5]   # 背景用平均輝度リスト (cd/m^2)
 FG_CONTRASTS = [1.0]      # 前景用コントラストリスト
-BG_CONTRASTS = [1.0]      # 背景用コントラストリスト
-
+BG_CONTRASTS = [0.0, 1.0]      # 背景用コントラストリスト
 # ガボールパッチパラメータ 
 GABOR_SIGMA_DEG = 1.0     # ガボールパッチの標準偏差 (度)
 
