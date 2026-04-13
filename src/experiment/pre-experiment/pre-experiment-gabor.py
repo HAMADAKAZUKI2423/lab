@@ -24,7 +24,6 @@ BASE_IMG_DIR_2 = os.path.join(lab_root, "data", "processed", "images", "pre-expe
 RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor")
 
 # --- デフォーカスマッチング設定 ---
-MATCHING_IMG_PATH = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor","bg_noise", "70cm","FG_8_5_0.5_BG_2_15_1.0.png") # デフォーカスマッチングに使用する画像のパス
 DEFOCUS_BLUR_SCALE_FACTOR = 0.55
 PUPIL_DIAMETER_MM = 4.0 # 瞳孔径 (mm)
 
@@ -73,7 +72,6 @@ class ExperimentApp:
         self.current_trial_in_block = 0
         self.current_trial_in_experiment = 0
         self.current_block_cond = None
-        self.match_image_visible = True # For defocus matching UI
         self.results = []
         self.key_bindings = {}
         self.eval_buttons = []
@@ -261,9 +259,10 @@ class ExperimentApp:
         canvas.create_line(tx(x1 - s), y1, tx(x1), y1, fill=color, width=line_width, tags="calib")
         canvas.create_line(tx(x1), y1 - s, tx(x1), y1, fill=color, width=line_width, tags="calib")
 
-    def draw_center_cross(self, canvas, color='white'):
+    def draw_center_cross(self, canvas, offset_x=0, offset_y=0, color='white'):
         """画面中央に一点へ向かう4つの矢尻（棒なし）を描画する"""
-        cx, cy = canvas.winfo_width() // 2, canvas.winfo_height() // 2
+        cx = canvas.winfo_width() // 2 + offset_x
+        cy = canvas.winfo_height() // 2 + offset_y
         
         # 矢尻の形状パラメータ（CROSS_SIZEを基準にサイズを大きく設定）
         d2 = int(CROSS_SIZE * 1.2)  # 先端から底辺までの距離
@@ -390,16 +389,13 @@ class ExperimentApp:
         self.key_bindings['<Return>'] = self.root.bind('<Return>', lambda event: self.start_experiment_block())
 
         # 指示
-        instruction_text = "Adjust the slider (Left/Right arrow keys) until the blur on Window 2 (simulated) matches Window 1 (natural blur).\n" \
-                           "Switch between natural (Win1) and simulated (Win2) views (Up/Down arrow keys)."
+        instruction_text = "Adjust the slider (Left/Right arrow keys) until the blur on Window 2 (simulated) matches Window 1 (natural blur)."
         tk.Label(self.ctrl_frame, text=instruction_text, 
                  bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
 
         # Bind keys for defocus matching
         self.key_bindings['<Left>'] = self.root.bind('<Left>', lambda e: self._handle_defocus_key_press(e))
         self.key_bindings['<Right>'] = self.root.bind('<Right>', lambda e: self._handle_defocus_key_press(e))
-        self.key_bindings['<Up>'] = self.root.bind('<Up>', lambda e: self._handle_defocus_key_press(e))
-        self.key_bindings['<Down>'] = self.root.bind('<Down>', lambda e: self._handle_defocus_key_press(e))
         self.root.focus_set() # Ensure root has focus for key events
 
         # 初回表示
@@ -408,7 +404,6 @@ class ExperimentApp:
     def _handle_defocus_key_press(self, event):
         """Handles key presses for defocus matching UI.
         Left arrow increases defocus, Right arrow decreases defocus (reversed from typical).
-        Up/Down arrow toggles visibility of the simulated image.
         """
         step = 0.05  # Step for defocus adjustment
         current_defocus = self.defocus_val.get()
@@ -421,8 +416,6 @@ class ExperimentApp:
         elif event.keysym == 'Right': # Decrease defocus value (reversed logic: Right arrow decreases D)
             new_val = max(min_val, current_defocus - step)
             self.defocus_val.set(new_val)
-        elif event.keysym == 'Up' or event.keysym == 'Down':
-            self.match_image_visible = not self.match_image_visible
         
         self.update_defocus_view()
         return "break"
@@ -450,46 +443,54 @@ class ExperimentApp:
         sigma_pixels = sigma_deg * pixels_per_deg_fg
 
         # --- 動的にマッチング用画像を取得 ---
-        cpd = self.current_block_cond["spatial_freq"]
-        bg_img_dir = os.path.join(BASE_IMG_DIR_1, f'{d_bg}cm', f'{cpd}cpd')
-        sample_images = glob.glob(os.path.join(bg_img_dir, '*'))
-        matching_img_path = sample_images[0] if sample_images else MATCHING_IMG_PATH
+        matching_dir = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "defocus-matching")
+        fg_img_path = os.path.join(matching_dir, f"FG_checker_{d_fg}cm.png")
+        bg_img_path = os.path.join(matching_dir, f"BG_checker_{d_bg}cm.png")
 
         # 2. 画像の読み込みと加工
         try:
-            img_base = Image.open(matching_img_path)
+            img_fg = Image.open(fg_img_path)
         except Exception as e:
-            # 画像がない場合のフォールバック（白い正方形）
-            img_base = Image.new('RGB', (100, 100), (255, 255, 255))
-            print(f"Error loading matching image: {e}")
+            img_fg = Image.new('RGB', (fg_size, fg_size // 2), (255, 255, 255))
+            print(f"Error loading matching FG image: {e}")
+
+        try:
+            img_bg = Image.open(bg_img_path)
+        except Exception as e:
+            img_bg = Image.new('RGB', (bg_size, bg_size // 2), (255, 255, 255))
+            print(f"Error loading matching BG image: {e}")
 
         # 前景用 (Blurred)
-        img_fg = img_base.resize((fg_size, fg_size), Image.LANCZOS)
+        img_fg = img_fg.resize((fg_size, fg_size // 2), Image.LANCZOS)
         if sigma_pixels > 0:
             img_fg = img_fg.filter(ImageFilter.GaussianBlur(radius=sigma_pixels))
         img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT) # 実験者ビュー用に左右反転
-        self.photo_match_fg = ImageTk.PhotoImage(img_fg)
 
         # 背景用 (Sharp)
-        img_bg = img_base.resize((bg_size, bg_size), Image.LANCZOS)
+        img_bg = img_bg.resize((bg_size, bg_size // 2), Image.LANCZOS)
+
+        dy_fg = fg_size // 4
+        dy_bg = -bg_size // 4
+
+        self.photo_match_fg = ImageTk.PhotoImage(img_fg)
         self.photo_match_bg = ImageTk.PhotoImage(img_bg)
 
         # 3. 描画
         # Window 1 (Background Display)
         ox, oy = self.offset_x.get(), self.offset_y.get()
+        cx1, cy1 = self.width//2 + ox, self.height//2 + oy
+        self.canvas1.create_image(cx1, cy1 + dy_bg, image=self.photo_match_bg, anchor='center', tags="match")
 
-        # self.match_image_visible の状態に応じて表示を切り替える
-        if self.match_image_visible:
-            # Window 2 (Foreground/Simulated) を表示し、Window 1 を非表示
-            self.canvas2.create_image(self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2, image=self.photo_match_fg, anchor='center', tags="match")
-        else:
-            # Window 1 (Background/Natural) を表示し、Window 2 を非表示
-            self.canvas1.create_image(self.width//2 + ox, self.height//2 + oy, image=self.photo_match_bg, anchor='center', tags="match")
-            # Window 2 には十字を表示
-            self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
+        # Window 2 (Foreground/Simulated)
+        cx2, cy2 = self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2
+        self.canvas2.create_image(cx2, cy2 + dy_fg, image=self.photo_match_fg, anchor='center', tags="match")
         
-        # 枠も再描画 (白い枠を表示したままで)
-        self.draw_image_corner_brackets(self.canvas2, fg_size, fg_size, 0, 0, color=WIN2_MARKER_COLOR, line_width=MARKER_LINE_WIDTH)
+        # 枠と十字マーカーの再描画 (上下それぞれの領域に)
+        self.draw_image_corner_brackets(self.canvas2, fg_size, fg_size // 2, 0, -fg_size // 4, color=WIN2_MARKER_COLOR, line_width=MARKER_LINE_WIDTH)
+        self.draw_center_cross(self.canvas2, offset_x=0, offset_y=-fg_size // 4, color=WIN2_MARKER_COLOR)
+        
+        self.draw_image_corner_brackets(self.canvas2, fg_size, fg_size // 2, 0, fg_size // 4, color=WIN2_MARKER_COLOR, line_width=MARKER_LINE_WIDTH)
+        self.draw_center_cross(self.canvas2, offset_x=0, offset_y=fg_size // 4, color=WIN2_MARKER_COLOR)
 
     def _update_eval_highlight(self):
         """Highlights the currently selected evaluation button."""
