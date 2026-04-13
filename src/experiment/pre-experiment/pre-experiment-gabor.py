@@ -15,8 +15,8 @@ import math
 # ==========================================
 # --- 実験設定 ---
 VISUAL_ANGLE_DEG = 7.9   # 画像の視角 (degree)
-NUM_TRIALS_BEFORE_BREAK = 50 # 休憩に入るまでの試行回数
-NUM_REPETITIONS = 1      # 試行の反復回数 (総試行回数を指定した倍数にする)
+NUM_TRIALS_BEFORE_BREAK = 100 # 休憩に入るまでの試行回数
+NUM_REPETITIONS = 2      # 試行の反復回数 (総試行回数を指定した倍数にする)
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 BASE_IMG_DIR_1 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_noise")
@@ -83,6 +83,8 @@ class ExperimentApp:
         self.current_img_path_2 = None
         self.photo1 = None
         self.photo2 = None
+        self.max_contrast_gabor_path = None
+        self.photo_max_gabor = None
 
         # --- ウィンドウのセットアップ ---
         # プライマリモニタのスクリーンサイズを取得
@@ -533,6 +535,16 @@ class ExperimentApp:
         bg_img_dir = os.path.join(BASE_IMG_DIR_1, f'{d_bg}cm', f'{cpd}cpd')
         fg_img_dir = os.path.join(BASE_IMG_DIR_2, f'{d_fg}cm', f'{cpd}cpd')
 
+        # フェーズ1で提示する、最大輝度・コントラストのガボール画像を探す
+        # ファイル名が 'FG_50_1.0_...' で始まるものを探す
+        max_gabor_files = glob.glob(os.path.join(fg_img_dir, 'FG_50_1.0_*.png'))
+        if not max_gabor_files:
+            messagebox.showerror("Error", f"Max contrast Gabor patch (FG_50_1.0_*.png) not found in:\n{fg_img_dir}")
+            self._reset_to_setup_ui()
+            return
+        # 複数見つかった場合は最初のものを使う (中身は同じはず)
+        self.max_contrast_gabor_path = max_gabor_files[0]
+
         bg_img_paths = sorted(glob.glob(os.path.join(bg_img_dir, '*')))
         fg_img_paths = sorted(glob.glob(os.path.join(fg_img_dir, '*')))
 
@@ -579,6 +591,9 @@ class ExperimentApp:
         img1 = Image.open(self.current_img_path_1)
         img2 = Image.open(self.current_img_path_2)
 
+        # フェーズ1で提示する高コントラスト画像
+        img_max_gabor = Image.open(self.max_contrast_gabor_path)
+
         # Resize images based on visual angle and distance
         d_fg = self.distance1.get()
         d_bg = self.distance2.get()
@@ -591,16 +606,21 @@ class ExperimentApp:
         img2 = img2.resize((fg_size, fg_size))
         img2 = img2.transpose(Image.FLIP_LEFT_RIGHT) # Flip for experimenter view
 
+        img_max_gabor = img_max_gabor.resize((fg_size, fg_size))
+        img_max_gabor = img_max_gabor.transpose(Image.FLIP_LEFT_RIGHT)
+
         # Convert to PhotoImage (must be done before displaying)
         self.photo1 = ImageTk.PhotoImage(img1)
         self.photo2 = ImageTk.PhotoImage(img2)
+        self.photo_max_gabor = ImageTk.PhotoImage(img_max_gabor)
         
         # --- 2. Start trial sequence ---
         # フェーズ1: Window 2にのみ画像を表示
         self.canvas1.configure(bg='black')
         self.canvas1.delete("all")
         
-        self.canvas2.create_image(self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2, image=self.photo2, anchor='center', tags="img")
+        # 常に最大輝度・コントラストのガボールを提示する
+        self.canvas2.create_image(self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2, image=self.photo_max_gabor, anchor='center', tags="img")
         
         # 暗転時以外も白枠を表示
         self.draw_image_corner_brackets(self.canvas2, fg_size, fg_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=True)
