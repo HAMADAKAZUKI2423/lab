@@ -1,39 +1,39 @@
 # py .\src\experiment\stimuli\generate_gabor_and_noise_stimuli.py
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.fft import fft2, ifft2, fftshift, ifftshift
+from scipy.fft import fft2, ifft2, fftshift, ifftshift, fftfreq
 import argparse
 import os
+from itertools import product
 import glob
 import csv
+import shutil
+import datetime
 
 # ==========================================
 # 1. ユーザー環境設定 (ここを書き換えてください)
 # ==========================================
 # 実験環境の物理パラメータ
-FOREGROUND_DISTANCES_CM = [50, 60, 81] # 前景用の距離リスト (cm)
-BACKGROUND_DISTANCES_CM = [70,100, 150] # 背景用の距離リスト (cm)
-SCREEN_WIDTH_CM     = 59.67    # 画面の横幅実寸 (cm) ※ベゼルを含まない表示領域
-SCREEN_RES_X_PX     = 2560    # 画面の横解像度 (px)
+FG_DISTANCES_CM = [50, 60, 81] # 前景用の距離リスト (cm)
+BG_DISTANCES_CM = [70, 100, 150] # 背景用の距離リスト (cm)
+SCREEN_WIDTH_CM = 59.67    # 画面の横幅実寸 (cm) ※ベゼルを含まない表示領域
+SCREEN_RES_X_PX = 2560    # 画面の横解像度 (px)
+STIM_WIDTH_DEG = 7.9     # 刺激の幅 (度)
+STIM_HEIGHT_DEG = 7.9     # 刺激の高さ (度)
 
-# 論文 (Table 1) に基づく刺激パラメータ
-STIM_WIDTH_DEG      = 7.9     # 刺激の幅 (度)
-STIM_HEIGHT_DEG     = 7.9     # 刺激の高さ (度)
-SPATIAL_FREQS_CPD   = [2, 8] # 生成する空間周波数のリスト (cpd)
-GABOR_SIGMA_DEG     = 1.0     # ガボールパッチの標準偏差 (度)
+# 刺激画像パラメータ
+FG_SPATIAL_FREQS_CPD = [2, 8] # 前景ガボールパッチの空間周波数のリスト (cpd)
+BG_SPATIAL_FREQS_CPD = [2, 8] # 背景ノイズの空間周波数リスト (cpd)
+FG_MEAN_LUMINANCES_CDM2 = [50, 5]   # 前景用平均輝度リスト (cd/m^2)
+BG_MEAN_LUMINANCES_CDM2 = [15, 5]   # 背景用平均輝度リスト (cd/m^2)
+FG_CONTRASTS = [1.0]      # 前景用コントラストリスト
+BG_CONTRASTS = [0.0, 1.0]      # 背景用コントラストリスト
+# ガボールパッチパラメータ 
+GABOR_SIGMA_DEG = 1.0     # ガボールパッチの標準偏差 (度)
 
-# --- [新規] 輝度・コントラスト設定 ---
 # キャリブレーション結果の保存先ディレクトリ (create_calibrated_gray_patches.py の出力先)
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
-
-# キャリブレーションログのベースパス
-CALIB_LOG_BASE_DIR = os.path.join(lab_root, "results", "tables")
-
-FG_MEAN_LUMINANCES_CDM2 = [50, 5]   # 前景用平均輝度リスト (cd/m^2)
-BG_MEAN_LUMINANCES_CDM2 = [15, 5]   # 背景用平均輝度リスト (cd/m^2)
-FG_CONTRASTS = [0.4, 0.8]      # 前景用コントラストリスト
-BG_CONTRASTS = [1.0]      # 背景用コントラストリスト
 
 # --- 保存設定 ---
 OUTPUT_DIR_PRE = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor")
@@ -79,59 +79,65 @@ def luminance_to_pixel(target_lum_map, lum_points, pixel_points):
     # 0-255の範囲にクリップして返す
     return np.clip(pixel_map, 0, 255)
 
-def load_latest_calibration_map(log_dir):
+def load_and_prepare_calibration_data(log_dir, name="Calibration"):
     """
-    指定ディレクトリ内の最新のCSVファイルを読み込み、
-    (Target_Luminance, Pixel_Value) のリストを返す。
+    指定ディレクトリ内の全てのCSVファイルを読み込み、輝度レベルごとに
+    ピクセル値の平均を計算し、np.interp用にソートされた輝度とピクセルの配列を返す。
     """
     if not os.path.exists(log_dir):
         print(f"警告: ディレクトリが見つかりません: {log_dir}")
-        return None
+        return None, None
         
     csv_files = glob.glob(os.path.join(log_dir, "*.csv"))
     if not csv_files:
         print(f"警告: ディレクトリ内にCSVファイルが見つかりません: {log_dir}")
-        return None
+        return None, None
         
-    # 作成日時が新しい順にソート
-    latest_csv = max(csv_files, key=os.path.getctime)
-    print(f"キャリブレーションデータを読み込み中: {latest_csv}")
+    print(f"{len(csv_files)}個のキャリブレーションデータを読み込み、平均化します: {log_dir}")
     
-    lum_pixel_map = []
-    try:
-        with open(latest_csv, 'r', newline='', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                try:
-                    t_lum = float(row["Target_Luminance(cd/m2)"])
-                    p_val = int(row["Pixel_Value"])
-                    lum_pixel_map.append((t_lum, p_val))
-                except (ValueError, KeyError):
-                    continue
-    except Exception as e:
-        print(f"エラー: CSV読み込み失敗: {e}")
-        return None
-        
-    # 輝度でソート（昇順）
-    lum_pixel_map.sort(key=lambda x: x[0])
-    return lum_pixel_map
+    # {target_lum: [pixel_val1, pixel_val2, ...]} の形式でデータを保持
+    lum_pixel_data = {}
+    
+    for csv_file in csv_files:
+        try:
+            with open(csv_file, 'r', newline='', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        t_lum = float(row["Target_Luminance(cd/m2)"])
+                        p_val = int(row["Pixel_Value"])
+                        
+                        if t_lum not in lum_pixel_data:
+                            lum_pixel_data[t_lum] = []
+                        lum_pixel_data[t_lum].append(p_val)
+                        
+                    except (ValueError, KeyError):
+                        continue
+        except Exception as e:
+            print(f"警告: CSV読み込み中にエラーが発生しました ({os.path.basename(csv_file)}): {e}")
+            continue
+            
+    if not lum_pixel_data:
+        print(f"エラー: {log_dir} から有効なキャリブレーションデータを読み込めませんでした。")
+        return None, None
 
-def get_calibrated_map_arrays(log_dir, name="Calibration"):
-    """
-    キャリブレーションディレクトリから最新のデータを読み込み、
-    np.interp用にソートされた輝度とピクセルの配列を返す。
-    """
-    lum_pixel_map = load_latest_calibration_map(log_dir)
-    if not lum_pixel_map:
+    # 平均値を計算してリストに格納
+    avg_lum_pixel_map = []
+    # lum_pixel_data.items()をt_lumでソートする
+    for t_lum, pixel_list in sorted(lum_pixel_data.items()):
+        if pixel_list:
+            avg_pixel = int(np.round(np.mean(pixel_list)))
+            avg_lum_pixel_map.append((t_lum, avg_pixel))
+            
+    if not avg_lum_pixel_map:
         print(f"警告: {name} の有効なキャリブレーションデータがありません。")
         return None, None
     
-    calibrated_lums = np.array([item[0] for item in lum_pixel_map])
-    calibrated_pixels = np.array([item[1] for item in lum_pixel_map])
+    # ソート済みのタプルのリストを2つのNumpy配列に展開する
+    calibrated_lums = np.array([item[0] for item in avg_lum_pixel_map])
+    calibrated_pixels = np.array([item[1] for item in avg_lum_pixel_map])
     
-    # np.interpは輝度が昇順である必要がある
-    sort_indices = np.argsort(calibrated_lums)
-    return calibrated_lums[sort_indices], calibrated_pixels[sort_indices]
+    return calibrated_lums, calibrated_pixels
 
 # ==========================================
 # 3. 刺激生成関数 (前回のコードをベースに調整)
@@ -174,11 +180,11 @@ def create_band_limited_noise(width_px, height_px, ppd, f_center_cpd, bandwidth_
     ft_noise = fftshift(ft_noise)
     
     # 周波数座標の作成 (cpd単位)
-    fx = np.fft.fftshift(np.fft.fftfreq(width_px, d=1/ppd))
-    fy = np.fft.fftshift(np.fft.fftfreq(height_px, d=1/ppd))
+    fx = fftshift(fftfreq(width_px, d=1/ppd))
+    fy = fftshift(fftfreq(height_px, d=1/ppd))
     FX, FY = np.meshgrid(fx, fy)
     R = np.sqrt(FX**2 + FY**2) # 中心からの距離（空間周波数）
-    
+
     # バンドパスフィルタの作成
     f_min = f_center_cpd / (2 ** (bandwidth_octave / 2))
     f_max = f_center_cpd * (2 ** (bandwidth_octave / 2))
@@ -198,6 +204,133 @@ def create_band_limited_noise(width_px, height_px, ppd, f_center_cpd, bandwidth_
     
     return noise_filtered
 
+def create_checkerboard(width_px, height_px, ppd, cpd):
+    """
+    指定されたピクセルサイズと空間周波数(cpd)で白黒のチェッカーボードを作成する。
+    値は -1 と 1 で返す。
+    """
+    square_size = ppd / (2 * cpd)
+    
+    x = np.arange(width_px)
+    y = np.arange(height_px)
+    X, Y = np.meshgrid(x, y)
+    
+    checker = ((X // square_size).astype(int) + (Y // square_size).astype(int)) % 2
+    checker = checker * 2 - 1
+    
+    return checker
+
+def generate_gabor_stimuli(output_dir, distances, fg_params_list, bg_params_list, calib_data):
+    """前景用のガボール刺激画像をまとめて生成する"""
+    print("--- Generating Gabor Patches (Foreground) ---")
+    sorted_lums, sorted_pixels = calib_data
+
+    for distance in distances:
+        ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
+        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG, ppd)
+        print(f"  Distance: {distance}cm (PPD: {ppd:.2f}, Size: {req_w}x{req_h}px)")
+        
+        gabor_base_dir = os.path.join(output_dir, "fg_gabor", f"{distance}cm")
+        os.makedirs(gabor_base_dir, exist_ok=True)
+
+        # 前景パラメータでループ
+        for fg_cpd, fg_mean_lum, fg_contrast in fg_params_list:
+            # 空間周波数のフォルダを作成
+            gabor_dir = os.path.join(gabor_base_dir, f"{fg_cpd}cpd")
+            os.makedirs(gabor_dir, exist_ok=True)
+
+            # この前景条件に対するガボール画像を1枚生成
+            gabor_mod_v = create_gabor(req_w, req_h, ppd, fg_cpd, GABOR_SIGMA_DEG, orientation_deg=0)
+            lum_map_v = fg_mean_lum * (1 + fg_contrast * gabor_mod_v)
+            pixel_map_v = luminance_to_pixel(lum_map_v, sorted_lums, sorted_pixels)
+
+            # 背景パラメータでループし、同じ画像を異なる名前で保存
+            for bg_cpd, bg_mean_lum, bg_contrast in bg_params_list:
+                # 前景と背景の空間周波数が同じ場合のみ生成
+                if fg_cpd != bg_cpd:
+                    continue
+                print(f"    Generating Gabor for FG(f={fg_cpd},L={fg_mean_lum},C={fg_contrast}) BG(f={bg_cpd},L={bg_mean_lum},C={bg_contrast})")
+
+                # ファイル名の設定と保存
+                gabor_filename = os.path.join(gabor_dir, f"FG_{fg_mean_lum}_{fg_contrast}_BG_{bg_mean_lum}_{bg_contrast}.png")
+                plt.imsave(gabor_filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
+
+def generate_noise_stimuli(output_dir, distances, fg_params_list, bg_params_list, calib_data):
+    """背景用の帯域制限ノイズ画像をまとめて生成する"""
+    print("\n--- Generating Band-limited Noise (Background) ---")
+    sorted_lums, sorted_pixels = calib_data
+
+    for distance in distances:
+        ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
+        # 背景ノイズは横長にする
+        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG * 2, STIM_HEIGHT_DEG, ppd)
+        print(f"  Distance: {distance}cm (PPD: {ppd:.2f}, Size: {req_w}x{req_h}px)")
+        
+        noise_base_dir = os.path.join(output_dir, "bg_noise", f"{distance}cm")
+        os.makedirs(noise_base_dir, exist_ok=True)
+
+        # 全パラメータの組み合わせでループ
+        for fg_cpd, fg_mean_lum, fg_contrast in fg_params_list:
+            for bg_cpd, bg_mean_lum, bg_contrast in bg_params_list:
+                # 前景と背景の空間周波数が同じ場合のみ生成
+                if fg_cpd != bg_cpd:
+                    continue
+
+                # 空間周波数のフォルダを作成
+                noise_dir = os.path.join(noise_base_dir, f"{bg_cpd}cpd")
+                os.makedirs(noise_dir, exist_ok=True)
+
+                # このループの内部で毎回ノイズを生成し、全条件で異なるパターンにする
+                stim_noise = create_band_limited_noise(req_w, req_h, ppd, f_center_cpd=bg_cpd)
+                print(f"    Generating for FG(f={fg_cpd},L={fg_mean_lum},C={fg_contrast}) BG(f={bg_cpd},L={bg_mean_lum},C={bg_contrast})")
+
+                # 輝度マップの計算とピクセル値への変換
+                lum_map_noise = bg_mean_lum * (1 + bg_contrast * stim_noise)
+                pixel_map_noise = luminance_to_pixel(lum_map_noise, sorted_lums, sorted_pixels)
+
+                # ファイル名の設定と保存
+                noise_filename = os.path.join(noise_dir, f"FG_{fg_mean_lum}_{fg_contrast}_BG_{bg_mean_lum}_{bg_contrast}.png")
+                plt.imsave(noise_filename, pixel_map_noise, cmap='gray', vmin=0, vmax=255)
+
+def generate_checkerboard_stimuli(output_dir, distances_fg, distances_bg, calib_data):
+    """デフォーカスマッチング用のチェッカーボード刺激を生成する"""
+    print("\n--- Generating Checkerboard Patches (Defocus Matching) ---")
+    fg_sorted_lums, fg_sorted_pixels = calib_data[0]
+    bg_sorted_lums, bg_sorted_pixels = calib_data[1]
+
+    matching_dir = os.path.join(output_dir, "defocus-matching")
+    os.makedirs(matching_dir, exist_ok=True)
+
+    cpd = 2  # チェッカーボードの空間周波数 (cpd)
+    mean_lum = 15
+    contrast = 1.0
+
+    # 前景用
+    for distance in distances_fg:
+        ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
+        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
+        
+        checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
+        lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
+        pixel_map_v = luminance_to_pixel(lum_map_v, fg_sorted_lums, fg_sorted_pixels)
+        
+        filename = os.path.join(matching_dir, f"FG_checker_{distance}cm.png")
+        plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
+        print(f"  Saved FG checker ({distance}cm): {filename}")
+
+    # 背景用
+    for distance in distances_bg:
+        ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
+        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
+        
+        checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
+        lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
+        pixel_map_v = luminance_to_pixel(lum_map_v, bg_sorted_lums, bg_sorted_pixels)
+        
+        filename = os.path.join(matching_dir, f"BG_checker_{distance}cm.png")
+        plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
+        print(f"  Saved BG checker ({distance}cm): {filename}")
+
 # ==========================================
 # 4. メイン実行ブロック
 # ==========================================
@@ -210,92 +343,75 @@ if __name__ == "__main__":
 
     if args.target == "main":
         OUTPUT_DIR = OUTPUT_DIR_MAIN
-        fg_calib_dir = os.path.join(CALIB_LOG_BASE_DIR, "main-experiment-gabor", "fg_calibration_log")
-        bg_calib_dir = os.path.join(CALIB_LOG_BASE_DIR, "main-experiment-gabor", "bg_calibration_log")
     elif args.target == "pre":
         OUTPUT_DIR = OUTPUT_DIR_PRE
-        fg_calib_dir = os.path.join(CALIB_LOG_BASE_DIR, "pre-experiment-gabor", "fg_calibration_log")
-        bg_calib_dir = os.path.join(CALIB_LOG_BASE_DIR, "pre-experiment-gabor", "bg_calibration_log")
     else:
         raise ValueError("不正なtarget指定です。mainかpreを指定してください。")
 
+    # キャリブレーションフォルダの場所を固定
+    fg_calib_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "fg_calibration_log")
+    bg_calib_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "bg_calibration_log")
+
     print(f"OUTPUT_DIR = {OUTPUT_DIR}")
+
+    # --- [追加] 既存の出力フォルダをクリーンアップ ---
+    fg_output_base_dir = os.path.join(OUTPUT_DIR, "fg_gabor")
+    bg_output_base_dir = os.path.join(OUTPUT_DIR, "bg_noise")
+    match_output_dir = os.path.join(OUTPUT_DIR, "defocus-matching")
+
+    if os.path.exists(fg_output_base_dir):
+        print(f"既存のフォルダを削除します: {fg_output_base_dir}")
+        shutil.rmtree(fg_output_base_dir)
+    
+    if os.path.exists(bg_output_base_dir):
+        print(f"既存のフォルダを削除します: {bg_output_base_dir}")
+        shutil.rmtree(bg_output_base_dir)
+
+    if os.path.exists(match_output_dir):
+        print(f"既存のフォルダを削除します: {match_output_dir}")
+        shutil.rmtree(match_output_dir)
 
     # --- [新規] 輝度-ピクセル変換の準備 ---
     # 最新のキャリブレーション結果を読み込む (Foreground)
-    fg_sorted_lums, fg_sorted_pixels = get_calibrated_map_arrays(fg_calib_dir, "Foreground")
+    print("\n--- [FG] キャリブレーションデータの読み込み ---")
+    fg_sorted_lums, fg_sorted_pixels = load_and_prepare_calibration_data(fg_calib_dir, "Foreground")
     
     # 最新のキャリブレーション結果を読み込む (Background)
-    bg_sorted_lums, bg_sorted_pixels = get_calibrated_map_arrays(bg_calib_dir, "Background")
+    print("\n--- [BG] キャリブレーションデータの読み込み ---")
+    bg_sorted_lums, bg_sorted_pixels = load_and_prepare_calibration_data(bg_calib_dir, "Background")
     
     if fg_sorted_lums is None or bg_sorted_lums is None:
         print("エラー: 有効なキャリブレーションデータがないため、処理を中断します。")
         exit(1)
 
+    # --- パラメータの組み合わせを生成 ---
+    fg_params_list = list(product(FG_SPATIAL_FREQS_CPD, FG_MEAN_LUMINANCES_CDM2, FG_CONTRASTS))
+    bg_params_list = list(product(BG_SPATIAL_FREQS_CPD, BG_MEAN_LUMINANCES_CDM2, BG_CONTRASTS))
+
     # --- ガボールパッチの生成 (前景距離に基づく) ---
-    print("--- Generating Gabor Patches (Foreground) ---")
-    for distance in FOREGROUND_DISTANCES_CM:
-        # A. 環境に応じたPPDの計算
-        my_ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
-        
-        # B. 生成すべき画像サイズの計算 (px)
-        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG, my_ppd)
-        
-        print(f"  Distance: {distance}cm (PPD: {my_ppd:.2f}, Size: {req_w}x{req_h}px)")
-        
-        # C. パラメータでループ
-        for mean_lum in FG_MEAN_LUMINANCES_CDM2:
-            for contrast in FG_CONTRASTS:
-                for cpd in SPATIAL_FREQS_CPD:
-                    print(f"    Generating for L_mean={mean_lum}, C={contrast}, f={cpd} cpd...")
+    generate_gabor_stimuli(
+        output_dir=OUTPUT_DIR,
+        distances=FG_DISTANCES_CM,
+        fg_params_list=fg_params_list,
+        bg_params_list=bg_params_list,
+        calib_data=(fg_sorted_lums, fg_sorted_pixels)
+    )
 
-                    # 保存先フォルダの準備
-                    gabor_dir = os.path.join(OUTPUT_DIR, "fg_gabor", f"{distance}cm")
-                    os.makedirs(gabor_dir, exist_ok=True)
-
-                    # --- C-1. 垂直方向のガボールパッチ (Vertical, orientation=0) ---
-                    # ガボール変調器 (-1から1) を生成
-                    gabor_mod_v = create_gabor(req_w, req_h, my_ppd, cpd, GABOR_SIGMA_DEG, orientation_deg=0)
-                    # 輝度マップの計算: L(x,y) = L_mean * (1 + C * modulator)
-                    lum_map_v = mean_lum * (1 + contrast * gabor_mod_v)
-                    # 輝度マップをピクセル値マップに変換
-                    pixel_map_v = luminance_to_pixel(lum_map_v, fg_sorted_lums, fg_sorted_pixels)
-                    # ファイル名の設定と保存
-                    filename_v = os.path.join(gabor_dir, f"{cpd}cpd_{mean_lum}nit_{contrast}_v.png")
-                    plt.imsave(filename_v, pixel_map_v, cmap='gray', vmin=0, vmax=255)
-                    print(f"      Saved: {filename_v}")
-
-    print("\n--- Generating Band-limited Noise (Background) ---")
     # --- 帯域制限ノイズの生成 (背景距離に基づく) ---
-    for distance in BACKGROUND_DISTANCES_CM:
-        # A. 環境に応じたPPDの計算
-        my_ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
-        # B. 生成すべき画像サイズの計算 (px) - 横長にする
-        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG * 2, STIM_HEIGHT_DEG, my_ppd)
-        
-        print(f"  Distance: {distance}cm (PPD: {my_ppd:.2f}, Size: {req_w}x{req_h}px)")
-        
-        for cpd in BG_SPATIAL_FREQS_CPD:
-            # 周波数ごとにノイズパターンを生成（輝度・コントラスト条件間でパターンを統一するためここで生成）
-            stim_noise = create_band_limited_noise(req_w, req_h, my_ppd, f_center_cpd=cpd)
+    generate_noise_stimuli(
+        output_dir=OUTPUT_DIR,
+        distances=BG_DISTANCES_CM,
+        fg_params_list=fg_params_list,
+        bg_params_list=bg_params_list,
+        calib_data=(bg_sorted_lums, bg_sorted_pixels)
+    )
 
-            for mean_lum in BG_MEAN_LUMINANCES_CDM2:
-                for contrast in BG_CONTRASTS:
-                    print(f"    Generating for L_mean={mean_lum}, C={contrast}, f={cpd} cpd...")
-                    
-                    # D. 輝度マップの計算
-                    lum_map_noise = mean_lum * (1 + contrast * stim_noise)
-                    # 輝度マップをピクセル値マップに変換
-                    pixel_map_noise = luminance_to_pixel(lum_map_noise, bg_sorted_lums, bg_sorted_pixels)
-
-                    # E. 保存先フォルダの準備
-                    noise_dir = os.path.join(OUTPUT_DIR, "bg_noise", f"{distance}cm")
-                    os.makedirs(noise_dir, exist_ok=True)
-
-                    # F. ファイル名の設定と保存
-                    noise_filename = os.path.join(noise_dir, f"{cpd}cpd_{mean_lum}nit_{contrast}.png")
-                    plt.imsave(noise_filename, pixel_map_noise, cmap='gray', vmin=0, vmax=255)
-                    
-                    print(f"      Saved: {noise_filename}")
+    # --- デフォーカスマッチング用のチェッカー画像の生成 ---
+    generate_checkerboard_stimuli(
+        output_dir=OUTPUT_DIR,
+        distances_fg=FG_DISTANCES_CM,
+        distances_bg=BG_DISTANCES_CM,
+        calib_data=((fg_sorted_lums, fg_sorted_pixels), (bg_sorted_lums, bg_sorted_pixels))
+    )
 
     print("\n--- 全ての刺激画像の生成が完了しました ---")

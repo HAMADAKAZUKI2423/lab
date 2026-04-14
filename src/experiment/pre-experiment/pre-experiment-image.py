@@ -4,7 +4,7 @@ from tkinter import ttk, messagebox
 import os
 import csv
 import datetime
-from PIL import Image, ImageTk, ImageEnhance
+from PIL import Image, ImageTk, ImageEnhance, ImageFilter
 import glob
 import random
 import math
@@ -14,16 +14,23 @@ import math
 # ==========================================
 # --- 実験設定 ---
 VISUAL_ANGLE_DEG = 7.9   # 画像の視角 (degree)
+NUM_TRIALS_BEFORE_BREAK = 38 # 休憩に入るまでの試行回数
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 IMG_DIR_1 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-image", "bg_imgs")
 IMG_DIR_2 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-image", "fg_imgs")
 RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-image")
 
+# --- デフォーカスマッチング設定 ---
+MATCHING_IMG_PATH = os.path.join(lab_root, "visibility_blend_2025-main", "imgs", "cat.png")
+DEFOCUS_BLUR_SCALE_FACTOR = 0.55
+PUPIL_DIAMETER_MM = 4.0 # 瞳孔径 (mm)
+
+
 # --- 時間設定 (ミリ秒) ---
-TIME_PHASE_1 = 1600    # Phase 1: Image display only on Win2
+TIME_PHASE_1 = 500    # Phase 1: Image display only on Win2
 TIME_ISI = 1000        # Phase 2: Inter Stimulus Interval (black screen)
-TIME_PHASE_2 = 1600    # Phase 3: Image display on both windows
+TIME_PHASE_2 = 500    # Phase 3: Image display on both windows
 
 # --- UIデザイン設定 ---
 BG_COLOR = 'black'     # 全体の背景色
@@ -45,6 +52,7 @@ class ExperimentApp:
         # --- 変数の初期化 ---
         self.offset_x = tk.IntVar(value=0)
         self.offset_y = tk.IntVar(value=0)
+        self.defocus_val = tk.DoubleVar(value=0.0)
         self.evaluation_val = tk.IntVar(value=3)
         self.participant_age = tk.StringVar()
         self.participant_gender = tk.StringVar()
@@ -55,6 +63,7 @@ class ExperimentApp:
         self.distance1 = tk.IntVar(value=50)
         self.distance2 = tk.IntVar(value=70)
         self.trial_list = []
+        self.match_image_visible = True # For defocus matching UI
         self.current_trial_index = 0
         self.results = []
         self.key_bindings = {}
@@ -204,11 +213,22 @@ class ExperimentApp:
         canvas.create_line(tx(x1), y1 - s, tx(x1), y1, fill=color, width=line_width, tags="calib")
 
     def draw_center_cross(self, canvas, color='white'):
-        """画面中央に十字マーカーを描画する"""
+        """画面中央に一点へ向かう4つの矢尻（棒なし）を描画する"""
         cx, cy = canvas.winfo_width() // 2, canvas.winfo_height() // 2
-        l = CROSS_SIZE // 2
-        canvas.create_line(cx - l, cy, cx + l, cy, fill=color, width=5, tags="calib")
-        canvas.create_line(cx, cy - l, cx, cy + l, fill=color, width=5, tags="calib")
+        
+        # 矢尻の形状パラメータ（CROSS_SIZEを基準にサイズを大きく設定）
+        d2 = int(CROSS_SIZE * 1.2)  # 先端から底辺までの距離
+        d1 = int(CROSS_SIZE * 0.9)  # 先端から凹みまでの距離
+        d3 = int(CROSS_SIZE * 0.5)  # 幅の半分
+
+        # 4方向の矢尻の頂点座標
+        pts_left = [cx, cy, cx - d2, cy - d3, cx - d1, cy, cx - d2, cy + d3]
+        pts_right = [cx, cy, cx + d2, cy - d3, cx + d1, cy, cx + d2, cy + d3]
+        pts_up = [cx, cy, cx - d3, cy - d2, cx, cy - d1, cx + d3, cy - d2]
+        pts_down = [cx, cy, cx - d3, cy + d2, cx, cy + d1, cx + d3, cy + d2]
+
+        for pts in [pts_left, pts_right, pts_up, pts_down]:
+            canvas.create_polygon(pts, fill=color, outline="black", width=2, tags="calib")
 
     def update_calibration_view(self, *args):
         """キャリブレーション画面の表示を更新する (スライダー操作時に呼ばれる)"""
@@ -243,7 +263,7 @@ class ExperimentApp:
         self.update_calibration_view()
         return "break" # デフォルトのイベント処理（スライダーの移動など）を停止する
 
-    def setup_calibration_ui(self):
+    def setup_calibration_ui(self, is_break=False):
         """ステップ1: キャリブレーション用UIを構築し表示する"""
         self.update_calibration_view()
         
@@ -251,19 +271,162 @@ class ExperimentApp:
         self.ctrl_frame = tk.Frame(self.root, bg='gray')
         self.ctrl_frame.place(relx=0.5, rely=0.8, anchor='center')
 
+        if is_break:
+            instruction_text = "This is a break. You can adjust the position if needed.\nPress 'Resume Experiment' to continue."
+            button_text = "Resume Experiment"
+            button_command = self.resume_experiment
+        else:
+            instruction_text = "Use the arrow keys to adjust the position of the red frame."
+            button_text = "Calibration Done, Next"
+            button_command = self.setup_defocus_matching_ui
+
         # 位置調整の指示ラベル
-        instruction_text = "Use the arrow keys to adjust the position of the red frame."
         tk.Label(self.ctrl_frame, text=instruction_text, bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
 
-        # 実験開始ボタン
-        btn = tk.Button(self.ctrl_frame, text="Start Experiment", command=self.start_experiment)
+        # ボタン
+        btn = tk.Button(self.ctrl_frame, text=button_text, command=button_command)
         btn.pack(pady=10)
         btn.focus_set() # ボタンにフォーカスを当ててキー入力を受け付ける
-        btn.bind('<Return>', lambda event: self.start_experiment())
+        btn.bind('<Return>', lambda event: button_command())
         btn.bind('<Left>', lambda e: self.adjust_offset(-1, 0))
         btn.bind('<Right>', lambda e: self.adjust_offset(1, 0))
         btn.bind('<Up>', lambda e: self.adjust_offset(0, -1))
         btn.bind('<Down>', lambda e: self.adjust_offset(0, 1))
+
+    def resume_experiment(self):
+        """休憩を終了し、実験を再開する"""
+        self.ctrl_frame.destroy()
+        self.canvas1.delete("all")
+        self.canvas2.delete("all")
+        self.run_trial()
+
+    def start_break(self):
+        """休憩を開始し、キャリブレーションUIを表示する"""
+        self.canvas1.delete("all")
+        self.canvas2.delete("all")
+        self.setup_calibration_ui(is_break=True)
+    def setup_defocus_matching_ui(self):
+        """ステップ2: デフォーカスマッチング用UIを構築し表示する"""
+        if hasattr(self, 'ctrl_frame') and self.ctrl_frame.winfo_exists():
+            self.ctrl_frame.destroy()
+        self.canvas1.delete("all")
+        self.canvas2.delete("all")
+
+        # Clear previous key bindings (from calibration)
+        for key, binding_id in self.key_bindings.items():
+            self.root.unbind(key, binding_id)
+        self.key_bindings.clear()
+
+        # 操作用UIフレーム
+        self.ctrl_frame = tk.Frame(self.root, bg='gray')
+        self.ctrl_frame.place(relx=0.5, rely=0.8, anchor='center')
+
+        # スライダー
+        slider = tk.Scale(self.ctrl_frame, from_=0.0, to=3.0, resolution=0.01, orient=tk.HORIZONTAL, 
+                          length=400, variable=self.defocus_val, command=self.update_defocus_view)
+        slider.pack(pady=10)
+
+        # 実験開始ボタン
+        btn = tk.Button(self.ctrl_frame, text="Start Experiment", command=self.start_experiment)
+        btn.pack(pady=10)
+        btn.focus_set()
+        self.key_bindings['<Return>'] = self.root.bind('<Return>', lambda event: self.start_experiment())
+
+        # 指示
+        instruction_text = "Adjust the slider (Left/Right arrow keys) until the blur on Window 2 (simulated) matches Window 1 (natural blur).\n" \
+                           "Switch between natural (Win1) and simulated (Win2) views (Up/Down arrow keys)."
+        tk.Label(self.ctrl_frame, text=instruction_text, 
+                 bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
+
+        # Bind keys for defocus matching
+        self.key_bindings['<Left>'] = self.root.bind('<Left>', lambda e: self._handle_defocus_key_press(e))
+        self.key_bindings['<Right>'] = self.root.bind('<Right>', lambda e: self._handle_defocus_key_press(e))
+        self.key_bindings['<Up>'] = self.root.bind('<Up>', lambda e: self._handle_defocus_key_press(e))
+        self.key_bindings['<Down>'] = self.root.bind('<Down>', lambda e: self._handle_defocus_key_press(e))
+        self.root.focus_set() # Ensure root has focus for key events
+
+        # 初回表示
+        self.update_defocus_view()
+
+    def _handle_defocus_key_press(self, event):
+        """Handles key presses for defocus matching UI.
+        Left arrow increases defocus, Right arrow decreases defocus (reversed from typical).
+        Up/Down arrow toggles visibility of the simulated image.
+        """
+        step = 0.05  # Step for defocus adjustment
+        current_defocus = self.defocus_val.get()
+        min_val = 0.0
+        max_val = 3.0 # From the slider definition in setup_defocus_matching_ui
+
+        if event.keysym == 'Left': # Increase defocus value (reversed logic: Left arrow increases D)
+            new_val = min(max_val, current_defocus + step)
+            self.defocus_val.set(new_val)
+        elif event.keysym == 'Right': # Decrease defocus value (reversed logic: Right arrow decreases D)
+            new_val = max(min_val, current_defocus - step)
+            self.defocus_val.set(new_val)
+        elif event.keysym == 'Up' or event.keysym == 'Down':
+            self.match_image_visible = not self.match_image_visible
+        
+        self.update_defocus_view()
+        return "break"
+
+    def update_defocus_view(self, *args):
+        """デフォーカスマッチング画面の表示を更新する"""
+        self.canvas1.delete("match")
+        self.canvas2.delete("match")
+        self.canvas2.delete("calib") # キャリブレーション枠を一旦消して再描画
+
+        d_fg = self.distance1.get()
+        d_bg = self.distance2.get()
+        fg_size = self.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
+        bg_size = self.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG)
+
+        # 1. 瞳孔径とディオプトリからシグマ(pixel)を計算
+        # bd_deg = D * pd_mm * (180/pi) / 1000
+        # sigma_deg = 0.55 * bd_deg / 2
+        D = self.defocus_val.get()
+        bd_deg = D * PUPIL_DIAMETER_MM * (180.0 / math.pi) / 1000.0
+        sigma_deg = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
+        
+        # pixels_per_deg を簡易計算 (1度あたりのピクセル数)
+        pixels_per_deg_fg = self.get_size_for_visual_angle(d_fg, 1.0)
+        sigma_pixels = sigma_deg * pixels_per_deg_fg
+
+        # 2. 画像の読み込みと加工
+        try:
+            img_base = Image.open(MATCHING_IMG_PATH)
+        except Exception as e:
+            # 画像がない場合のフォールバック（白い正方形）
+            img_base = Image.new('RGB', (100, 100), (255, 255, 255))
+            print(f"Error loading matching image: {e}")
+
+        # 前景用 (Blurred)
+        img_fg = img_base.resize((fg_size, fg_size), Image.LANCZOS)
+        if sigma_pixels > 0:
+            img_fg = img_fg.filter(ImageFilter.GaussianBlur(radius=sigma_pixels))
+        img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT) # 実験者ビュー用に左右反転
+        self.photo_match_fg = ImageTk.PhotoImage(img_fg)
+
+        # 背景用 (Sharp)
+        img_bg = img_base.resize((bg_size, bg_size), Image.LANCZOS)
+        self.photo_match_bg = ImageTk.PhotoImage(img_bg)
+
+        # 3. 描画
+        # Window 1 (Background Display)
+        ox, oy = self.offset_x.get(), self.offset_y.get()
+
+        # self.match_image_visible の状態に応じて表示を切り替える
+        if self.match_image_visible:
+            # Window 2 (Foreground/Simulated) を表示し、Window 1 を非表示
+            self.canvas2.create_image(self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2, image=self.photo_match_fg, anchor='center', tags="match")
+        else:
+            # Window 1 (Background/Natural) を表示し、Window 2 を非表示
+            self.canvas1.create_image(self.width//2 + ox, self.height//2 + oy, image=self.photo_match_bg, anchor='center', tags="match")
+            # Window 2 には十字を表示
+            self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
+        
+        # 枠も再描画 (白い枠を表示したままで)
+        self.draw_image_corner_brackets(self.canvas2, fg_size, fg_size, 0, 0, color=WIN2_MARKER_COLOR, line_width=MARKER_LINE_WIDTH)
 
     def _update_eval_highlight(self):
         """Highlights the currently selected evaluation button."""
@@ -293,6 +456,11 @@ class ExperimentApp:
 
     def start_experiment(self):
         """実験ループを開始する"""
+        # Clear key bindings from defocus matching phase
+        for key, binding_id in self.key_bindings.items():
+            self.root.unbind(key, binding_id)
+        self.key_bindings.clear()
+
         # --- 1. Get experiment parameters and load image paths ---
         bg_img_paths = sorted(glob.glob(os.path.join(IMG_DIR_1, '*')))
         fg_img_paths = sorted(glob.glob(os.path.join(IMG_DIR_2, '*')))
@@ -473,7 +641,7 @@ class ExperimentApp:
         self.results.append([
             self.participant_id.get(), self.participant_age.get(), self.participant_gender.get(), self.participant_ipd.get(),
             self.distance1.get(), self.distance2.get(),
-            self.offset_x.get(), self.offset_y.get(),
+            self.offset_x.get(), self.offset_y.get(), self.defocus_val.get(),
             self.current_trial_index + 1,
             f1, f2, score
         ])
@@ -481,8 +649,16 @@ class ExperimentApp:
         self.eval_frame.destroy()
         self.current_trial_index += 1
         
-        # 少し待ってから次の試行を開始 (UIの応答性を保つため)
-        self.root.after(500, self.run_trial)
+        # 休憩を挟むかチェック
+        is_break_time = (self.current_trial_index > 0) and \
+                        (self.current_trial_index % NUM_TRIALS_BEFORE_BREAK == 0) and \
+                        (self.current_trial_index < len(self.trial_list))
+
+        if is_break_time:
+            self.root.after(500, self.start_break)
+        else:
+            # 少し待ってから次の試行を開始 (UIの応答性を保つため)
+            self.root.after(500, self.run_trial)
 
     def finish_experiment(self):
         """実験終了処理。結果をCSVファイルに保存する"""
@@ -505,7 +681,7 @@ class ExperimentApp:
             writer = csv.writer(f)
             header = [
                 "ID", "Age", "Gender", "IPD(mm)", "Distance1(cm)", "Distance2(cm)",
-                "Offset_X", "Offset_Y", "Trial_ID", "Image_Win1", "Image_Win2", "Score"
+                "Offset_X", "Offset_Y", "Defocus_D", "Trial_ID", "Image_Win1", "Image_Win2", "Score"
             ]
             writer.writerow(header)
             writer.writerows(self.results)
