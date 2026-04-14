@@ -54,7 +54,7 @@ class ExperimentApp:
         # --- 変数の初期化 ---
         self.offset_x = tk.IntVar(value=0)
         self.offset_y = tk.IntVar(value=0)
-        self.defocus_val = tk.DoubleVar(value=0.0)
+        self.pupil_diameter_val = tk.DoubleVar(value=4.0)
         self.evaluation_val = tk.IntVar(value=3)
         self.participant_age = tk.StringVar()
         self.participant_gender = tk.StringVar()
@@ -380,8 +380,8 @@ class ExperimentApp:
         self.ctrl_frame.place(relx=0.5, rely=0.8, anchor='center')
 
         # スライダー
-        slider = tk.Scale(self.ctrl_frame, from_=0.0, to=3.0, resolution=0.01, orient=tk.HORIZONTAL, 
-                          length=400, variable=self.defocus_val, command=self.update_defocus_view)
+        slider = tk.Scale(self.ctrl_frame, from_=1.0, to=6.0, resolution=0.1, orient=tk.HORIZONTAL, 
+                          length=400, variable=self.pupil_diameter_val, command=self.update_defocus_view)
         slider.pack(pady=10)
 
         # 実験開始ボタン
@@ -391,7 +391,7 @@ class ExperimentApp:
         self.key_bindings['<Return>'] = self.root.bind('<Return>', lambda event: self.start_experiment_block())
 
         # 指示
-        instruction_text = "Adjust the slider (Left/Right arrow keys) until the blur on Window 2 (simulated) matches Window 1 (natural blur)."
+        instruction_text = "Adjust the slider (Left/Right arrow keys) to change the pupil diameter and match the blur on Window 2 (simulated) with Window 1 (natural blur)."
         tk.Label(self.ctrl_frame, text=instruction_text, 
                  bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
 
@@ -405,19 +405,19 @@ class ExperimentApp:
 
     def _handle_defocus_key_press(self, event):
         """Handles key presses for defocus matching UI.
-        Left arrow increases defocus, Right arrow decreases defocus (reversed from typical).
+        Right arrow increases pupil diameter, Left arrow decreases it.
         """
-        step = 0.05  # Step for defocus adjustment
-        current_defocus = self.defocus_val.get()
-        min_val = 0.0
-        max_val = 3.0 # From the slider definition in setup_defocus_matching_ui
+        step = 0.1  # Step for pupil diameter adjustment
+        current_pd = self.pupil_diameter_val.get()
+        min_val = 1.0
+        max_val = 6.0 # From the slider definition in setup_defocus_matching_ui
 
-        if event.keysym == 'Left': # Increase defocus value (reversed logic: Left arrow increases D)
-            new_val = min(max_val, current_defocus + step)
-            self.defocus_val.set(new_val)
-        elif event.keysym == 'Right': # Decrease defocus value (reversed logic: Right arrow decreases D)
-            new_val = max(min_val, current_defocus - step)
-            self.defocus_val.set(new_val)
+        if event.keysym == 'Right': # Increase pupil diameter
+            new_val = min(max_val, current_pd + step)
+            self.pupil_diameter_val.set(new_val)
+        elif event.keysym == 'Left': # Decrease pupil diameter
+            new_val = max(min_val, current_pd - step)
+            self.pupil_diameter_val.set(new_val)
         
         self.update_defocus_view()
         return "break"
@@ -433,11 +433,17 @@ class ExperimentApp:
         fg_size = self.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
         bg_size = self.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG)
 
-        # 1. 瞳孔径とディオプトリからシグマ(pixel)を計算
-        # bd_deg = D * pd_mm * (180/pi) / 1000
-        # sigma_deg = 0.55 * bd_deg / 2
-        D = self.defocus_val.get()
-        bd_deg = D * PUPIL_DIAMETER_MM * (180.0 / math.pi) / 1000.0
+        # 1. 前景と背景の距離からディオプトリ差Dを計算
+        d_fg_m = d_fg / 100.0
+        d_bg_m = d_bg / 100.0
+        if d_fg_m <= 0 or d_bg_m <= 0:
+            D = 0
+        else:
+            D = abs(1/d_fg_m - 1/d_bg_m)
+
+        # 2. スライダーで調整した瞳孔径(mm)とディオプトリ差から、ぼけのsigma(pixel)を計算
+        pd_mm = self.pupil_diameter_val.get()
+        bd_deg = D * pd_mm * (180.0 / math.pi) / 1000.0
         sigma_deg = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
         
         # pixels_per_deg を簡易計算 (1度あたりのピクセル数)
@@ -735,7 +741,7 @@ class ExperimentApp:
             self.current_block_cond["viewing_condition"],
             self.distance1.get(), self.distance2.get(),
             self.current_block_cond["spatial_freq"],
-            self.offset_x.get(), self.offset_y.get(), self.defocus_val.get(),
+            self.offset_x.get(), self.offset_y.get(), self.pupil_diameter_val.get(),
             self.current_trial_in_experiment + 1,
             f1, f2, score
         ])
@@ -779,7 +785,7 @@ class ExperimentApp:
             header = [
                 "ID", "Age", "Gender", "IPD(mm)", "Viewing_Condition", "Distance1(cm)", "Distance2(cm)",
                 "Spatial_Freq(cpd)",
-                "Offset_X", "Offset_Y", "Defocus_D", "Trial_ID", "Image_Win1", "Image_Win2", "Score"
+                "Offset_X", "Offset_Y", "Pupil_Diameter_mm", "Trial_ID", "Image_Win1", "Image_Win2", "Score"
             ]
             writer.writerow(header)
             writer.writerows(self.results)
