@@ -77,7 +77,11 @@ final_df = pd.concat(all_data, ignore_index=True)
 def extract_label(filename, prefix):
     # ファイル名から texX と LumX を抽出
     tex_match = re.search(r'(tex\d+)', str(filename), re.IGNORECASE)
-    lum_match = re.search(r'(Lum[LMH])', str(filename), re.IGNORECASE)
+    # 新しい形式 (lumi_default, lumi_half, lumi_quarter)
+    lum_match = re.search(r'(lumi_(?:default|half|quarter))', str(filename), re.IGNORECASE)
+    # 古い形式 (LumL, LumM, LumH)
+    if not lum_match:
+        lum_match = re.search(r'(Lum[LMH])', str(filename), re.IGNORECASE)
     
     parts = [prefix]
     if tex_match:
