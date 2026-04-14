@@ -76,37 +76,49 @@ if not all_data:
 final_df = pd.concat(all_data, ignore_index=True)
 
 # --- パラメータ抽出 ---
-def extract_parameters(filename):
-    # ファイル名形式: {freq}cpd_{lum}nit_{contrast}... を想定
-    # 背景がノイズ画像の場合も cpd がファイル名に含まれていると仮定
-    match = re.search(r'(\d+)cpd_(\d+\.?\d*)nit_(\d+\.?\d*)', str(filename))
-    if match:
-        cpd = int(match.group(1))
-        luminance = float(match.group(2))
-        contrast = float(match.group(3))
-        return luminance, cpd, contrast
-    return None, None, None
+def extract_parameters(row):
+    # ファイル名形式1: {freq}cpd_{lum}nit_{contrast}... を想定
+    # ファイル名形式2: FG_{lum}_{contrast}_BG_{lum}_{contrast}.png
+    fg_file = str(row['Image_Win2'])
+    bg_file = str(row['Image_Win1'])
+    
+    # 形式1 (旧形式)
+    match_fg = re.search(r'(\d+\.?\d*)cpd_(\d+\.?\d*)nit_(\d+\.?\d*)', fg_file)
+    match_bg = re.search(r'(\d+\.?\d*)cpd_(\d+\.?\d*)nit_(\d+\.?\d*)', bg_file)
+    
+    if match_fg and match_bg:
+        return pd.Series([
+            float(match_fg.group(2)), float(match_fg.group(1)), float(match_fg.group(3)),
+            float(match_bg.group(2)), float(match_bg.group(1)), float(match_bg.group(3))
+        ])
+    
+    # 形式2 (新形式: generate_gabor_and_noise_stimuli.py)
+    match_new = re.search(r'FG_(\d+\.?\d*)_(\d+\.?\d*)_BG_(\d+\.?\d*)_(\d+\.?\d*)', fg_file)
+    if match_new:
+        fg_lum = float(match_new.group(1))
+        fg_contrast = float(match_new.group(2))
+        bg_lum = float(match_new.group(3))
+        bg_contrast = float(match_new.group(4))
+        # Spatial_Freq(cpd) 列から取得
+        cpd = row.get('Spatial_Freq(cpd)', None)
+        return pd.Series([fg_lum, cpd, fg_contrast, bg_lum, cpd, bg_contrast])
+        
+    return pd.Series([None] * 6)
 
-# FGパラメータ抽出 (Image_Win2: 前景)
-final_df[['fg_lum', 'fg_cpd', 'fg_contrast']] = final_df['Image_Win2'].apply(
-    lambda x: pd.Series(extract_parameters(x))
-)
+# パラメータ抽出の実行
+param_cols = ['fg_lum', 'fg_cpd', 'fg_contrast', 'bg_lum', 'bg_cpd', 'bg_contrast']
+final_df[param_cols] = final_df.apply(extract_parameters, axis=1)
 
-# BGパラメータ抽出 (Image_Win1: 背景)
-final_df[['bg_lum', 'bg_cpd', 'bg_contrast']] = final_df['Image_Win1'].apply(
-    lambda x: pd.Series(extract_parameters(x))
-)
-
-# 欠損値の除去 (bg_cpdなどが取得できなかった場合など)
-final_df.dropna(subset=['fg_lum', 'fg_cpd', 'fg_contrast', 'bg_lum', 'bg_cpd'], inplace=True)
+# 欠損値の除去
+final_df.dropna(subset=param_cols, inplace=True)
 
 if final_df.empty:
-    print("有効なパラメータを抽出できませんでした。ファイル名形式を確認してください。")
+    print("有効なパラメータを抽出できませんでした。ファイル名形式やCSVの列を確認してください。")
     exit()
 
 # データ型変換
-final_df['fg_cpd'] = final_df['fg_cpd'].astype(int)
-final_df['bg_cpd'] = final_df['bg_cpd'].astype(int)
+final_df['fg_cpd'] = final_df['fg_cpd'].astype(float)
+final_df['bg_cpd'] = final_df['bg_cpd'].astype(float)
 
 # --- 集計 ---
 # グルーピング: 距離, 背景空間周波数
@@ -115,156 +127,68 @@ final_df['bg_cpd'] = final_df['bg_cpd'].astype(int)
 summary_df = final_df.groupby(['fg_cpd', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
 
 # 距離のソート順序指定
-custom_order = ['50-70 cm', '81-150 cm', '50-100 cm', '60-150 cm']
+custom_order_base = ['50-70 cm', '81-150 cm', '50-100 cm', '60-150 cm']
+found_distances = summary_df['distance'].unique().tolist()
+custom_order = [d for d in custom_order_base if d in found_distances]
+for d in found_distances:
+    if d not in custom_order:
+        custom_order.append(d)
+
 try:
     summary_df['distance'] = pd.Categorical(summary_df['distance'], categories=custom_order, ordered=True)
 except ValueError:
     pass
 
-# --- グラフ描画 ---
-# 要件: ヒートマップ
-# 縦軸: 背景の空間周波数 (bg_cpd)
-# 横軸: 距離 (distance, 4パターン)
-# 値: スコア (全条件の平均)
-# 値: スコア (平均)
-# 前景の空間周波数(fg_cpd)でグラフを分ける
-
-unique_fg_cpds = sorted(summary_df['fg_cpd'].unique())
-
-for fgcpd in unique_fg_cpds:
-    plot_df = summary_df[summary_df['fg_cpd'] == fgcpd]
-
-    # ピボットテーブル作成 (行: bg_cpd, 列: distance, 値: Score)
-    pivot_table = plot_df.pivot(index='bg_cpd', columns='distance', values='Score')
-
-    # 軸の整列
-    # 縦軸(bg_cpd): 数値順 (昇順) -> origin='lower' で小さい値が下に来るようにする
-    pivot_table.sort_index(ascending=True, inplace=True)
-    # 横軸(distance): 指定順序に並べ替え
-    pivot_table = pivot_table.reindex(columns=custom_order)
-        
-    fig, ax = plt.subplots(figsize=(8, 6))
-
-    # ヒートマップ描画
-    # vmin=1, vmax=5 (スコア範囲)
-    im = ax.imshow(pivot_table, cmap='coolwarm', vmin=1, vmax=5, origin='lower', aspect='auto')
-
-    # 数値の表示
-    for i in range(len(pivot_table.index)):
-        for j in range(len(pivot_table.columns)):
-            val = pivot_table.iloc[i, j]
-            if not np.isnan(val):
-                text_color = "white" if (val < 2.5 or val > 4.0) else "black" # 視認性調整
-                ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=10)
-
-    # 軸ラベル設定
-    ax.set_xticks(np.arange(len(pivot_table.columns)))
-    ax.set_yticks(np.arange(len(pivot_table.index)))
-    ax.set_xticklabels(pivot_table.columns)
-    ax.set_yticklabels(pivot_table.index)
-
-    ax.set_xlabel('Distance')
-    ax.set_ylabel('Background Spatial Frequency (cpd)')
-    ax.set_title(f'Average Score Heatmap (FG: {fgcpd} cpd)', fontsize=14)
-
-    # カラーバー
-    cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('Average Score')
-
-    plt.tight_layout()
-
-    filename = f'heatmap_score_fgcpd_{fgcpd}.png'
-    plt.savefig(os.path.join(OUTPUT_DIR, filename))
-    print(f"グラフ保存: {filename}")
-    plt.close(fig)
-
-# --- 追加: 単眼・両眼(Viewing_Condition)ごとに分割したヒートマップ ---
-summary_view = final_df.groupby(['Viewing_Condition', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
+# --- 要望1: 単眼/複眼 x 背景コントラストごとのヒートマップ ---
+print("\n--- Generating heatmaps by Viewing Condition and Background Contrast ---")
+summary_view_contrast = final_df.groupby(['Viewing_Condition', 'bg_contrast', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
 try:
-    summary_view['distance'] = pd.Categorical(summary_view['distance'], categories=custom_order, ordered=True)
+    summary_view_contrast['distance'] = pd.Categorical(summary_view_contrast['distance'], categories=custom_order, ordered=True)
 except ValueError:
     pass
 
-unique_views = sorted(summary_view['Viewing_Condition'].unique())
+unique_conditions = summary_view_contrast[['Viewing_Condition', 'bg_contrast']].drop_duplicates().sort_values(by=['Viewing_Condition', 'bg_contrast'])
 
-for view_cond in unique_views:
-    plot_df = summary_view[summary_view['Viewing_Condition'] == view_cond]
+for idx, row in unique_conditions.iterrows():
+    view_cond = row['Viewing_Condition']
+    bg_contrast = row['bg_contrast']
+    
+    plot_df = summary_view_contrast[(summary_view_contrast['Viewing_Condition'] == view_cond) & (summary_view_contrast['bg_contrast'] == bg_contrast)]
     if plot_df.empty:
         continue
     
     pivot_table = plot_df.pivot(index='bg_cpd', columns='distance', values='Score')
     pivot_table.sort_index(ascending=True, inplace=True)
     pivot_table = pivot_table.reindex(columns=custom_order)
-    
+
     fig, ax = plt.subplots(figsize=(8, 6))
     im = ax.imshow(pivot_table, cmap='coolwarm', vmin=1, vmax=5, origin='lower', aspect='auto')
-    
+
     for i in range(len(pivot_table.index)):
         for j in range(len(pivot_table.columns)):
             val = pivot_table.iloc[i, j]
             if not np.isnan(val):
                 text_color = "white" if (val < 2.5 or val > 4.0) else "black"
                 ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=10)
-    
+
     ax.set_xticks(np.arange(len(pivot_table.columns)))
     ax.set_yticks(np.arange(len(pivot_table.index)))
     ax.set_xticklabels(pivot_table.columns)
     ax.set_yticklabels(pivot_table.index)
     ax.set_xlabel('Distance')
     ax.set_ylabel('Background Spatial Frequency (cpd)')
-    ax.set_title(f'Average Score Heatmap ({view_cond})', fontsize=14)
+    ax.set_title(f'Average Score Heatmap\n({view_cond}, BG Contrast: {bg_contrast})', fontsize=14)
     cbar = plt.colorbar(im, ax=ax)
     cbar.set_label('Average Score')
     plt.tight_layout()
-    
-    filename = f'heatmap_score_view_{view_cond}.png'
+
+    filename = f'heatmap_score_view_{view_cond}_bgcontrast_{bg_contrast}.png'
     plt.savefig(os.path.join(OUTPUT_DIR, filename))
     print(f"グラフ保存: {filename}")
     plt.close(fig)
 
-# --- 追加: 前景コントラストごとに分割 ---
-summary_contrast = final_df.groupby(['fg_contrast', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
-try:
-    summary_contrast['distance'] = pd.Categorical(summary_contrast['distance'], categories=custom_order, ordered=True)
-except ValueError:
-    pass
-
-unique_contrasts = sorted(summary_contrast['fg_contrast'].unique())
-
-for contrast in unique_contrasts:
-    plot_df = summary_contrast[summary_contrast['fg_contrast'] == contrast]
-    
-    pivot_table = plot_df.pivot(index='bg_cpd', columns='distance', values='Score')
-    pivot_table.sort_index(ascending=True, inplace=True)
-    pivot_table = pivot_table.reindex(columns=custom_order)
-    
-    fig, ax = plt.subplots(figsize=(8, 6))
-    im = ax.imshow(pivot_table, cmap='coolwarm', vmin=1, vmax=5, origin='lower', aspect='auto')
-    
-    for i in range(len(pivot_table.index)):
-        for j in range(len(pivot_table.columns)):
-            val = pivot_table.iloc[i, j]
-            if not np.isnan(val):
-                text_color = "white" if (val < 2.5 or val > 4.0) else "black"
-                ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=10)
-    
-    ax.set_xticks(np.arange(len(pivot_table.columns)))
-    ax.set_yticks(np.arange(len(pivot_table.index)))
-    ax.set_xticklabels(pivot_table.columns)
-    ax.set_yticklabels(pivot_table.index)
-    ax.set_xlabel('Distance')
-    ax.set_ylabel('Background Spatial Frequency (cpd)')
-    ax.set_title(f'Average Score Heatmap (FG Contrast: {contrast})', fontsize=14)
-    cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('Average Score')
-    plt.tight_layout()
-    
-    filename = f'heatmap_score_contrast_{contrast}.png'
-    plt.savefig(os.path.join(OUTPUT_DIR, filename))
-    print(f"グラフ保存: {filename}")
-    plt.close(fig)
-
-# --- 追加: 輝度条件(FG/BG)ごとに分割 ---
+# --- 要望2: 輝度組み合わせごとのヒートマップ ---
+print("\n--- Generating heatmaps by Luminance Combination ---")
 summary_lum = final_df.groupby(['fg_lum', 'bg_lum', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
 try:
     summary_lum['distance'] = pd.Categorical(summary_lum['distance'], categories=custom_order, ordered=True)
@@ -304,51 +228,6 @@ for idx, row in unique_lum_pairs.iterrows():
     plt.tight_layout()
     
     filename = f'heatmap_score_lum_fg{fglum}_bg{bglum}.png'
-    plt.savefig(os.path.join(OUTPUT_DIR, filename))
-    print(f"グラフ保存: {filename}")
-    plt.close(fig)
-
-# --- 追加: 距離ごとに x=前景cpd, y=背景cpd のヒートマップを作成 ---
-for distance in custom_order:
-    dist_df = final_df[final_df['distance'] == distance]
-    if dist_df.empty:
-        print(f"距離 '{distance}' のデータがありません。スキップします。")
-        continue
-
-    summary_dist = dist_df.groupby(['fg_cpd', 'bg_cpd'])['Score'].mean().reset_index()
-    pivot_table = summary_dist.pivot(index='bg_cpd', columns='fg_cpd', values='Score')
-
-    if pivot_table.empty:
-        print(f"距離 '{distance}' で有効な集計がありません。スキップします。")
-        continue
-
-    pivot_table.sort_index(ascending=True, inplace=True)
-    pivot_table = pivot_table.reindex(columns=sorted(pivot_table.columns))
-
-    fig, ax = plt.subplots(figsize=(8, 6))
-    im = ax.imshow(pivot_table, cmap='coolwarm', vmin=1, vmax=5, origin='lower', aspect='auto')
-
-    for i in range(len(pivot_table.index)):
-        for j in range(len(pivot_table.columns)):
-            val = pivot_table.iloc[i, j]
-            if not np.isnan(val):
-                text_color = "white" if (val < 2.5 or val > 4.0) else "black"
-                ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=10)
-
-    ax.set_xticks(np.arange(len(pivot_table.columns)))
-    ax.set_yticks(np.arange(len(pivot_table.index)))
-    ax.set_xticklabels(pivot_table.columns)
-    ax.set_yticklabels(pivot_table.index)
-
-    ax.set_xlabel('Foreground Spatial Frequency (cpd)')
-    ax.set_ylabel('Background Spatial Frequency (cpd)')
-    ax.set_title(f'Average Score Heatmap (Distance: {distance})', fontsize=14)
-
-    cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('Average Score')
-    plt.tight_layout()
-
-    filename = f'heatmap_score_dist_{distance.replace(" ", "_").replace("-", "to")}.png'
     plt.savefig(os.path.join(OUTPUT_DIR, filename))
     print(f"グラフ保存: {filename}")
     plt.close(fig)
