@@ -232,3 +232,84 @@ for idx, row in unique_lum_conditions.iterrows():
     plt.savefig(os.path.join(OUTPUT_DIR, filename))
     print(f"グラフ保存: {filename}")
     plt.close(fig)
+
+# --- 新しいグラフ生成ロジック ---
+print("\n--- Generating new heatmaps based on user request ---")
+
+# X軸用の輝度組み合わせタプルを作成 (bg_lum, fg_lum)
+final_df['lum_combination'] = list(zip(final_df['bg_lum'], final_df['fg_lum']))
+
+# Y軸用の空間周波数と背景コントラストの組み合わせタプルを作成
+final_df['cpd_contrast_combination'] = list(zip(final_df['bg_cpd'], final_df['bg_contrast']))
+
+unique_distances = final_df['distance'].unique()
+unique_viewing_conditions = final_df['Viewing_Condition'].unique()
+
+# グラフを生成する条件のループ (距離 x Ocularity)
+for dist in unique_distances:
+    for view_cond in unique_viewing_conditions:
+        
+        # 現在の条件でデータをフィルタリング
+        subset_df = final_df[(final_df['distance'] == dist) & (final_df['Viewing_Condition'] == view_cond)]
+        if subset_df.empty:
+            continue
+
+        # 軸の組み合わせごとにスコアの平均を計算
+        summary_df = subset_df.groupby(['lum_combination', 'cpd_contrast_combination'])['Score'].mean().reset_index()
+        pivot_table = summary_df.pivot(index='cpd_contrast_combination', columns='lum_combination', values='Score')
+
+        # ユーザー指定の軸の順序を定義
+        # X軸: (bg_lum, fg_lum)
+        x_order = [(5.0, 5.0), (15.0, 5.0), (5.0, 50.0), (15.0, 50.0)]
+        # Y軸: (bg_cpd, bg_contrast)
+        y_order = [(2.0, 0.0), (2.0, 1.0), (8.0, 0.0), (8.0, 1.0)]
+
+        # データに存在するカテゴリのみで順序を再定義
+        x_order_present = [cat for cat in x_order if cat in pivot_table.columns]
+        y_order_present = [cat for cat in y_order if cat in pivot_table.index]
+
+        # reindexで並べ替えと欠損値のNaN埋め
+        pivot_table = pivot_table.reindex(index=y_order_present, columns=x_order_present)
+
+        if pivot_table.empty:
+            continue
+
+        # ヒートマップの描画
+        fig, ax = plt.subplots(figsize=(10, 8))
+        im = ax.imshow(pivot_table, cmap='coolwarm', vmin=1, vmax=5, aspect='auto')
+
+        # 軸ラベルの設定
+        ax.set_xticks(np.arange(len(pivot_table.columns)))
+        ax.set_yticks(np.arange(len(pivot_table.index)))
+
+        # X軸ラベル: (bg_lum, fg_lum)
+        x_labels = [f"BG:{int(bg)}, FG:{int(fg)}" for bg, fg in pivot_table.columns]
+        ax.set_xticklabels(x_labels, rotation=45, ha="right")
+        
+        # Y軸ラベル: (cpd, bg_contrast)
+        y_labels = [f"{int(cpd)}cpd, BG-C:{bg_c}" for cpd, bg_c in pivot_table.index]
+        ax.set_yticklabels(y_labels)
+
+        ax.set_xlabel('Luminance Combination (cd/m^2)')
+        ax.set_ylabel('Condition (Spatial Freq, BG Contrast)')
+        ax.set_title(f'Average Score Heatmap\nDistance: {dist}, View: {view_cond}', fontsize=14)
+
+        # 各セルに数値を書き込む
+        for i in range(len(pivot_table.index)):
+            for j in range(len(pivot_table.columns)):
+                val = pivot_table.iloc[i, j]
+                if not np.isnan(val):
+                    text_color = "white" if (val < 2.0 or val > 4.0) else "black"
+                    ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color)
+
+        cbar = fig.colorbar(im, ax=ax)
+        cbar.set_label('Average Score')
+
+        plt.tight_layout()
+        
+        # ファイル保存
+        safe_dist = str(dist).replace(' ', '_').replace('-', '_')
+        filename = f'heatmap_score_{safe_dist}_{view_cond}.png'
+        plt.savefig(os.path.join(OUTPUT_DIR, filename))
+        print(f"グラフ保存: {filename}")
+        plt.close(fig)
