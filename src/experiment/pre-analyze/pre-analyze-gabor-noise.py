@@ -188,20 +188,21 @@ for idx, row in unique_conditions.iterrows():
     plt.close(fig)
 
 # --- 要望2: 輝度組み合わせごとのヒートマップ ---
-print("\n--- Generating heatmaps by Luminance Combination ---")
-summary_lum = final_df.groupby(['fg_lum', 'bg_lum', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
+print("\n--- Generating heatmaps by Luminance Combination and Viewing Condition ---")
+summary_lum = final_df.groupby(['Viewing_Condition', 'fg_lum', 'bg_lum', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
 try:
     summary_lum['distance'] = pd.Categorical(summary_lum['distance'], categories=custom_order, ordered=True)
 except ValueError:
     pass
 
-unique_lum_pairs = summary_lum[['fg_lum', 'bg_lum']].drop_duplicates().sort_values(by=['fg_lum', 'bg_lum'])
+unique_lum_conditions = summary_lum[['Viewing_Condition', 'fg_lum', 'bg_lum']].drop_duplicates().sort_values(by=['Viewing_Condition', 'fg_lum', 'bg_lum'])
 
-for idx, row in unique_lum_pairs.iterrows():
+for idx, row in unique_lum_conditions.iterrows():
+    view_cond = row['Viewing_Condition']
     fglum = row['fg_lum']
     bglum = row['bg_lum']
     
-    plot_df = summary_lum[(summary_lum['fg_lum'] == fglum) & (summary_lum['bg_lum'] == bglum)]
+    plot_df = summary_lum[(summary_lum['Viewing_Condition'] == view_cond) & (summary_lum['fg_lum'] == fglum) & (summary_lum['bg_lum'] == bglum)]
     pivot_table = plot_df.pivot(index='bg_cpd', columns='distance', values='Score')
     pivot_table.sort_index(ascending=True, inplace=True)
     pivot_table = pivot_table.reindex(columns=custom_order)
@@ -222,12 +223,12 @@ for idx, row in unique_lum_pairs.iterrows():
     ax.set_yticklabels(pivot_table.index)
     ax.set_xlabel('Distance')
     ax.set_ylabel('Background Spatial Frequency (cpd)')
-    ax.set_title(f'Average Score Heatmap (FG: {fglum}nit, BG: {bglum}nit)', fontsize=14)
+    ax.set_title(f'Average Score Heatmap\n({view_cond}, FG: {fglum}nit, BG: {bglum}nit)', fontsize=14)
     cbar = plt.colorbar(im, ax=ax)
     cbar.set_label('Average Score')
     plt.tight_layout()
     
-    filename = f'heatmap_score_lum_fg{fglum}_bg{bglum}.png'
+    filename = f'heatmap_score_view_{view_cond}_lum_fg{fglum}_bg{bglum}.png'
     plt.savefig(os.path.join(OUTPUT_DIR, filename))
     print(f"グラフ保存: {filename}")
     plt.close(fig)
