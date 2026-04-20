@@ -452,10 +452,10 @@ class ExperimentApp:
         btn = tk.Button(self.ctrl_frame, text=button_text, command=self._next_defocus_matching_step)
         btn.pack(pady=10)
         btn.focus_set()
-        self.key_bindings['<Return>'] = self.root.bind('<Return>', lambda event: self._next_defocus_matching_step())
+        self.key_bindings['<Down>'] = self.root.bind('<Down>', lambda event: self._next_defocus_matching_step())
 
         # 指示
-        instruction_text = f"Defocus Matching ({current_step}/{total_steps})\nAdjust the slider (Left/Right arrow keys) to change the pupil diameter and match the blur on Window 2 (simulated) with Window 1 (natural blur)."
+        instruction_text = f"Defocus Matching ({current_step}/{total_steps})\nAdjust the slider (Left/Right arrow keys) to change the pupil diameter and match the blur on Window 2 (simulated) with Window 1 (natural blur).\nPress 'Down' arrow to confirm."
         tk.Label(self.ctrl_frame, text=instruction_text, 
                  bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
 
