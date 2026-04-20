@@ -29,9 +29,9 @@ PUPIL_DIAMETER_MM = 4.0 # 瞳孔径 (mm)
 
 
 # --- 時間設定 (ミリ秒) ---
-TIME_PHASE_1 = 500    # Phase 1: Image display only on Win2
+TIME_PHASE_1 = 1600   # Phase 1: Image display only on Win2
 TIME_ISI = 1000        # Phase 2: Inter Stimulus Interval (black screen)
-TIME_PHASE_2 = 500    # Phase 3: Image display on both windows
+TIME_PHASE_2 = 1600    # Phase 3: Image display on both windows
 
 # --- UIデザイン設定 ---
 BG_COLOR = 'black'     # 全体の背景色
