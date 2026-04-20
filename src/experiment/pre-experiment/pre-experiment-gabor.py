@@ -61,7 +61,7 @@ class ExperimentApp:
         self.participant_ipd = tk.StringVar()
         self.participant_id = tk.StringVar()
         self.viewing_condition = tk.StringVar(value="Binocular")
-        self.spatial_freq = tk.StringVar(value="2")
+        self.spatial_freq = tk.StringVar(value="2,8")
 
         # --- 実験条件用変数 ---
         self.distance1 = tk.IntVar(value=50)
@@ -150,10 +150,9 @@ class ExperimentApp:
         view_combo.grid(row=7, column=1, padx=5, pady=5)
         view_combo.set("Binocular")
 
-        tk.Label(self.participant_frame, text="First Spatial Freq (cpd):").grid(row=8, column=0, sticky='w', padx=5, pady=5)
-        cpd_combo = ttk.Combobox(self.participant_frame, textvariable=self.spatial_freq, values=["2", "8"])
-        cpd_combo.grid(row=8, column=1, padx=5, pady=5)
-        cpd_combo.set("2")
+        tk.Label(self.participant_frame, text="Spatial Freqs (cpd, comma-separated):").grid(row=8, column=0, sticky='w', padx=5, pady=5)
+        cpd_entry = tk.Entry(self.participant_frame, textvariable=self.spatial_freq)
+        cpd_entry.grid(row=8, column=1, padx=5, pady=5)
 
         btn = tk.Button(self.participant_frame, text="Setup Complete, Next", command=self.start_calibration)
         btn.grid(row=9, column=0, columnspan=2, pady=20)
@@ -168,9 +167,14 @@ class ExperimentApp:
         try:
             self.distance1.get()
             self.distance2.get()
-            int(self.spatial_freq.get())
+            # カンマ区切りの文字列をパースして数値のリストに変換
+            spatial_freqs_str = self.spatial_freq.get().strip()
+            if not spatial_freqs_str:
+                raise ValueError("Spatial frequency cannot be empty.")
+            # 空白を削除し、数値に変換
+            selected_spatial_freqs = [int(s.strip()) for s in spatial_freqs_str.split(',')]
         except (ValueError, tk.TclError):
-            messagebox.showwarning("Input Error", "Please enter valid numbers for experiment settings.")
+            messagebox.showwarning("Input Error", "Please enter valid numbers for experiment settings.\nSpatial Freqs must be comma-separated numbers (e.g., 2,8).")
             return
 
         # 実験設定確定時に、Window 1 (被験者用画面) の実際のサイズを取得して更新する
@@ -178,19 +182,18 @@ class ExperimentApp:
         self.width = self.win1.winfo_width()
         self.height = self.win1.winfo_height()
 
-        # ブロック構成の作成 (全4ブロック)
+        # ブロック構成の作成
         first_view = self.viewing_condition.get()
         second_view = "Monocular" if first_view == "Binocular" else "Binocular"
+        view_conditions = [first_view, second_view]
+        self.blocks = []
+        for view in view_conditions:
+            for cpd in selected_spatial_freqs:
+                self.blocks.append({"viewing_condition": view, "spatial_freq": str(cpd)})
         
-        first_cpd = self.spatial_freq.get()
-        second_cpd = "8" if first_cpd == "2" else "2"
+        # ブロックの順番をランダムにシャッフル
+        random.shuffle(self.blocks)
 
-        self.blocks = [
-            {"viewing_condition": first_view, "spatial_freq": first_cpd},
-            {"viewing_condition": first_view, "spatial_freq": second_cpd},
-            {"viewing_condition": second_view, "spatial_freq": first_cpd},
-            {"viewing_condition": second_view, "spatial_freq": second_cpd},
-        ]
         self.current_block_index = 0
         self.current_trial_in_experiment = 0
 
