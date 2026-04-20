@@ -54,14 +54,14 @@ class ExperimentApp:
         # --- 変数の初期化 ---
         self.offset_x = tk.IntVar(value=0)
         self.offset_y = tk.IntVar(value=0)
-        self.defocus_val = tk.DoubleVar(value=0.0)
+        self.pupil_diameter_val = tk.DoubleVar(value=4.0)
         self.evaluation_val = tk.IntVar(value=3)
         self.participant_age = tk.StringVar()
         self.participant_gender = tk.StringVar()
         self.participant_ipd = tk.StringVar()
         self.participant_id = tk.StringVar()
         self.viewing_condition = tk.StringVar(value="Binocular")
-        self.spatial_freq = tk.StringVar(value="2")
+        self.spatial_freq = tk.StringVar(value="2,8")
 
         # --- 実験条件用変数 ---
         self.distance1 = tk.IntVar(value=50)
@@ -75,6 +75,8 @@ class ExperimentApp:
         self.results = []
         self.key_bindings = {}
         self.eval_buttons = []
+        self.current_pd_mean = 0.0
+        self.current_pd_std = 0.0
         
         # --- 画像ファイルの読み込み ---
         
@@ -150,10 +152,9 @@ class ExperimentApp:
         view_combo.grid(row=7, column=1, padx=5, pady=5)
         view_combo.set("Binocular")
 
-        tk.Label(self.participant_frame, text="First Spatial Freq (cpd):").grid(row=8, column=0, sticky='w', padx=5, pady=5)
-        cpd_combo = ttk.Combobox(self.participant_frame, textvariable=self.spatial_freq, values=["2", "8"])
-        cpd_combo.grid(row=8, column=1, padx=5, pady=5)
-        cpd_combo.set("2")
+        tk.Label(self.participant_frame, text="Spatial Freqs (cpd, comma-separated):").grid(row=8, column=0, sticky='w', padx=5, pady=5)
+        cpd_entry = tk.Entry(self.participant_frame, textvariable=self.spatial_freq)
+        cpd_entry.grid(row=8, column=1, padx=5, pady=5)
 
         btn = tk.Button(self.participant_frame, text="Setup Complete, Next", command=self.start_calibration)
         btn.grid(row=9, column=0, columnspan=2, pady=20)
@@ -168,9 +169,14 @@ class ExperimentApp:
         try:
             self.distance1.get()
             self.distance2.get()
-            int(self.spatial_freq.get())
+            # カンマ区切りの文字列をパースして数値のリストに変換
+            spatial_freqs_str = self.spatial_freq.get().strip()
+            if not spatial_freqs_str:
+                raise ValueError("Spatial frequency cannot be empty.")
+            # 空白を削除し、数値に変換
+            selected_spatial_freqs = [int(s.strip()) for s in spatial_freqs_str.split(',')]
         except (ValueError, tk.TclError):
-            messagebox.showwarning("Input Error", "Please enter valid numbers for experiment settings.")
+            messagebox.showwarning("Input Error", "Please enter valid numbers for experiment settings.\nSpatial Freqs must be comma-separated numbers (e.g., 2,8).")
             return
 
         # 実験設定確定時に、Window 1 (被験者用画面) の実際のサイズを取得して更新する
@@ -178,19 +184,18 @@ class ExperimentApp:
         self.width = self.win1.winfo_width()
         self.height = self.win1.winfo_height()
 
-        # ブロック構成の作成 (全4ブロック)
+        # ブロック構成の作成
         first_view = self.viewing_condition.get()
         second_view = "Monocular" if first_view == "Binocular" else "Binocular"
+        view_conditions = [first_view, second_view]
+        self.blocks = []
+        for view in view_conditions:
+            for cpd in selected_spatial_freqs:
+                self.blocks.append({"viewing_condition": view, "spatial_freq": str(cpd)})
         
-        first_cpd = self.spatial_freq.get()
-        second_cpd = "8" if first_cpd == "2" else "2"
+        # ブロックの順番をランダムにシャッフル
+        random.shuffle(self.blocks)
 
-        self.blocks = [
-            {"viewing_condition": first_view, "spatial_freq": first_cpd},
-            {"viewing_condition": first_view, "spatial_freq": second_cpd},
-            {"viewing_condition": second_view, "spatial_freq": first_cpd},
-            {"viewing_condition": second_view, "spatial_freq": second_cpd},
-        ]
         self.current_block_index = 0
         self.current_trial_in_experiment = 0
 
@@ -209,6 +214,42 @@ class ExperimentApp:
         self.current_block_cond = self.blocks[self.current_block_index]
         self.current_trial_in_block = 0
         
+        self.setup_block_confirmation_ui()
+
+    def setup_block_confirmation_ui(self):
+        """ブロック開始前の確認画面を表示する"""
+        if hasattr(self, 'ctrl_frame') and self.ctrl_frame.winfo_exists():
+            self.ctrl_frame.destroy()
+        self.canvas1.delete("all")
+        self.canvas2.delete("all")
+
+        # Clear previous key bindings
+        for key, binding_id in self.key_bindings.items():
+            self.root.unbind(key, binding_id)
+        self.key_bindings.clear()
+
+        self.ctrl_frame = tk.Frame(self.root, bg='gray')
+        self.ctrl_frame.place(relx=0.5, rely=0.5, anchor='center')
+
+        v_cond = self.current_block_cond["viewing_condition"]
+        cpd_cond = self.current_block_cond["spatial_freq"]
+        instruction_text = f"Next section is {cpd_cond} cpd, {v_cond}, OK?\n\nPress 'Enter' to continue."
+        
+        tk.Label(self.ctrl_frame, text=instruction_text, 
+                 bg='gray', fg='white', font=("Arial", 16)).pack(pady=20, padx=40)
+
+        btn = tk.Button(self.ctrl_frame, text="OK", command=self._start_calibration_from_confirmation, font=("Arial", 14))
+        btn.pack(pady=10)
+        btn.focus_set()
+        self.key_bindings['<Return>'] = self.root.bind('<Return>', lambda event: self._start_calibration_from_confirmation())
+
+    def _start_calibration_from_confirmation(self):
+        for key, binding_id in self.key_bindings.items():
+            self.root.unbind(key, binding_id)
+        self.key_bindings.clear()
+        
+        if hasattr(self, 'ctrl_frame') and self.ctrl_frame.winfo_exists():
+            self.ctrl_frame.destroy()
         self.setup_calibration_ui(is_new_block=True)
 
     def _reset_to_setup_ui(self):
@@ -375,23 +416,46 @@ class ExperimentApp:
             self.root.unbind(key, binding_id)
         self.key_bindings.clear()
 
+        # 1, 2, 4 cpd のリストを作成してシャッフル
+        self.defocus_match_cpds = [1, 2, 4]
+        random.shuffle(self.defocus_match_cpds)
+        self.current_match_idx = 0
+        self.match_pd_results = [] # 各cpdでの瞳孔径の調整結果を保存
+
+        self._show_defocus_matching_step()
+
+    def _show_defocus_matching_step(self):
+        if hasattr(self, 'ctrl_frame') and self.ctrl_frame.winfo_exists():
+            self.ctrl_frame.destroy()
+        
+        # Clear previous key bindings
+        for key, binding_id in self.key_bindings.items():
+            self.root.unbind(key, binding_id)
+        self.key_bindings.clear()
+
         # 操作用UIフレーム
         self.ctrl_frame = tk.Frame(self.root, bg='gray')
         self.ctrl_frame.place(relx=0.5, rely=0.8, anchor='center')
 
-        # スライダー
-        slider = tk.Scale(self.ctrl_frame, from_=0.0, to=3.0, resolution=0.01, orient=tk.HORIZONTAL, 
-                          length=400, variable=self.defocus_val, command=self.update_defocus_view)
+        # スライダー (初期値は4.0にリセット)
+        self.pupil_diameter_val.set(4.0)
+        slider = tk.Scale(self.ctrl_frame, from_=6.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, 
+                          length=400, variable=self.pupil_diameter_val, command=self.update_defocus_view)
         slider.pack(pady=10)
 
-        # 実験開始ボタン
-        btn = tk.Button(self.ctrl_frame, text="Start Experiment", command=self.start_experiment_block)
+        total_steps = len(self.defocus_match_cpds)
+        current_step = self.current_match_idx + 1
+        is_last = (current_step == total_steps)
+        button_text = "Start Experiment" if is_last else "Next Matching"
+
+        # 実験開始/次へボタン
+        btn = tk.Button(self.ctrl_frame, text=button_text, command=self._next_defocus_matching_step)
         btn.pack(pady=10)
         btn.focus_set()
-        self.key_bindings['<Return>'] = self.root.bind('<Return>', lambda event: self.start_experiment_block())
+        self.key_bindings['<Down>'] = self.root.bind('<Down>', lambda event: self._next_defocus_matching_step())
 
         # 指示
-        instruction_text = "Adjust the slider (Left/Right arrow keys) until the blur on Window 2 (simulated) matches Window 1 (natural blur)."
+        instruction_text = f"Defocus Matching ({current_step}/{total_steps})\nAdjust the slider (Left/Right arrow keys) to change the pupil diameter and match the blur on Window 2 (simulated) with Window 1 (natural blur).\nPress 'Down' arrow to confirm."
         tk.Label(self.ctrl_frame, text=instruction_text, 
                  bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
 
@@ -403,21 +467,45 @@ class ExperimentApp:
         # 初回表示
         self.update_defocus_view()
 
+    def _next_defocus_matching_step(self):
+        # 結果を記録
+        cpd = self.defocus_match_cpds[self.current_match_idx]
+        pd_val = self.pupil_diameter_val.get()
+        self.match_pd_results.append(pd_val)
+        print(f"Defocus match result: {cpd}cpd -> {pd_val}mm")
+
+        self.current_match_idx += 1
+        if self.current_match_idx < len(self.defocus_match_cpds):
+            self._show_defocus_matching_step()
+        else:
+            # すべて終わったら平均値を計算して設定
+            avg_pd = sum(self.match_pd_results) / len(self.match_pd_results)
+            self.pupil_diameter_val.set(round(avg_pd, 2))
+            
+            self.current_pd_mean = avg_pd
+            n = len(self.match_pd_results)
+            self.current_pd_std = math.sqrt(sum((x - avg_pd)**2 for x in self.match_pd_results) / (n - 1)) if n > 1 else 0.0
+            
+            print(f"Average pupil diameter set to: {self.pupil_diameter_val.get()}mm")
+            
+            # 実験へ
+            self.start_experiment_block()
+
     def _handle_defocus_key_press(self, event):
         """Handles key presses for defocus matching UI.
-        Left arrow increases defocus, Right arrow decreases defocus (reversed from typical).
+        Left arrow decreases pupil diameter, Right arrow increases it.
         """
-        step = 0.05  # Step for defocus adjustment
-        current_defocus = self.defocus_val.get()
-        min_val = 0.0
-        max_val = 3.0 # From the slider definition in setup_defocus_matching_ui
+        step = 0.1  # Step for pupil diameter adjustment
+        current_pd = self.pupil_diameter_val.get()
+        min_val = 1.0
+        max_val = 6.0 # From the slider definition in setup_defocus_matching_ui
 
-        if event.keysym == 'Left': # Increase defocus value (reversed logic: Left arrow increases D)
-            new_val = min(max_val, current_defocus + step)
-            self.defocus_val.set(new_val)
-        elif event.keysym == 'Right': # Decrease defocus value (reversed logic: Right arrow decreases D)
-            new_val = max(min_val, current_defocus - step)
-            self.defocus_val.set(new_val)
+        if event.keysym == 'Left': # Decrease pupil diameter
+            new_val = max(min_val, current_pd - step)
+            self.pupil_diameter_val.set(new_val)
+        elif event.keysym == 'Right': # Increase pupil diameter
+            new_val = min(max_val, current_pd + step)
+            self.pupil_diameter_val.set(new_val)
         
         self.update_defocus_view()
         return "break"
@@ -433,11 +521,17 @@ class ExperimentApp:
         fg_size = self.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
         bg_size = self.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG)
 
-        # 1. 瞳孔径とディオプトリからシグマ(pixel)を計算
-        # bd_deg = D * pd_mm * (180/pi) / 1000
-        # sigma_deg = 0.55 * bd_deg / 2
-        D = self.defocus_val.get()
-        bd_deg = D * PUPIL_DIAMETER_MM * (180.0 / math.pi) / 1000.0
+        # 1. 前景と背景の距離からディオプトリ差Dを計算
+        d_fg_m = d_fg / 100.0
+        d_bg_m = d_bg / 100.0
+        if d_fg_m <= 0 or d_bg_m <= 0:
+            D = 0
+        else:
+            D = abs(1/d_fg_m - 1/d_bg_m)
+
+        # 2. スライダーで調整した瞳孔径(mm)とディオプトリ差から、ぼけのsigma(pixel)を計算
+        pd_mm = self.pupil_diameter_val.get()
+        bd_deg = D * pd_mm * (180.0 / math.pi) / 1000.0
         sigma_deg = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
         
         # pixels_per_deg を簡易計算 (1度あたりのピクセル数)
@@ -445,9 +539,10 @@ class ExperimentApp:
         sigma_pixels = sigma_deg * pixels_per_deg_fg
 
         # --- 動的にマッチング用画像を取得 ---
+        cpd = self.defocus_match_cpds[self.current_match_idx]
         matching_dir = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "defocus-matching")
-        fg_img_path = os.path.join(matching_dir, f"FG_checker_{d_fg}cm.png")
-        bg_img_path = os.path.join(matching_dir, f"BG_checker_{d_bg}cm.png")
+        fg_img_path = os.path.join(matching_dir, f"FG_checker_{d_fg}cm_{cpd}cpd.png")
+        bg_img_path = os.path.join(matching_dir, f"BG_checker_{d_bg}cm_{cpd}cpd.png")
 
         # 2. 画像の読み込みと加工
         try:
@@ -735,7 +830,8 @@ class ExperimentApp:
             self.current_block_cond["viewing_condition"],
             self.distance1.get(), self.distance2.get(),
             self.current_block_cond["spatial_freq"],
-            self.offset_x.get(), self.offset_y.get(), self.defocus_val.get(),
+            self.offset_x.get(), self.offset_y.get(),
+            round(self.current_pd_mean, 3), round(self.current_pd_std, 3),
             self.current_trial_in_experiment + 1,
             f1, f2, score
         ])
@@ -779,7 +875,7 @@ class ExperimentApp:
             header = [
                 "ID", "Age", "Gender", "IPD(mm)", "Viewing_Condition", "Distance1(cm)", "Distance2(cm)",
                 "Spatial_Freq(cpd)",
-                "Offset_X", "Offset_Y", "Defocus_D", "Trial_ID", "Image_Win1", "Image_Win2", "Score"
+                "Offset_X", "Offset_Y", "Match_PD_Mean", "Match_PD_Std", "Trial_ID", "Image_Win1", "Image_Win2", "Score"
             ]
             writer.writerow(header)
             writer.writerows(self.results)

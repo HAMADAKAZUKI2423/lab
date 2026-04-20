@@ -22,8 +22,8 @@ STIM_WIDTH_DEG = 7.9     # 刺激の幅 (度)
 STIM_HEIGHT_DEG = 7.9     # 刺激の高さ (度)
 
 # 刺激画像パラメータ
-FG_SPATIAL_FREQS_CPD = [2, 8] # 前景ガボールパッチの空間周波数のリスト (cpd)
-BG_SPATIAL_FREQS_CPD = [2, 8] # 背景ノイズの空間周波数リスト (cpd)
+FG_SPATIAL_FREQS_CPD = [2,4,6,8] # 前景ガボールパッチの空間周波数のリスト (cpd)
+BG_SPATIAL_FREQS_CPD = [2,4,6,8] # 背景ノイズの空間周波数リスト (cpd)
 FG_MEAN_LUMINANCES_CDM2 = [50, 5]   # 前景用平均輝度リスト (cd/m^2)
 BG_MEAN_LUMINANCES_CDM2 = [15, 5]   # 背景用平均輝度リスト (cd/m^2)
 FG_CONTRASTS = [1.0]      # 前景用コントラストリスト
@@ -301,35 +301,37 @@ def generate_checkerboard_stimuli(output_dir, distances_fg, distances_bg, calib_
     matching_dir = os.path.join(output_dir, "defocus-matching")
     os.makedirs(matching_dir, exist_ok=True)
 
-    cpd = 2  # チェッカーボードの空間周波数 (cpd)
+    checker_cpds = [1, 2, 4]  # チェッカーボードの空間周波数 (cpd)
     mean_lum = 15
     contrast = 1.0
 
     # 前景用
     for distance in distances_fg:
-        ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
-        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
-        
-        checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
-        lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
-        pixel_map_v = luminance_to_pixel(lum_map_v, fg_sorted_lums, fg_sorted_pixels)
-        
-        filename = os.path.join(matching_dir, f"FG_checker_{distance}cm.png")
-        plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
-        print(f"  Saved FG checker ({distance}cm): {filename}")
+        for cpd in checker_cpds:
+            ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
+            req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
+            
+            checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
+            lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
+            pixel_map_v = luminance_to_pixel(lum_map_v, fg_sorted_lums, fg_sorted_pixels)
+            
+            filename = os.path.join(matching_dir, f"FG_checker_{distance}cm_{cpd}cpd.png")
+            plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
+            print(f"  Saved FG checker ({distance}cm, {cpd}cpd): {filename}")
 
     # 背景用
     for distance in distances_bg:
-        ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
-        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
-        
-        checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
-        lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
-        pixel_map_v = luminance_to_pixel(lum_map_v, bg_sorted_lums, bg_sorted_pixels)
-        
-        filename = os.path.join(matching_dir, f"BG_checker_{distance}cm.png")
-        plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
-        print(f"  Saved BG checker ({distance}cm): {filename}")
+        for cpd in checker_cpds:
+            ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
+            req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
+            
+            checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
+            lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
+            pixel_map_v = luminance_to_pixel(lum_map_v, bg_sorted_lums, bg_sorted_pixels)
+            
+            filename = os.path.join(matching_dir, f"BG_checker_{distance}cm_{cpd}cpd.png")
+            plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
+            print(f"  Saved BG checker ({distance}cm, {cpd}cpd): {filename}")
 
 # ==========================================
 # 4. メイン実行ブロック
