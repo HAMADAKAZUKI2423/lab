@@ -454,9 +454,10 @@ class ExperimentApp:
         sigma_pixels = sigma_deg * pixels_per_deg_fg
 
         # --- 動的にマッチング用画像を取得 ---
+        cpd = self.current_block_cond["spatial_freq"]
         matching_dir = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "defocus-matching")
-        fg_img_path = os.path.join(matching_dir, f"FG_checker_{d_fg}cm.png")
-        bg_img_path = os.path.join(matching_dir, f"BG_checker_{d_bg}cm.png")
+        fg_img_path = os.path.join(matching_dir, f"FG_checker_{d_fg}cm_{cpd}cpd.png")
+        bg_img_path = os.path.join(matching_dir, f"BG_checker_{d_bg}cm_{cpd}cpd.png")
 
         # 2. 画像の読み込みと加工
         try:
