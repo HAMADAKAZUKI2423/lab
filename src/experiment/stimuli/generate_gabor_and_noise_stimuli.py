@@ -292,7 +292,7 @@ def generate_noise_stimuli(output_dir, distances, fg_params_list, bg_params_list
                 noise_filename = os.path.join(noise_dir, f"FG_{fg_mean_lum}_{fg_contrast}_BG_{bg_mean_lum}_{bg_contrast}.png")
                 plt.imsave(noise_filename, pixel_map_noise, cmap='gray', vmin=0, vmax=255)
 
-def generate_checkerboard_stimuli(output_dir, distances_fg, distances_bg, calib_data, fg_cpds, bg_cpds):
+def generate_checkerboard_stimuli(output_dir, distances_fg, distances_bg, calib_data):
     """デフォーカスマッチング用のチェッカーボード刺激を生成する"""
     print("\n--- Generating Checkerboard Patches (Defocus Matching) ---")
     fg_sorted_lums, fg_sorted_pixels = calib_data[0]
@@ -301,36 +301,35 @@ def generate_checkerboard_stimuli(output_dir, distances_fg, distances_bg, calib_
     matching_dir = os.path.join(output_dir, "defocus-matching")
     os.makedirs(matching_dir, exist_ok=True)
 
+    cpd = 2  # チェッカーボードの空間周波数 (cpd)
     mean_lum = 15
     contrast = 1.0
 
     # 前景用
     for distance in distances_fg:
-        for cpd in fg_cpds:
-            ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
-            req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
-            
-            checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
-            lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
-            pixel_map_v = luminance_to_pixel(lum_map_v, fg_sorted_lums, fg_sorted_pixels)
-            
-            filename = os.path.join(matching_dir, f"FG_checker_{distance}cm_{cpd}cpd.png")
-            plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
-            print(f"  Saved FG checker ({distance}cm, {cpd}cpd): {filename}")
+        ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
+        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
+        
+        checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
+        lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
+        pixel_map_v = luminance_to_pixel(lum_map_v, fg_sorted_lums, fg_sorted_pixels)
+        
+        filename = os.path.join(matching_dir, f"FG_checker_{distance}cm.png")
+        plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
+        print(f"  Saved FG checker ({distance}cm): {filename}")
 
     # 背景用
     for distance in distances_bg:
-        for cpd in bg_cpds:
-            ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
-            req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
-            
-            checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
-            lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
-            pixel_map_v = luminance_to_pixel(lum_map_v, bg_sorted_lums, bg_sorted_pixels)
-            
-            filename = os.path.join(matching_dir, f"BG_checker_{distance}cm_{cpd}cpd.png")
-            plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
-            print(f"  Saved BG checker ({distance}cm, {cpd}cpd): {filename}")
+        ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
+        req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
+        
+        checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
+        lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
+        pixel_map_v = luminance_to_pixel(lum_map_v, bg_sorted_lums, bg_sorted_pixels)
+        
+        filename = os.path.join(matching_dir, f"BG_checker_{distance}cm.png")
+        plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
+        print(f"  Saved BG checker ({distance}cm): {filename}")
 
 # ==========================================
 # 4. メイン実行ブロック
@@ -412,9 +411,7 @@ if __name__ == "__main__":
         output_dir=OUTPUT_DIR,
         distances_fg=FG_DISTANCES_CM,
         distances_bg=BG_DISTANCES_CM,
-        calib_data=((fg_sorted_lums, fg_sorted_pixels), (bg_sorted_lums, bg_sorted_pixels)),
-        fg_cpds=FG_SPATIAL_FREQS_CPD,
-        bg_cpds=BG_SPATIAL_FREQS_CPD
+        calib_data=((fg_sorted_lums, fg_sorted_pixels), (bg_sorted_lums, bg_sorted_pixels))
     )
 
     print("\n--- 全ての刺激画像の生成が完了しました ---")
