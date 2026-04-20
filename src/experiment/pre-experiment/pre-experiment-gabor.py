@@ -214,6 +214,42 @@ class ExperimentApp:
         self.current_block_cond = self.blocks[self.current_block_index]
         self.current_trial_in_block = 0
         
+        self.setup_block_confirmation_ui()
+
+    def setup_block_confirmation_ui(self):
+        """ブロック開始前の確認画面を表示する"""
+        if hasattr(self, 'ctrl_frame') and self.ctrl_frame.winfo_exists():
+            self.ctrl_frame.destroy()
+        self.canvas1.delete("all")
+        self.canvas2.delete("all")
+
+        # Clear previous key bindings
+        for key, binding_id in self.key_bindings.items():
+            self.root.unbind(key, binding_id)
+        self.key_bindings.clear()
+
+        self.ctrl_frame = tk.Frame(self.root, bg='gray')
+        self.ctrl_frame.place(relx=0.5, rely=0.5, anchor='center')
+
+        v_cond = self.current_block_cond["viewing_condition"]
+        cpd_cond = self.current_block_cond["spatial_freq"]
+        instruction_text = f"Next section is {cpd_cond} cpd, {v_cond}, OK?\n\nPress 'Enter' to continue."
+        
+        tk.Label(self.ctrl_frame, text=instruction_text, 
+                 bg='gray', fg='white', font=("Arial", 16)).pack(pady=20, padx=40)
+
+        btn = tk.Button(self.ctrl_frame, text="OK", command=self._start_calibration_from_confirmation, font=("Arial", 14))
+        btn.pack(pady=10)
+        btn.focus_set()
+        self.key_bindings['<Return>'] = self.root.bind('<Return>', lambda event: self._start_calibration_from_confirmation())
+
+    def _start_calibration_from_confirmation(self):
+        for key, binding_id in self.key_bindings.items():
+            self.root.unbind(key, binding_id)
+        self.key_bindings.clear()
+        
+        if hasattr(self, 'ctrl_frame') and self.ctrl_frame.winfo_exists():
+            self.ctrl_frame.destroy()
         self.setup_calibration_ui(is_new_block=True)
 
     def _reset_to_setup_ui(self):
@@ -403,7 +439,7 @@ class ExperimentApp:
 
         # スライダー (初期値は4.0にリセット)
         self.pupil_diameter_val.set(4.0)
-        slider = tk.Scale(self.ctrl_frame, from_=1.0, to=6.0, resolution=0.1, orient=tk.HORIZONTAL, 
+        slider = tk.Scale(self.ctrl_frame, from_=6.0, to=1.0, resolution=0.1, orient=tk.HORIZONTAL, 
                           length=400, variable=self.pupil_diameter_val, command=self.update_defocus_view)
         slider.pack(pady=10)
 
@@ -457,18 +493,18 @@ class ExperimentApp:
 
     def _handle_defocus_key_press(self, event):
         """Handles key presses for defocus matching UI.
-        Right arrow increases pupil diameter, Left arrow decreases it.
+        Left arrow decreases pupil diameter, Right arrow increases it.
         """
         step = 0.1  # Step for pupil diameter adjustment
         current_pd = self.pupil_diameter_val.get()
         min_val = 1.0
         max_val = 6.0 # From the slider definition in setup_defocus_matching_ui
 
-        if event.keysym == 'Right': # Increase pupil diameter
-            new_val = min(max_val, current_pd + step)
-            self.pupil_diameter_val.set(new_val)
-        elif event.keysym == 'Left': # Decrease pupil diameter
+        if event.keysym == 'Left': # Decrease pupil diameter
             new_val = max(min_val, current_pd - step)
+            self.pupil_diameter_val.set(new_val)
+        elif event.keysym == 'Right': # Increase pupil diameter
+            new_val = min(max_val, current_pd + step)
             self.pupil_diameter_val.set(new_val)
         
         self.update_defocus_view()
