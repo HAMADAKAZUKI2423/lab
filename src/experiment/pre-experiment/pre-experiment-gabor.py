@@ -30,8 +30,8 @@ PUPIL_DIAMETER_MM = 4.0 # 瞳孔径 (mm)
 
 # --- 時間設定 (ミリ秒) ---
 TIME_PHASE_1 = 1600   # Phase 1: Image display only on Win2
-TIME_ISI = 1000        # Phase 2: Inter Stimulus Interval (black screen)
-TIME_PHASE_2 = 1600    # Phase 3: Image display on both windows
+TIME_ISI = 1      # Phase 2: Inter Stimulus Interval (black screen)
+TIME_PHASE_2 = 5000    # Phase 3: Image display on both windows
 
 # --- UIデザイン設定 ---
 BG_COLOR = 'black'     # 全体の背景色
@@ -302,7 +302,7 @@ class ExperimentApp:
         canvas.create_line(tx(x1 - s), y1, tx(x1), y1, fill=color, width=line_width, tags="calib")
         canvas.create_line(tx(x1), y1 - s, tx(x1), y1, fill=color, width=line_width, tags="calib")
 
-    def draw_center_cross(self, canvas, offset_x=0, offset_y=0, color='white'):
+    def draw_center_cross(self, canvas, offset_x=0, offset_y=0, color='white', gap=0):
         """画面中央に一点へ向かう4つの矢尻（棒なし）を描画する"""
         cx = canvas.winfo_width() // 2 + offset_x
         cy = canvas.winfo_height() // 2 + offset_y
@@ -313,10 +313,10 @@ class ExperimentApp:
         d3 = int(CROSS_SIZE * 0.5)  # 幅の半分
 
         # 4方向の矢尻の頂点座標
-        pts_left = [cx, cy, cx - d2, cy - d3, cx - d1, cy, cx - d2, cy + d3]
-        pts_right = [cx, cy, cx + d2, cy - d3, cx + d1, cy, cx + d2, cy + d3]
-        pts_up = [cx, cy, cx - d3, cy - d2, cx, cy - d1, cx + d3, cy - d2]
-        pts_down = [cx, cy, cx - d3, cy + d2, cx, cy + d1, cx + d3, cy + d2]
+        pts_left = [cx - gap, cy, cx - d2 - gap, cy - d3, cx - d1 - gap, cy, cx - d2 - gap, cy + d3]
+        pts_right = [cx + gap, cy, cx + d2 + gap, cy - d3, cx + d1 + gap, cy, cx + d2 + gap, cy + d3]
+        pts_up = [cx, cy - gap, cx - d3, cy - d2 - gap, cx, cy - d1 - gap, cx + d3, cy - d2 - gap]
+        pts_down = [cx, cy + gap, cx - d3, cy + d2 + gap, cx, cy + d1 + gap, cx + d3, cy + d2 + gap]
 
         for pts in [pts_left, pts_right, pts_up, pts_down]:
             canvas.create_polygon(pts, fill=color, outline="black", width=2, tags="calib")
@@ -719,6 +719,7 @@ class ExperimentApp:
         
         # 暗転時以外も白枠を表示
         self.draw_image_corner_brackets(self.canvas2, fg_size, fg_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=True)
+        self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR, gap=30)
         
         # 指定時間後に次のフェーズへ
         self.root.after(TIME_PHASE_1, self.phase_isi)
@@ -753,6 +754,7 @@ class ExperimentApp:
         d_fg = self.distance1.get()
         fg_marker_size = self.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
         self.draw_image_corner_brackets(self.canvas2, fg_marker_size, fg_marker_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=True)
+        self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR, gap=30)
 
         # 指定時間後に次のフェーズへ
         self.root.after(TIME_PHASE_2, self.phase_end_trial)
