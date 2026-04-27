@@ -113,6 +113,9 @@ def finish_eye_defocus_matching(app):
         "pd_mean": sum(app.match_pd_results)/len(app.match_pd_results)
     }
     app.current_calib_eye_idx += 1
+    # Canvas をクリアしてから次のステップへ
+    app.canvas1.delete("all")
+    app.canvas2.delete("all")
     app.start_eye_calibration()
 
 def _handle_defocus_key_press(app, event):
@@ -298,6 +301,10 @@ def _next_defocus_matching_step_gabor(app):
         app.current_pd_std = math.sqrt(sum((x - avg_pd)**2 for x in app.match_pd_results) / (n - 1)) if n > 1 else 0.0
         
         print(f"Average pupil diameter set to: {app.pupil_diameter_val.get()}mm")
+        
+        # Canvas をクリア
+        app.canvas1.delete("all")
+        app.canvas2.delete("all")
         
         # 実験へ
         app.start_experiment_block()

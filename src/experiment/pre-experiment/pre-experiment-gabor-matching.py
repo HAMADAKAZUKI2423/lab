@@ -85,6 +85,20 @@ class ExperimentApp:
         self.photo_ref = None
         self.photo_test = None
 
+        # --- キャリブレーションデータのロード ---
+        fg_calib_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "fg_calibration_log")
+        bg_calib_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "bg_calibration_log")
+        
+        self.fg_lums, self.fg_pixels = self.load_calibration_data(fg_calib_dir)
+        self.bg_lums, self.bg_pixels = self.load_calibration_data(bg_calib_dir)
+        
+        if self.fg_lums is None or self.bg_lums is None:
+            print("Warning: Calibration data not found. Linear mapping will be used.")
+            self.fg_lums = np.array([0.0, 100.0])
+            self.fg_pixels = np.array([0, 255])
+            self.bg_lums = np.array([0.0, 100.0])
+            self.bg_pixels = np.array([0, 255])
+
         # --- ウィンドウのセットアップ ---
         # プライマリモニタのスクリーンサイズを取得
         screen_w = self.root.winfo_screenwidth()
@@ -373,6 +387,67 @@ class ExperimentApp:
         pixel_map = np.clip(lum / 100.0 * 255.0, 0, 255).astype(np.uint8)
         return Image.fromarray(pixel_map, mode='L')
 
+    def load_calibration_data(self, log_dir):
+        lum_pixel_data = {}
+        csv_files = glob.glob(os.path.join(log_dir, "*.csv"))
+        for csv_file in csv_files:
+            try:
+                with open(csv_file, 'r', newline='', encoding='utf-8') as f:
+                    reader = csv.DictReader(f)
+                    for row in reader:
+                        try:
+                            t_lum = float(row["Target_Luminance(cd/m2)"])
+                            p_val = int(row["Pixel_Value"])
+                            lum_pixel_data.setdefault(t_lum, []).append(p_val)
+                        except:
+                            pass
+            except:
+                pass
+        
+        avg_map = []
+        for t_lum, p_list in sorted(lum_pixel_data.items()):
+            if p_list:
+                avg_map.append((t_lum, int(np.round(np.mean(p_list)))))
+                
+        if not avg_map:
+            return None, None
+            
+        lums = np.array([x[0] for x in avg_map])
+        pixels = np.array([x[1] for x in avg_map])
+        return lums, pixels
+
+    def _create_noise_base(self, width_px, height_px, ppd, f_center_cpd, bandwidth_octave=1.0):
+        white_noise = np.random.normal(0, 1, (height_px, width_px))
+        ft_noise = np.fft.fftshift(np.fft.fft2(white_noise))
+        
+        fx = np.fft.fftshift(np.fft.fftfreq(width_px, d=1/ppd))
+        fy = np.fft.fftshift(np.fft.fftfreq(height_px, d=1/ppd))
+        FX, FY = np.meshgrid(fx, fy)
+        R = np.sqrt(FX**2 + FY**2)
+        
+        f_min = f_center_cpd / (2 ** (bandwidth_octave / 2))
+        f_max = f_center_cpd * (2 ** (bandwidth_octave / 2))
+        mask = (R >= f_min) & (R <= f_max)
+        
+        ft_filtered = ft_noise * mask
+        noise_filtered = np.real(np.fft.ifft2(np.fft.ifftshift(ft_filtered)))
+        
+        max_val = np.max(np.abs(noise_filtered))
+        if max_val > 0:
+            noise_filtered = noise_filtered / max_val
+            
+        return noise_filtered
+
+    def _create_gabor_base(self, width_px, height_px, ppd, cpd, orientation=0, phase=0, sigma_deg=1.0):
+        x = np.linspace(-width_px/2, width_px/2, width_px) / ppd
+        y = np.linspace(-height_px/2, height_px/2, height_px) / ppd
+        X, Y = np.meshgrid(x, y)
+        theta = np.deg2rad(orientation)
+        X_rot = X * np.cos(theta) + Y * np.sin(theta)
+        grating = np.sin(2 * np.pi * cpd * X_rot + phase)
+        envelope = np.exp(-(X**2 + Y**2) / (2 * sigma_deg**2))
+        return grating * envelope
+
     def get_size_for_visual_angle(self, distance_cm, angle_deg):
         """指定された視角と距離から、対応するピクセルサイズを計算する"""
         if distance_cm <= 0:
@@ -493,8 +568,8 @@ class ExperimentApp:
             button_command = lambda: defocus_matching.setup_defocus_matching_ui(self)
         else:
             instruction_text = "Use the arrow keys to adjust the position of the red frame."
-            button_text = "Calibration Done, Next"
-            button_command = lambda: defocus_matching.setup_defocus_matching_ui(self)
+            button_text = "Calibration Done, Start Block"
+            button_command = self.start_experiment_block
 
         # 位置調整の指示ラベル
         tk.Label(self.ctrl_frame, text=instruction_text, bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
@@ -589,27 +664,94 @@ class ExperimentApp:
         self.canvas1.configure(bg='black')
         self.canvas2.configure(bg='black')
         
+        d_fg, d_bg = self.distance1, self.distance2
+        ppd_fg = PIXELS_PER_CM * d_fg * math.tan(math.radians(1.0))
+        ppd_bg = PIXELS_PER_CM * d_bg * math.tan(math.radians(1.0))
+        
+        width_deg = 7.9
+        height_deg = 3.95
+        width_fg = int(width_deg * ppd_fg)
+        height_fg = int(height_deg * ppd_fg)
+        width_bg = int(width_deg * ppd_bg)
+        height_bg = int(height_deg * ppd_bg)
+        
+        ori = trial_cond["orientation"]
+        cond = self.current_block_cond["condition"]
+        
+        # 試行ごとのベースモジュレーション(-1~1)を生成してキャッシュ
+        self.gabor_base = self._create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
+        
+        if cond == "OST-AR (dual plane)":
+            self.noise_base = self._create_noise_base(width_bg, height_bg, ppd_bg, self.spatial_freq)
+        else:
+            self.noise_base = self._create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
+        
+        # コントラストマッチング用スライダーUIをセットアップ
+        self.setup_contrast_matching_ui()
+
+    def setup_contrast_matching_ui(self):
+        """コントラストマッチング用UIを構築"""
+        if hasattr(self, 'ctrl_frame') and self.ctrl_frame.winfo_exists():
+            self.ctrl_frame.destroy()
+        
         for key, binding_id in self.key_bindings.items():
             self.root.unbind(key, binding_id)
         self.key_bindings.clear()
         
-        self.key_bindings['<Left>'] = self.root.bind('<Left>', self.decrease_contrast)
-        self.key_bindings['<Right>'] = self.root.bind('<Right>', self.increase_contrast)
-        self.key_bindings['<Down>'] = self.root.bind('<Down>', self.save_and_next)
+        # 操作用UIフレーム
+        self.ctrl_frame = tk.Frame(self.root, bg='gray')
+        self.ctrl_frame.place(relx=0.5, rely=0.8, anchor='center')
+        
+        # スライダー (0.0 - 1.0, 左が1.0, 右が0.0)
+        self.contrast_val = tk.DoubleVar(value=0.5)
+        slider = tk.Scale(self.ctrl_frame, from_=1.0, to=0.0, resolution=0.01, orient=tk.HORIZONTAL,
+                          length=400, variable=self.contrast_val, command=lambda *args: self.update_stimuli())
+        slider.pack(pady=10)
+        
+        # 決定ボタン
+        btn = tk.Button(self.ctrl_frame, text="Next Trial", command=self.save_and_next)
+        btn.pack(pady=10)
+        btn.focus_set()
+        self.key_bindings['<Down>'] = self.root.bind('<Down>', lambda event: self.save_and_next())
+        
+        # 指示
+        instruction_text = "Adjust the slider (Left/Right arrow keys) to match the contrast.\nPress 'Down' arrow to confirm."
+        tk.Label(self.ctrl_frame, text=instruction_text,
+                 bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
+        
+        # Bind keys for contrast adjustment
+        self.key_bindings['<Left>'] = self.root.bind('<Left>', lambda e: self._handle_contrast_key_press(e))
+        self.key_bindings['<Right>'] = self.root.bind('<Right>', lambda e: self._handle_contrast_key_press(e))
         self.root.focus_set()
         
+        # 初回表示
         self.update_stimuli()
+    
+    def _handle_contrast_key_press(self, event):
+        """コントラスト調整用キープレスハンドラ"""
+        step = 0.01
+        current_val = self.contrast_val.get()
+        min_val = 0.0
+        max_val = 1.0
+        
+        if event.keysym == 'Left':  # 左矢印: 値を減少させる (1.0->0.0方向) -> スライダーが右に移動
+            new_val = max(min_val, current_val - step)
+            self.contrast_val.set(new_val)
+        elif event.keysym == 'Right':  # 右矢印: 値を増加させる (0.0->1.0方向) -> スライダーが左に移動
+            new_val = min(max_val, current_val + step)
+            self.contrast_val.set(new_val)
+        
+        self.update_stimuli()
+        return "break"
 
-    def decrease_contrast(self, event=None):
-        self.knob_val -= 0.05
-        self.update_stimuli()
-        
-    def increase_contrast(self, event=None):
-        self.knob_val += 0.05
-        self.update_stimuli()
-        
+        return "break"
+
     def update_stimuli(self):
-        c_test = min(1.0, max(0.001, math.exp(self.knob_val)))
+        # スライダーがある場合はそこからコントラスト値を取得
+        if hasattr(self, 'contrast_val'):
+            c_test = self.contrast_val.get()
+        else:
+            c_test = min(1.0, max(0.001, math.exp(self.knob_val)))
         trial = self.trial_list[self.current_trial_in_block]
         ori = trial["orientation"]
         ref_c = trial["ref_contrast"]
@@ -619,11 +761,9 @@ class ExperimentApp:
         ppd_fg = PIXELS_PER_CM * d_fg * math.tan(math.radians(1.0))
         ppd_bg = PIXELS_PER_CM * d_bg * math.tan(math.radians(1.0))
         
-        size_fg = int(VISUAL_ANGLE_DEG * ppd_fg)
-        size_bg = int(VISUAL_ANGLE_DEG * ppd_bg)
-        gap_deg = 5.0
-        gap_fg = int(gap_deg * ppd_fg)
-        gap_bg = int(gap_deg * ppd_bg)
+        gap_y_deg = 2.0
+        gap_y_fg = int(gap_y_deg * ppd_fg)
+        gap_y_bg = int(gap_y_deg * ppd_bg)
         
         blur_sigma = 0.0
         if cond == "Single plane + defocus simulation":
@@ -637,35 +777,76 @@ class ExperimentApp:
         self.canvas2.delete("calib")
         
         cx1, cy1 = self.width//2 + self.offset_x.get(), self.height//2 + self.offset_y.get()
-        cx2, cy2 = self.width//2, self.height//2
+        cx2, cy2 = self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2
+        
+        # 実験での物理輝度設定 (cd/m^2)
+        L_fg = 35.0
+        L_bg = 15.0
+        C_bg = 1.0
+        
+        # Ref (Foreground only, Top)
+        lum_ref_fg = L_fg * (1.0 + ref_c * self.gabor_base)
+        if cond == "Single plane + defocus simulation" and blur_sigma > 0:
+            img_f = Image.fromarray(lum_ref_fg.astype(np.float32), mode='F')
+            img_f = img_f.filter(ImageFilter.GaussianBlur(radius=blur_sigma))
+            lum_ref_fg = np.array(img_f)
+        pix_ref_fg = np.interp(lum_ref_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
+        img_ref_fg = Image.fromarray(pix_ref_fg, mode='L')
+        self.photo_ref_fg = ImageTk.PhotoImage(img_ref_fg)
         
         if cond == "OST-AR (dual plane)":
-            img_ref = self.create_gabor_image(size_bg, ppd_bg, self.spatial_freq, ref_c, ori, blur_sigma=0)
-            img_test = self.create_gabor_image(size_fg, ppd_fg, self.spatial_freq, c_test, ori, blur_sigma=0)
-            self.photo_ref = ImageTk.PhotoImage(img_ref)
-            img_test = img_test.transpose(Image.FLIP_LEFT_RIGHT)
-            self.photo_test = ImageTk.PhotoImage(img_test)
-            self.canvas1.create_image(cx1 - gap_bg, cy1, image=self.photo_ref, tags="stim")
-            self.canvas2.create_image(cx2 - gap_fg, cy2, image=self.photo_test, tags="stim")
-            self.draw_center_cross(self.canvas1, offset_x=self.offset_x.get(), offset_y=self.offset_y.get(), color=WIN1_MARKER_COLOR)
+            # Test: Gabor on Foreground, Noise on Background (Bottom)
+            lum_test_fg = L_fg * (1.0 + c_test * self.gabor_base)
+            pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
+            img_test_fg = Image.fromarray(pix_test_fg, mode='L')
+            
+            lum_noise_bg = L_bg * (1.0 + C_bg * self.noise_base)
+            pix_noise_bg = np.interp(lum_noise_bg, self.bg_lums, self.bg_pixels).astype(np.uint8)
+            img_noise_bg = Image.fromarray(pix_noise_bg, mode='L')
+            
+            self.photo_test_fg = ImageTk.PhotoImage(img_test_fg)
+            self.photo_noise_bg = ImageTk.PhotoImage(img_noise_bg)
+            
+            # Draw
+            self.canvas2.create_image(cx2, cy2 - gap_y_fg, image=self.photo_ref_fg, anchor='center', tags="stim")
+            
+            self.canvas1.create_image(cx1, cy1 + gap_y_bg, image=self.photo_noise_bg, anchor='center', tags="stim")
+            self.canvas2.create_image(cx2, cy2 + gap_y_fg, image=self.photo_test_fg, anchor='center', tags="stim")
         else:
-            img_ref = self.create_gabor_image(size_fg, ppd_fg, self.spatial_freq, ref_c, ori, blur_sigma=blur_sigma)
-            img_test = self.create_gabor_image(size_fg, ppd_fg, self.spatial_freq, c_test, ori, blur_sigma=0)
-            img_ref = img_ref.transpose(Image.FLIP_LEFT_RIGHT)
-            img_test = img_test.transpose(Image.FLIP_LEFT_RIGHT)
-            self.photo_ref = ImageTk.PhotoImage(img_ref)
+            # Single plane (Bottom)
+            lum_noise = L_bg * (1.0 + C_bg * self.noise_base)
+            
+            lum_test_fg = L_fg * (1.0 + c_test * self.gabor_base)
+            if cond == "Single plane + defocus simulation" and blur_sigma > 0:
+                img_f = Image.fromarray(lum_test_fg.astype(np.float32), mode='F')
+                img_f = img_f.filter(ImageFilter.GaussianBlur(radius=blur_sigma))
+                lum_test_fg = np.array(img_f)
+                
+            lum_test_total = lum_noise + lum_test_fg
+            pix_test = np.interp(lum_test_total, self.fg_lums, self.fg_pixels).astype(np.uint8)
+            img_test = Image.fromarray(pix_test, mode='L')
+            
             self.photo_test = ImageTk.PhotoImage(img_test)
-            self.canvas2.create_image(cx2 + gap_fg, cy2, image=self.photo_ref, tags="stim")
-            self.canvas2.create_image(cx2 - gap_fg, cy2, image=self.photo_test, tags="stim")
-        self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
+            
+            # Draw
+            self.canvas2.create_image(cx2, cy2 - gap_y_fg, image=self.photo_ref_fg, anchor='center', tags="stim")
+            self.canvas2.create_image(cx2, cy2 + gap_y_fg, image=self.photo_test, anchor='center', tags="stim")
 
     def save_and_next(self, event=None):
         """評価データを保存し、次の試行に進む"""
+        # UIをクリア
+        if hasattr(self, 'ctrl_frame') and self.ctrl_frame.winfo_exists():
+            self.ctrl_frame.destroy()
+        
         for key, binding_id in self.key_bindings.items():
             self.root.unbind(key, binding_id)
         self.key_bindings.clear()
         
-        c_test = min(1.0, max(0.001, math.exp(self.knob_val)))
+        # スライダーがある場合はそこからコントラスト値を取得
+        if hasattr(self, 'contrast_val'):
+            c_test = self.contrast_val.get()
+        else:
+            c_test = min(1.0, max(0.001, math.exp(self.knob_val)))
         trial = self.trial_list[self.current_trial_in_block]
         
         right_res = self.calib_results.get("Right", {"offset_x": 0, "offset_y": 0, "pd_mean": 0})
