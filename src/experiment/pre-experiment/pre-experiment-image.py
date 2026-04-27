@@ -8,6 +8,7 @@ from PIL import Image, ImageTk, ImageEnhance, ImageFilter
 import glob
 import random
 import math
+import defocus_matching
 
 # ==========================================
 # 定数設定エリア (実験条件やデザインはここを変更)
@@ -22,7 +23,7 @@ IMG_DIR_2 = os.path.join(lab_root, "data", "processed", "images", "pre-experimen
 RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-image")
 
 # --- デフォーカスマッチング設定 ---
-DEFOCUS_BLUR_SCALE_FACTOR = 0.55
+# DEFOCUS_BLUR_SCALE_FACTOR = 0.55  # defocus_matching.py に移動
 PUPIL_DIAMETER_MM = 4.0 # 瞳孔径 (mm)
 
 
@@ -277,7 +278,7 @@ class ExperimentApp:
         else:
             instruction_text = "Use the arrow keys to adjust the position of the red frame."
             button_text = "Calibration Done, Next"
-            button_command = self.setup_defocus_matching_ui
+            button_command = lambda: defocus_matching.setup_defocus_matching_ui_image(self)
 
         # 位置調整の指示ラベル
         tk.Label(self.ctrl_frame, text=instruction_text, bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
@@ -304,7 +305,7 @@ class ExperimentApp:
         self.canvas1.delete("all")
         self.canvas2.delete("all")
         self.setup_calibration_ui(is_break=True)
-    def setup_defocus_matching_ui(self):
+    # Defocus matching methods moved to defocus_matching.py
         """ステップ2: デフォーカスマッチング用UIを構築し表示する"""
         if hasattr(self, 'ctrl_frame') and self.ctrl_frame.winfo_exists():
             self.ctrl_frame.destroy()
