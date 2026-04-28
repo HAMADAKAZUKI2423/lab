@@ -10,6 +10,7 @@ import glob
 import random
 import math
 import numpy as np
+import torch
 import defocus_matching
 import stimuli_utils
 
@@ -41,6 +42,51 @@ WIN1_MARKER_COLOR = 'red'      # Window 1 (被験者側) のマーカー色
 WIN2_MARKER_COLOR = 'white'    # Window 2 (実験者側) のマーカー色
 
 # ==========================================
+
+def apply_torch_fft_blur_luminance(lum_np, D, pd_mm, pixels_per_deg):
+    """optics_model.pyに基づくFFTを用いたデフォーカスブラー適用関数 (輝度配列用)"""
+    if D <= 0 or pd_mm <= 0:
+        return lum_np
+        
+    rad2deg = 180.0 / math.pi
+    mm = 1e-3
+    bd_deg = rad2deg * D * pd_mm * mm
+    DEFOCUS_BLUR_SCALE_FACTOR = 0.55
+    sigma = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
+    
+    if sigma <= 0:
+        return lum_np
+        
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    img_tensor = torch.from_numpy(lum_np.astype(np.float32)).to(device)
+    h, w = img_tensor.shape[-2:]
+    
+    x_deg = torch.linspace(-w/2/pixels_per_deg, w/2/pixels_per_deg, w).to(device)
+    y_deg = torch.linspace(-h/2/pixels_per_deg, h/2/pixels_per_deg, h).to(device)
+    Y_deg, X_deg = torch.meshgrid(y_deg, x_deg, indexing='ij')
+    
+    psf = torch.exp(-((torch.sqrt(X_deg**2 + Y_deg**2)) ** 2) / (2 * sigma ** 2))
+    psf = psf / torch.sum(psf)
+    
+    def FT2(tensor):
+        tensor_shift = torch.fft.ifftshift(tensor, dim=(-2,-1))
+        tensor_ft_shift = torch.fft.fft2(tensor_shift, norm='ortho')
+        return torch.fft.fftshift(tensor_ft_shift, dim=(-2,-1))
+
+    def iFT2(tensor):
+        tensor_shift = torch.fft.ifftshift(tensor, dim=(-2,-1))
+        tensor_ift_shift = torch.fft.ifft2(tensor_shift, norm='ortho')
+        return torch.fft.fftshift(tensor_ift_shift, dim=(-2,-1))
+
+    img_ft = FT2(img_tensor)
+    psf_ft = FT2(psf)
+    blur_tensor = torch.abs(iFT2(img_ft * psf_ft))
+    
+    # エネルギー保存則（輝度値のスケールを保つ）
+    blur_tensor = blur_tensor * torch.sum(img_tensor) / (torch.sum(blur_tensor) + 1e-8)
+        
+    return blur_tensor.cpu().numpy()
 
 class ExperimentApp:
     def __init__(self, root):
@@ -418,7 +464,7 @@ class ExperimentApp:
         self.update_calibration_view()
         return "break" # デフォルトのイベント処理（スライダーの移動など）を停止する
 
-    def setup_calibration_ui(self, is_break=False, is_new_eye=False):
+    def setup_calibration_ui(self, is_new_eye=False):
         """ステップ1: キャリブレーション用UIを構築し表示する"""
         self.update_calibration_view()
         
@@ -434,11 +480,7 @@ class ExperimentApp:
             self.root.unbind(key, binding_id)
         self.key_bindings.clear()
 
-        if is_break:
-            instruction_text = "This is a break. You can adjust the position if needed.\nPress 'Resume Experiment' to continue."
-            button_text = "Resume Experiment"
-            button_command = self.resume_experiment
-        elif is_new_eye:
+        if is_new_eye:
             eye = self.calibration_eyes[self.current_calib_eye_idx]
             instruction_text = f"[{eye} Eye Calibration]\nUse the arrow keys to adjust the position of the red frame."
             button_text = "Calibration Done, Next"
@@ -462,18 +504,6 @@ class ExperimentApp:
         self.key_bindings['<Down>'] = self.root.bind('<Down>', lambda e: self.adjust_offset(0, 1))
         self.root.focus_set()
 
-    def resume_experiment(self):
-        """休憩を終了し、実験を再開する"""
-        self.ctrl_frame.destroy()
-        self.canvas1.delete("all")
-        self.canvas2.delete("all")
-        self.run_trial()
-
-    def start_break(self):
-        """休憩を開始し、キャリブレーションUIを表示する"""
-        self.canvas1.delete("all")
-        self.canvas2.delete("all")
-        self.setup_calibration_ui(is_break=True)
     # def setup_defocus_matching_ui(self):  # 削除済み、defocus_matching.py に移動
     # ... (methods moved to defocus_matching.py)
 
@@ -560,6 +590,16 @@ class ExperimentApp:
         else:
             self.noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
         
+        # キャッシュ処理を追加 (スライダー操作時のFFT再計算によるUI遅延を防ぐため)
+        L_bg = 15.0
+        C_bg = 1.0
+        lum_noise_temp = L_bg * (1.0 + C_bg * self.noise_base)
+        if cond == "Single plane + defocus simulation":
+            D = abs(1/(self.distance1/100.0) - 1/(self.distance2/100.0))
+            self.cached_lum_noise = apply_torch_fft_blur_luminance(lum_noise_temp, D, self.current_pd_mean, ppd_fg)
+        else:
+            self.cached_lum_noise = lum_noise_temp
+            
         # コントラストマッチング用スライダーUIをセットアップ
         self.setup_contrast_matching_ui()
 
@@ -635,12 +675,6 @@ class ExperimentApp:
         gap_y_fg = int(gap_y_deg * ppd_fg)
         gap_y_bg = int(gap_y_deg * ppd_bg)
         
-        blur_sigma = 0.0
-        if cond == "Single plane + defocus simulation":
-            D = abs(1/0.5 - 1/0.77)
-            bd_deg = D * self.current_pd_mean * (180.0 / math.pi) / 1000.0
-            blur_sigma = 0.55 * bd_deg / 2.0 * ppd_fg
-            
         self.canvas1.delete("stim")
         self.canvas2.delete("stim")
         self.canvas1.delete("calib")
@@ -656,10 +690,6 @@ class ExperimentApp:
         
         # Ref (Foreground only, Top)
         lum_ref_fg = L_fg * (1.0 + ref_c * self.gabor_base)
-        if cond == "Single plane + defocus simulation" and blur_sigma > 0:
-            img_f = Image.fromarray(lum_ref_fg.astype(np.float32), mode='F')
-            img_f = img_f.filter(ImageFilter.GaussianBlur(radius=blur_sigma))
-            lum_ref_fg = np.array(img_f)
         pix_ref_fg = np.interp(lum_ref_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
         img_ref_fg = Image.fromarray(pix_ref_fg, mode='L')
         self.photo_ref_fg = ImageTk.PhotoImage(img_ref_fg)
@@ -670,7 +700,7 @@ class ExperimentApp:
             pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
             img_test_fg = Image.fromarray(pix_test_fg, mode='L')
             
-            lum_noise_bg = L_bg * (1.0 + C_bg * self.noise_base)
+            lum_noise_bg = self.cached_lum_noise
             pix_noise_bg = np.interp(lum_noise_bg, self.bg_lums, self.bg_pixels).astype(np.uint8)
             img_noise_bg = Image.fromarray(pix_noise_bg, mode='L')
             
@@ -684,13 +714,9 @@ class ExperimentApp:
             self.canvas2.create_image(cx2, cy2 + gap_y_fg, image=self.photo_test_fg, anchor='center', tags="stim")
         else:
             # Single plane (Bottom)
-            lum_noise = L_bg * (1.0 + C_bg * self.noise_base)
+            lum_noise = self.cached_lum_noise
             
             lum_test_fg = L_fg * (1.0 + c_test * self.gabor_base)
-            if cond == "Single plane + defocus simulation" and blur_sigma > 0:
-                img_f = Image.fromarray(lum_test_fg.astype(np.float32), mode='F')
-                img_f = img_f.filter(ImageFilter.GaussianBlur(radius=blur_sigma))
-                lum_test_fg = np.array(img_f)
                 
             lum_test_total = lum_noise + lum_test_fg
             pix_test = np.interp(lum_test_total, self.fg_lums, self.fg_pixels).astype(np.uint8)
@@ -739,8 +765,6 @@ class ExperimentApp:
             self.current_block_index += 1
             if self.current_block_index >= len(self.blocks):
                 self.finish_experiment()
-            elif self.current_block_index % 2 == 0:
-                self.root.after(500, self.start_break)
             else:
                 self.root.after(500, self.start_block)
         else:

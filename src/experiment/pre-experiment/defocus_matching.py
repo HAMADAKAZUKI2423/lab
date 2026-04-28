@@ -7,6 +7,8 @@ import random
 import math
 from PIL import Image, ImageTk, ImageFilter
 import stimuli_utils
+import numpy as np
+import torch
 
 # --- デフォーカスマッチング設定 ---
 DEFOCUS_BLUR_SCALE_FACTOR = 0.55
@@ -16,6 +18,68 @@ MARKER_LINE_WIDTH = 5  # マーカーの線の太さ
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+
+def apply_torch_fft_blur(img_pil, D, pd_mm, pixels_per_deg):
+    """optics_model.pyに基づくFFTを用いたデフォーカスブラー適用関数"""
+    if D <= 0 or pd_mm <= 0:
+        return img_pil
+        
+    rad2deg = 180.0 / math.pi
+    mm = 1e-3
+    bd_deg = rad2deg * D * pd_mm * mm
+    sigma = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
+    
+    if sigma <= 0:
+        return img_pil
+        
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    img_np = np.array(img_pil).astype(np.float32)
+    is_rgb = len(img_np.shape) == 3
+    
+    if is_rgb:
+        img_np = np.transpose(img_np, (2, 0, 1)) # HWC to CHW
+        
+    img_tensor = torch.from_numpy(img_np).to(device)
+    h, w = img_tensor.shape[-2:]
+    
+    x_deg = torch.linspace(-w/2/pixels_per_deg, w/2/pixels_per_deg, w).to(device)
+    y_deg = torch.linspace(-h/2/pixels_per_deg, h/2/pixels_per_deg, h).to(device)
+    Y_deg, X_deg = torch.meshgrid(y_deg, x_deg, indexing='ij')
+    
+    psf = torch.exp(-((torch.sqrt(X_deg**2 + Y_deg**2)) ** 2) / (2 * sigma ** 2))
+    psf = psf / torch.sum(psf)
+    
+    def FT2(tensor):
+        tensor_shift = torch.fft.ifftshift(tensor, dim=(-2,-1))
+        tensor_ft_shift = torch.fft.fft2(tensor_shift, norm='ortho')
+        return torch.fft.fftshift(tensor_ft_shift, dim=(-2,-1))
+
+    def iFT2(tensor):
+        tensor_shift = torch.fft.ifftshift(tensor, dim=(-2,-1))
+        tensor_ift_shift = torch.fft.ifft2(tensor_shift, norm='ortho')
+        return torch.fft.fftshift(tensor_ift_shift, dim=(-2,-1))
+
+    if is_rgb:
+        psf = psf.unsqueeze(0)
+        
+    img_ft = FT2(img_tensor)
+    psf_ft = FT2(psf)
+    blur_tensor = torch.abs(iFT2(img_ft * psf_ft))
+    
+    if is_rgb:
+        for c in range(3):
+            blur_tensor[c] = blur_tensor[c] * torch.sum(img_tensor[c]) / (torch.sum(blur_tensor[c]) + 1e-8)
+    else:
+        blur_tensor = blur_tensor * torch.sum(img_tensor) / (torch.sum(blur_tensor) + 1e-8)
+        
+    blur_np = blur_tensor.cpu().numpy()
+    
+    if is_rgb:
+        blur_np = np.transpose(blur_np, (1, 2, 0)) # CHW to HWC
+        
+    blur_np = np.clip(blur_np, 0, 255).astype(np.uint8)
+    return Image.fromarray(blur_np, mode=img_pil.mode)
 
 def setup_defocus_matching_ui(app):
     """ステップ2: デフォーカスマッチング用UIを構築し表示する"""
@@ -157,14 +221,9 @@ def update_defocus_view(app):
     else:
         D = abs(1/d_fg_m - 1/d_bg_m)
 
-    # 2. スライダーで調整した瞳孔径(mm)とディオプトリ差から、ぼけのsigma(pixel)を計算
     pd_mm = app.pupil_diameter_val.get()
-    bd_deg = D * pd_mm * (180.0 / math.pi) / 1000.0
-    sigma_deg = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
     
-    # pixels_per_deg を簡易計算 (1度あたりのピクセル数)
     pixels_per_deg_fg = stimuli_utils.get_size_for_visual_angle(d_fg, 1.0)
-    sigma_pixels = sigma_deg * pixels_per_deg_fg
 
     pattern_name, cpd = app.defocus_match_patterns[app.current_match_idx]
     
@@ -185,10 +244,9 @@ def update_defocus_view(app):
         print(f"Error loading matching BG image: {e}")
 
     img_fg = img_fg.resize((fg_size, fg_size // 2), Image.LANCZOS)
+    img_fg = apply_torch_fft_blur(img_fg, D, pd_mm, pixels_per_deg_fg)
     img_bg = img_bg.resize((bg_size, bg_size // 2), Image.LANCZOS)
     
-    if sigma_pixels > 0:
-        img_fg = img_fg.filter(ImageFilter.GaussianBlur(radius=sigma_pixels))
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT) # 実験者ビュー用に左右反転
 
     dy_fg = fg_size // 4
@@ -345,14 +403,9 @@ def update_defocus_view_gabor(app):
     else:
         D = abs(1/d_fg_m - 1/d_bg_m)
 
-    # 2. スライダーで調整した瞳孔径(mm)とディオプトリ差から、ぼけのsigma(pixel)を計算
     pd_mm = app.pupil_diameter_val.get()
-    bd_deg = D * pd_mm * (180.0 / math.pi) / 1000.0
-    sigma_deg = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
     
-    # pixels_per_deg を簡易計算
     pixels_per_deg_fg = app.get_size_for_visual_angle(d_fg, 1.0)
-    sigma_pixels = sigma_deg * pixels_per_deg_fg
 
     # 動的にマッチング用画像を取得
     cpd = app.defocus_match_cpds[app.current_match_idx]
@@ -375,8 +428,7 @@ def update_defocus_view_gabor(app):
 
     # 前景用 (Blurred)
     img_fg = img_fg.resize((fg_size, fg_size // 2), Image.LANCZOS)
-    if sigma_pixels > 0:
-        img_fg = img_fg.filter(ImageFilter.GaussianBlur(radius=sigma_pixels))
+    img_fg = apply_torch_fft_blur(img_fg, D, pd_mm, pixels_per_deg_fg)
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT)
 
     # 背景用 (Sharp)
@@ -505,8 +557,7 @@ def update_defocus_view_image(app):
         print(f"Error loading matching BG image: {e}")
 
     img_fg = img_fg.resize((fg_size, fg_size // 2), Image.LANCZOS)
-    if sigma_pixels > 0:
-        img_fg = img_fg.filter(ImageFilter.GaussianBlur(radius=sigma_pixels))
+    img_fg = apply_torch_fft_blur(img_fg, D, PUPIL_DIAMETER_MM, pixels_per_deg_fg)
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT)
 
     img_bg = img_bg.resize((bg_size, bg_size // 2), Image.LANCZOS)
