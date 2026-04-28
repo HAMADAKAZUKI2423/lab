@@ -258,11 +258,17 @@ for dist in unique_distances:
         summary_df = subset_df.groupby(['lum_combination', 'cpd_contrast_combination'])['Score'].mean().reset_index()
         pivot_table = summary_df.pivot(index='cpd_contrast_combination', columns='lum_combination', values='Score')
 
-        # ユーザー指定の軸の順序を定義
         # X軸: (bg_lum, fg_lum)
         x_order = [(5.0, 5.0), (15.0, 5.0), (5.0, 50.0), (15.0, 50.0)]
-        # Y軸: (bg_cpd, bg_contrast)
-        y_order = [(2.0, 0.0), (2.0, 1.0), (8.0, 0.0), (8.0, 1.0)]
+
+        # Y軸の順序をデータから動的に生成
+        # 空間周波数(cpd)で昇順、次に背景コントラストで昇順
+        unique_cpds = sorted(subset_df['bg_cpd'].unique())
+        unique_contrasts = sorted(subset_df['bg_contrast'].unique())
+        y_order = []
+        for cpd in unique_cpds:
+            for contrast in unique_contrasts:
+                y_order.append((cpd, contrast))
 
         # データに存在するカテゴリのみで順序を再定義
         x_order_present = [cat for cat in x_order if cat in pivot_table.columns]
