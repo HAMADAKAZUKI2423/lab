@@ -1,6 +1,7 @@
 # py .\src\experiment\pre-analyze\pre-analyze-matching.py
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import seaborn as sns
 import os
 import glob
@@ -120,7 +121,7 @@ for ref_c in unique_ref_contrasts:
                         d = subset['Matched_Contrast'].std() 
                         
                         x = p.get_x() + p.get_width() / 2
-                        y = 0.02  # バーの足元付近
+                        y = 0.1  # バーの足元付近 (ログスケールに合わせて調整)
                         
                         ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
                                 bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
@@ -130,9 +131,14 @@ for ref_c in unique_ref_contrasts:
     ax.set_title(f'Matched Contrast by Condition and Ocularity (Ref Contrast: {ref_c})', fontsize=14)
     ax.set_ylabel('Matched Contrast', fontsize=12)
     ax.set_xlabel('Condition', fontsize=12)
-    ax.set_ylim(0, 1.0) # コントラストは0.0〜1.0なので固定すると見やすい
+    ax.set_yscale('log') # 縦軸をログスケールに設定
+    ax.set_ylim(0.1, 1.0) # コントラストの最小値を0.1に固定
     
-    # x軸のラベルを見やすく改行
+    # y軸の数字を指数表記ではなく通常の小数表記にし、目盛りを細かく表示する
+    ax.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+    
+    # x軸のラベルをそのまま表示（回転なし）
     labels = ax.get_xticklabels()
     ax.set_xticklabels(labels)
     
