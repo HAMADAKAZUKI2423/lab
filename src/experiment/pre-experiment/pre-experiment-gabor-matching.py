@@ -25,6 +25,9 @@ lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-matching")
 if not os.path.exists(RESULT_DIR):
     os.makedirs(RESULT_DIR)
+FIGURE_DIR = os.path.join(lab_root, "results", "figures", "pre-experiment-matching")
+if not os.path.exists(FIGURE_DIR):
+    os.makedirs(FIGURE_DIR)
 PARTICIPANT_DATA_DIR = os.path.join(lab_root, "data", "processed", "tables", "pre-experiment-matching")
 if not os.path.exists(PARTICIPANT_DATA_DIR):
     os.makedirs(PARTICIPANT_DATA_DIR)
@@ -309,6 +312,63 @@ class ExperimentApp:
         self.pupil_diameter_val.set(4.0)
         self.setup_calibration_ui(is_new_eye=True)
 
+    def save_preview_images(self):
+        """デフォーカスの効き方などの確認用画像を保存する"""
+        now = datetime.datetime.now()
+        date_str = now.strftime("%Y%m%d_%H%M%S")
+        save_dir = os.path.join(FIGURE_DIR, date_str)
+        if not os.path.exists(save_dir):
+            os.makedirs(save_dir)
+            
+        d_fg, d_bg = self.distance1, self.distance2
+        ppd_fg = stimuli_utils.PIXELS_PER_CM * d_fg * math.tan(math.radians(1.0))
+        
+        width_deg = 7.9
+        height_deg = 3.95
+        width_fg = int(width_deg * ppd_fg)
+        height_fg = int(height_deg * ppd_fg)
+        
+        ori = 0
+        gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
+        noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
+        
+        L_fg = 35.0
+        L_bg = 15.0
+        C_bg = 1.0
+        L_ref = 50.0
+        
+        # 1. refのガボールパッチ (0.2, 0.5)
+        for ref_c in [0.2, 0.5]:
+            lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
+            pix_ref_fg = np.interp(lum_ref_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
+            Image.fromarray(pix_ref_fg, mode='L').save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
+            
+        # 2. single plane (テスト用コントラスト 0.5)
+        c_test = 0.5
+        lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
+        pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
+        Image.fromarray(pix_test_fg, mode='L').save(os.path.join(save_dir, "single_plane_foreground.png"))
+        
+        lum_noise = L_bg * (1.0 + C_bg * noise_base)
+        pix_noise = np.interp(lum_noise, self.fg_lums, self.fg_pixels).astype(np.uint8)
+        Image.fromarray(pix_noise, mode='L').save(os.path.join(save_dir, "single_plane_background.png"))
+        
+        lum_total = lum_noise + lum_test_fg
+        pix_total = np.interp(lum_total, self.fg_lums, self.fg_pixels).astype(np.uint8)
+        Image.fromarray(pix_total, mode='L').save(os.path.join(save_dir, "single_plane_combined.png"))
+        
+        # 3. single plane + defocus matching
+        D = abs(1/(self.distance1/100.0) - 1/(self.distance2/100.0))
+        pd_mm = self.current_pd_mean if self.current_pd_mean > 0 else 4.0
+            
+        lum_noise_defocus = apply_torch_fft_blur_luminance(lum_noise, D, pd_mm, ppd_fg)
+        pix_noise_defocus = np.interp(lum_noise_defocus, self.fg_lums, self.fg_pixels).astype(np.uint8)
+        Image.fromarray(pix_noise_defocus, mode='L').save(os.path.join(save_dir, "single_plane_defocus_background.png"))
+        
+        lum_total_defocus = lum_noise_defocus + lum_test_fg
+        pix_total_defocus = np.interp(lum_total_defocus, self.fg_lums, self.fg_pixels).astype(np.uint8)
+        Image.fromarray(pix_total_defocus, mode='L').save(os.path.join(save_dir, "single_plane_defocus_combined.png"))
+
     def setup_experiment_blocks(self):
         dom_eye = self.participant_dominance.get()
         if dom_eye not in self.calib_results:
@@ -316,6 +376,9 @@ class ExperimentApp:
         self.offset_x.set(self.calib_results[dom_eye]["offset_x"])
         self.offset_y.set(self.calib_results[dom_eye]["offset_y"])
         self.current_pd_mean = self.calib_results[dom_eye]["pd_mean"]
+        
+        # --- 実験で使用される刺激のプレビューを保存 ---
+        self.save_preview_images()
         
         conditions = ["Single plane", "Single plane + defocus simulation", "OST-AR (dual plane)"]
         ocularities = ["monocular", "binocular"]
