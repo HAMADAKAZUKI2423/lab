@@ -272,7 +272,11 @@ for dist in unique_distances:
 
         # データに存在するカテゴリのみで順序を再定義
         x_order_present = [cat for cat in x_order if cat in pivot_table.columns]
-        y_order_present = [cat for cat in y_order if cat in pivot_table.index]
+        
+        # Y軸: (bg_cpd, bg_contrast) データから動的に取得
+        # 下から順に低い空間周波数が並ぶように、空間周波数(x[0])は降順、コントラスト(x[1])は昇順でソート
+        # (imshowのデフォルトではインデックス0が一番上に描画されるため)
+        y_order_present = sorted(pivot_table.index.tolist(), key=lambda x: (-x[0], x[1]))
 
         # reindexで並べ替えと欠損値のNaN埋め
         pivot_table = pivot_table.reindex(index=y_order_present, columns=x_order_present)
