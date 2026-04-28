@@ -144,7 +144,7 @@ for ref_c in unique_ref_contrasts:
     
     # 凡例の設定
     handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0, 1), loc='upper left', borderaxespad=0.5)
+    ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0, 0.25), loc='upper left', borderaxespad=0.5)
     
     plt.tight_layout()
     
