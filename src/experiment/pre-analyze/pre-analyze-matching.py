@@ -74,7 +74,7 @@ print("\n--- Generating bar charts ---")
         
 # 描画用の設定
 sns.set_theme(style="whitegrid")
-condition_order = ["Single plane", "Single plane + defocus simulation", "OST-AR (dual plane)"]
+condition_order = ["Single plane", "Single plane + defocus simulation", "OST-AR"]
 ocularity_order = ["monocular", "binocular"]
 
 unique_ref_contrasts = sorted(final_df['Ref_Contrast'].dropna().unique(), reverse=True)
@@ -104,6 +104,28 @@ for ref_c in unique_ref_contrasts:
     # Ref_Contrastの値の高さに横方向の点線を引く
     ax.axhline(y=ref_c, color='red', linestyle='--', linewidth=2, label=f'Ref Contrast ({ref_c})')
     
+    # 各バーの足元（内側）に平均(m)と分散/標準偏差(d)を記入
+    patch_idx = 0
+    for oc in ocularity_order:
+        for cond in condition_order:
+            if patch_idx < len(ax.patches):
+                p = ax.patches[patch_idx]
+                height = p.get_height()
+                if pd.notna(height) and height > 0:
+                    subset = plot_df[(plot_df['Ocularity'] == oc) & (plot_df['Condition'] == cond)]
+                    if not subset.empty:
+                        m = subset['Matched_Contrast'].mean()
+                        # "d" は標準偏差 (Standard Deviation) と解釈して std() を使用しています。
+                        # もし厳密な分散 (Variance) を表示したい場合は .std() を .var() に変更してください。
+                        d = subset['Matched_Contrast'].std() 
+                        
+                        x = p.get_x() + p.get_width() / 2
+                        y = 0.02  # バーの足元付近
+                        
+                        ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
+                                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+                patch_idx += 1
+
     # グラフの見た目調整
     ax.set_title(f'Matched Contrast by Condition and Ocularity (Ref Contrast: {ref_c})', fontsize=14)
     ax.set_ylabel('Matched Contrast', fontsize=12)
@@ -111,7 +133,7 @@ for ref_c in unique_ref_contrasts:
     ax.set_ylim(0, 1.0) # コントラストは0.0〜1.0なので固定すると見やすい
     
     # x軸のラベルを見やすく改行
-    labels = [label.get_text().replace(' ', '\n') for label in ax.get_xticklabels()]
+    labels = ax.get_xticklabels()
     ax.set_xticklabels(labels)
     
     # 凡例の設定

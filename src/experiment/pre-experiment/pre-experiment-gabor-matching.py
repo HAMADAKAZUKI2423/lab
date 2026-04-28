@@ -628,6 +628,8 @@ class ExperimentApp:
         
         # 初期コントラストを0.0〜1.0の間でランダムに設定
         self.init_contrast = random.uniform(0.0, 1.0)
+        # ログスケールUI用のスライダー初期値に逆変換
+        self.init_slider_val = math.log10(self.init_contrast * 99.0 + 1.0) / 2.0
         
         self.canvas1.configure(bg='black')
         self.canvas2.configure(bg='black')
@@ -650,7 +652,8 @@ class ExperimentApp:
         self.gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
         
         if cond == "OST-AR":
-            self.noise_base = stimuli_utils.create_noise_base(width_bg, height_bg, ppd_bg, self.spatial_freq)
+            width_bg_expanded = int(width_bg * 1.5)
+            self.noise_base = stimuli_utils.create_noise_base(width_bg_expanded, height_bg, ppd_bg, self.spatial_freq)
         else:
             self.noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
         
@@ -681,9 +684,9 @@ class ExperimentApp:
         self.ctrl_frame.place(relx=0.5, rely=0.8, anchor='center')
         
         # スライダー (0.0 - 1.0, 左が1.0, 右が0.0)
-        self.contrast_val = tk.DoubleVar(value=self.init_contrast)
-        slider = tk.Scale(self.ctrl_frame, from_=1.0, to=0.0, resolution=0.01, orient=tk.HORIZONTAL,
-                          length=400, variable=self.contrast_val, showvalue=0, command=lambda *args: self.update_stimuli())
+        self.slider_val = tk.DoubleVar(value=self.init_slider_val)
+        slider = tk.Scale(self.ctrl_frame, from_=1.0, to=0.0, resolution=0.001, orient=tk.HORIZONTAL,
+                          length=400, variable=self.slider_val, showvalue=0, command=lambda *args: self.update_stimuli())
         slider.pack(pady=10)
         
         # 決定ボタン
@@ -707,27 +710,28 @@ class ExperimentApp:
     
     def _handle_contrast_key_press(self, event):
         """コントラスト調整用キープレスハンドラ"""
-        step = 0.01
-        current_val = self.contrast_val.get()
+        step = 0.005
+        current_val = self.slider_val.get()
         min_val = 0.0
         max_val = 1.0
         
         if event.keysym == 'Left':  # 左矢印: 値を減少させる (1.0->0.0方向) -> スライダーが右に移動
             new_val = max(min_val, current_val - step)
-            self.contrast_val.set(new_val)
+            self.slider_val.set(new_val)
         elif event.keysym == 'Right':  # 右矢印: 値を増加させる (0.0->1.0方向) -> スライダーが左に移動
             new_val = min(max_val, current_val + step)
-            self.contrast_val.set(new_val)
+            self.slider_val.set(new_val)
         
         self.update_stimuli()
         return "break"
 
     def update_stimuli(self):
         # スライダーがある場合はそこからコントラスト値を取得
-        if hasattr(self, 'contrast_val'):
-            c_test = self.contrast_val.get()
+        if hasattr(self, 'slider_val'):
+            v = self.slider_val.get()
         else:
-            c_test = self.init_contrast
+            v = self.init_slider_val
+        c_test = (10**(2.0 * v) - 1.0) / 99.0
         trial = self.trial_list[self.current_trial_in_block]
         cond = self.current_block_cond["condition"]
         ref_c = trial["ref_contrast"]
@@ -804,10 +808,11 @@ class ExperimentApp:
         self.key_bindings.clear()
         
         # スライダーがある場合はそこからコントラスト値を取得
-        if hasattr(self, 'contrast_val'):
-            c_test = self.contrast_val.get()
+        if hasattr(self, 'slider_val'):
+            v = self.slider_val.get()
         else:
-            c_test = self.init_contrast
+            v = self.init_slider_val
+        c_test = (10**(2.0 * v) - 1.0) / 99.0
         trial = self.trial_list[self.current_trial_in_block]
         
         right_res = self.calib_results.get("Right", {"offset_x": 0, "offset_y": 0, "pd_mean": 0})
