@@ -687,9 +687,10 @@ class ExperimentApp:
         L_fg = 35.0
         L_bg = 15.0
         C_bg = 1.0
+        L_ref = 50.0
         
         # Ref (Foreground only, Top)
-        lum_ref_fg = L_fg * (1.0 + ref_c * self.gabor_base)
+        lum_ref_fg = L_ref * (1.0 + ref_c * self.gabor_base)
         pix_ref_fg = np.interp(lum_ref_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
         img_ref_fg = Image.fromarray(pix_ref_fg, mode='L')
         self.photo_ref_fg = ImageTk.PhotoImage(img_ref_fg)
