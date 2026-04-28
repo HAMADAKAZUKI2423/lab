@@ -315,8 +315,9 @@ class ExperimentApp:
     def save_preview_images(self):
         """デフォーカスの効き方などの確認用画像を保存する"""
         now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d_%H%M%S")
-        save_dir = os.path.join(FIGURE_DIR, date_str)
+        date_str = now.strftime("%Y%m%d")
+        p_id = self.participant_id.get()
+        save_dir = os.path.join(FIGURE_DIR, f"{p_id}_{date_str}", "stimulis")
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
             
@@ -380,7 +381,7 @@ class ExperimentApp:
         # --- 実験で使用される刺激のプレビューを保存 ---
         self.save_preview_images()
         
-        conditions = ["Single plane", "Single plane + defocus simulation", "OST-AR (dual plane)"]
+        conditions = ["Single plane", "Single plane + defocus simulation", "OST-AR"]
         ocularities = ["monocular", "binocular"]
         self.blocks = []
         for cond in conditions:
@@ -648,7 +649,7 @@ class ExperimentApp:
         # 試行ごとのベースモジュレーション(-1~1)を生成してキャッシュ
         self.gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
         
-        if cond == "OST-AR (dual plane)":
+        if cond == "OST-AR":
             self.noise_base = stimuli_utils.create_noise_base(width_bg, height_bg, ppd_bg, self.spatial_freq)
         else:
             self.noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
@@ -758,7 +759,7 @@ class ExperimentApp:
         img_ref_fg = Image.fromarray(pix_ref_fg, mode='L')
         self.photo_ref_fg = ImageTk.PhotoImage(img_ref_fg)
         
-        if cond == "OST-AR (dual plane)":
+        if cond == "OST-AR":
             # Test: Gabor on Foreground, Noise on Background (Bottom)
             lum_test_fg = L_fg * (1.0 + c_test * self.gabor_base)
             pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
