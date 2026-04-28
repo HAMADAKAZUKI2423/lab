@@ -9,6 +9,7 @@ import glob
 import random
 import math
 import defocus_matching
+import stimuli_utils
 
 # ==========================================
 # 定数設定エリア (実験条件やデザインはここを変更)

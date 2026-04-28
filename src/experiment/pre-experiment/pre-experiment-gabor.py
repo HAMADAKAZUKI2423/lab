@@ -10,6 +10,7 @@ import glob
 import random
 import math
 import defocus_matching
+import stimuli_utils
 
 # ==========================================
 # 定数設定エリア (実験条件やデザインはここを変更)
@@ -36,11 +37,8 @@ TIME_PHASE_2 = 5000    # Phase 3: Image display on both windows
 
 # --- UIデザイン設定 ---
 BG_COLOR = 'black'     # 全体の背景色
-# NOTE: 以下のPPC(Pixel Per Centimeter)は使用するモニタに合わせて要調整
-PIXELS_PER_CM = 1/0.02331  # モニタのPPC (1mmあたり0.2331画素の場合)
-SQUARE_SIZE = 30       # 四隅のマーカーの辺の長さ (px)
-CROSS_SIZE = 30        # 中央の十字マーカーのサイズ (px)
-MARKER_LINE_WIDTH = 5  # マーカーの線の太さ
+# NOTE: PPC はstimuli_utils.py で定義
+# PIXELS_PER_CM, SQUARE_SIZE, CROSS_SIZE, MARKER_LINE_WIDTH は stimuli_utils.py で定義
 WIN1_MARKER_COLOR = 'red'      # Window 1 (被験者側) のマーカー色
 WIN2_MARKER_COLOR = 'white'    # Window 2 (実験者側) のマーカー色
 

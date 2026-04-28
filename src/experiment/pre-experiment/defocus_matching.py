@@ -6,6 +6,7 @@ import os
 import random
 import math
 from PIL import Image, ImageTk, ImageFilter
+import stimuli_utils
 
 # --- デフォーカスマッチング設定 ---
 DEFOCUS_BLUR_SCALE_FACTOR = 0.55
@@ -145,8 +146,8 @@ def update_defocus_view(app):
 
     d_fg = app.distance1
     d_bg = app.distance2
-    fg_size = app.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
-    bg_size = app.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG)
+    fg_size = stimuli_utils.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
+    bg_size = stimuli_utils.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG)
 
     # 1. 前景と背景の距離からディオプトリ差Dを計算
     d_fg_m = d_fg / 100.0
@@ -162,7 +163,7 @@ def update_defocus_view(app):
     sigma_deg = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
     
     # pixels_per_deg を簡易計算 (1度あたりのピクセル数)
-    pixels_per_deg_fg = app.get_size_for_visual_angle(d_fg, 1.0)
+    pixels_per_deg_fg = stimuli_utils.get_size_for_visual_angle(d_fg, 1.0)
     sigma_pixels = sigma_deg * pixels_per_deg_fg
 
     pattern_name, cpd = app.defocus_match_patterns[app.current_match_idx]
@@ -207,11 +208,11 @@ def update_defocus_view(app):
     app.canvas2.create_image(cx2, cy2 + dy_fg, image=app.photo_match_fg, anchor='center', tags="match")
     
     # 枠と十字マーカーの再描画 (上下それぞれの領域に)
-    app.draw_image_corner_brackets(app.canvas2, fg_size, fg_size // 2, 0, -fg_size // 4, color=WIN2_MARKER_COLOR, line_width=MARKER_LINE_WIDTH)
-    app.draw_center_cross(app.canvas2, offset_x=0, offset_y=-fg_size // 4, color=WIN2_MARKER_COLOR)
+    stimuli_utils.draw_image_corner_brackets(app.canvas2, fg_size, fg_size // 2, 0, -fg_size // 4, color=WIN2_MARKER_COLOR, line_width=MARKER_LINE_WIDTH)
+    stimuli_utils.draw_center_cross(app.canvas2, offset_x=0, offset_y=-fg_size // 4, color=WIN2_MARKER_COLOR)
     
-    app.draw_image_corner_brackets(app.canvas2, fg_size, fg_size // 2, 0, fg_size // 4, color=WIN2_MARKER_COLOR, line_width=MARKER_LINE_WIDTH)
-    app.draw_center_cross(app.canvas2, offset_x=0, offset_y=fg_size // 4, color=WIN2_MARKER_COLOR)
+    stimuli_utils.draw_image_corner_brackets(app.canvas2, fg_size, fg_size // 2, 0, fg_size // 4, color=WIN2_MARKER_COLOR, line_width=MARKER_LINE_WIDTH)
+    stimuli_utils.draw_center_cross(app.canvas2, offset_x=0, offset_y=fg_size // 4, color=WIN2_MARKER_COLOR)
 
 
 # ============================================================

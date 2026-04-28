@@ -11,6 +11,7 @@ import random
 import math
 import numpy as np
 import defocus_matching
+import stimuli_utils
 
 # ==========================================
 # 定数設定エリア (実験条件やデザインはここを変更)
@@ -34,11 +35,8 @@ PUPIL_DIAMETER_MM = 4.0 # 瞳孔径 (mm)
 
 # --- UIデザイン設定 ---
 BG_COLOR = 'black'     # 全体の背景色
-# NOTE: 以下のPPC(Pixel Per Centimeter)は使用するモニタに合わせて要調整
-PIXELS_PER_CM = 1/0.02331  # モニタのPPC (1mmあたり0.2331画素の場合)
-SQUARE_SIZE = 30       # 四隅のマーカーの辺の長さ (px)
-CROSS_SIZE = 30        # 中央の十字マーカーのサイズ (px)
-MARKER_LINE_WIDTH = 5  # マーカーの線の太さ
+# NOTE: PPCはstimuli_utils.pyで定義
+# PIXELS_PER_CM, SQUARE_SIZE, CROSS_SIZE, MARKER_LINE_WIDTH は stimuli_utils.py で定義
 WIN1_MARKER_COLOR = 'red'      # Window 1 (被験者側) のマーカー色
 WIN2_MARKER_COLOR = 'white'    # Window 2 (実験者側) のマーカー色
 
@@ -356,37 +354,6 @@ class ExperimentApp:
         self.canvas1.delete("all")
         self.canvas2.delete("all")
         self.setup_participant_info_ui()
-        
-    @staticmethod
-    def create_gabor_image(size_px, ppd, cpd, contrast, orientation=0, phase=0, blur_sigma=0):
-        x = np.linspace(-size_px/2, size_px/2, size_px) / ppd
-        y = np.linspace(-size_px/2, size_px/2, size_px) / ppd
-        X, Y = np.meshgrid(x, y)
-        theta = np.deg2rad(orientation)
-        X_rot = X * np.cos(theta) + Y * np.sin(theta)
-        grating = np.sin(2 * np.pi * cpd * X_rot + phase)
-        sigma_deg = 1.0
-        envelope = np.exp(-(X**2 + Y**2) / (2 * sigma_deg**2))
-        gabor = grating * envelope
-        lum = 50.0 * (1.0 + contrast * gabor)
-        pixel_map = np.clip(lum / 100.0 * 255.0, 0, 255).astype(np.uint8)
-        img = Image.fromarray(pixel_map, mode='L')
-        if blur_sigma > 0:
-            img = img.filter(ImageFilter.GaussianBlur(radius=blur_sigma))
-        return img
-
-    @staticmethod
-    def create_checkerboard_image(width_px, height_px, ppd, cpd):
-        square_size = max(1, int(ppd / (2 * cpd)))
-        x = np.arange(width_px)
-        y = np.arange(height_px)
-        X, Y = np.meshgrid(x, y)
-        checker = ((X // square_size) + (Y // square_size)) % 2
-        checker = checker * 2 - 1
-        lum = 50.0 * (1.0 + checker)
-        pixel_map = np.clip(lum / 100.0 * 255.0, 0, 255).astype(np.uint8)
-        return Image.fromarray(pixel_map, mode='L')
-
     def load_calibration_data(self, log_dir):
         lum_pixel_data = {}
         csv_files = glob.glob(os.path.join(log_dir, "*.csv"))
@@ -416,96 +383,6 @@ class ExperimentApp:
         pixels = np.array([x[1] for x in avg_map])
         return lums, pixels
 
-    def _create_noise_base(self, width_px, height_px, ppd, f_center_cpd, bandwidth_octave=1.0):
-        white_noise = np.random.normal(0, 1, (height_px, width_px))
-        ft_noise = np.fft.fftshift(np.fft.fft2(white_noise))
-        
-        fx = np.fft.fftshift(np.fft.fftfreq(width_px, d=1/ppd))
-        fy = np.fft.fftshift(np.fft.fftfreq(height_px, d=1/ppd))
-        FX, FY = np.meshgrid(fx, fy)
-        R = np.sqrt(FX**2 + FY**2)
-        
-        f_min = f_center_cpd / (2 ** (bandwidth_octave / 2))
-        f_max = f_center_cpd * (2 ** (bandwidth_octave / 2))
-        mask = (R >= f_min) & (R <= f_max)
-        
-        ft_filtered = ft_noise * mask
-        noise_filtered = np.real(np.fft.ifft2(np.fft.ifftshift(ft_filtered)))
-        
-        max_val = np.max(np.abs(noise_filtered))
-        if max_val > 0:
-            noise_filtered = noise_filtered / max_val
-            
-        return noise_filtered
-
-    def _create_gabor_base(self, width_px, height_px, ppd, cpd, orientation=0, phase=0, sigma_deg=1.0):
-        x = np.linspace(-width_px/2, width_px/2, width_px) / ppd
-        y = np.linspace(-height_px/2, height_px/2, height_px) / ppd
-        X, Y = np.meshgrid(x, y)
-        theta = np.deg2rad(orientation)
-        X_rot = X * np.cos(theta) + Y * np.sin(theta)
-        grating = np.sin(2 * np.pi * cpd * X_rot + phase)
-        envelope = np.exp(-(X**2 + Y**2) / (2 * sigma_deg**2))
-        return grating * envelope
-
-    def get_size_for_visual_angle(self, distance_cm, angle_deg):
-        """指定された視角と距離から、対応するピクセルサイズを計算する"""
-        if distance_cm <= 0:
-            return 0
-        # 物理サイズ[cm] = 2 * 距離[cm] * tan(視角[rad] / 2)
-        angle_rad = math.radians(angle_deg)
-        size_cm = 2 * distance_cm * math.tan(angle_rad / 2)
-        # ピクセルサイズ = 物理サイズ[cm] * PPC
-        return round(size_cm * PIXELS_PER_CM)
-
-    def draw_image_corner_brackets(self, canvas, size_w, size_h, offset_x=0, offset_y=0, color='white', flip_x=False, line_width=MARKER_LINE_WIDTH):
-        """指定された画像表示領域の四隅に、鍵括弧状のマーカーを描画する"""
-        s = SQUARE_SIZE
-        
-        # 画面の中心座標
-        cx, cy = canvas.winfo_width() // 2, canvas.winfo_height() // 2
-        # 画像表示領域の左上と右下の座標を計算 (オフセット適用)
-        x0 = cx - size_w // 2 + offset_x
-        y0 = cy - size_h // 2 + offset_y
-        x1 = cx + size_w // 2 + offset_x
-        y1 = cy + size_h // 2 + offset_y
-
-        # X座標変換関数 (flip_xがTrueなら左右反転)
-        def tx(x):
-            return canvas.winfo_width() - x if flip_x else x
-
-        # Top-left
-        canvas.create_line(tx(x0), y0, tx(x0 + s), y0, fill=color, width=line_width, tags="calib")
-        canvas.create_line(tx(x0), y0, tx(x0), y0 + s, fill=color, width=line_width, tags="calib")
-        # Top-right
-        canvas.create_line(tx(x1 - s), y0, tx(x1), y0, fill=color, width=line_width, tags="calib")
-        canvas.create_line(tx(x1), y0, tx(x1), y0 + s, fill=color, width=line_width, tags="calib")
-        # Bottom-left
-        canvas.create_line(tx(x0), y1 - s, tx(x0), y1, fill=color, width=line_width, tags="calib")
-        canvas.create_line(tx(x0), y1, tx(x0 + s), y1, fill=color, width=line_width, tags="calib")
-        # Bottom-right
-        canvas.create_line(tx(x1 - s), y1, tx(x1), y1, fill=color, width=line_width, tags="calib")
-        canvas.create_line(tx(x1), y1 - s, tx(x1), y1, fill=color, width=line_width, tags="calib")
-
-    def draw_center_cross(self, canvas, offset_x=0, offset_y=0, color='white', gap=0):
-        """画面中央に一点へ向かう4つの矢尻（棒なし）を描画する"""
-        cx = canvas.winfo_width() // 2 + offset_x
-        cy = canvas.winfo_height() // 2 + offset_y
-        
-        # 矢尻の形状パラメータ（CROSS_SIZEを基準にサイズを大きく設定）
-        d2 = int(CROSS_SIZE * 1.2)  # 先端から底辺までの距離
-        d1 = int(CROSS_SIZE * 0.9)  # 先端から凹みまでの距離
-        d3 = int(CROSS_SIZE * 0.5)  # 幅の半分
-
-        # 4方向の矢尻の頂点座標
-        pts_left = [cx - gap, cy, cx - d2 - gap, cy - d3, cx - d1 - gap, cy, cx - d2 - gap, cy + d3]
-        pts_right = [cx + gap, cy, cx + d2 + gap, cy - d3, cx + d1 + gap, cy, cx + d2 + gap, cy + d3]
-        pts_up = [cx, cy - gap, cx - d3, cy - d2 - gap, cx, cy - d1 - gap, cx + d3, cy - d2 - gap]
-        pts_down = [cx, cy + gap, cx - d3, cy + d2 + gap, cx, cy + d1 + gap, cx + d3, cy + d2 + gap]
-
-        for pts in [pts_left, pts_right, pts_up, pts_down]:
-            canvas.create_polygon(pts, fill=color, outline="black", width=2, tags="calib")
-
     def update_calibration_view(self, *args):
         """キャリブレーション画面の表示を更新する (スライダー操作時に呼ばれる)"""
         # 既存のマーカーを一旦すべて削除
@@ -516,23 +393,23 @@ class ExperimentApp:
         d_bg = self.distance2
 
         # --- 前景マーカーのサイズ計算 (正方形) ---
-        fg_marker_size = self.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
+        fg_marker_size = stimuli_utils.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
         
         # --- 背景マーカーのサイズ計算 (横長) ---
         # 背景画像は前景の2倍の幅を持つ
-        bg_marker_h = self.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG)
-        bg_marker_w = self.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG * 2) # 幅は視角2倍で計算
+        bg_marker_h = stimuli_utils.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG)
+        bg_marker_w = stimuli_utils.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG * 2) # 幅は視角2倍で計算
 
         # --- Window 1 (被験者側) のマーカー描画 ---
         # 1. 背景全体（横長）の四隅にマーカーを描画
-        self.draw_image_corner_brackets(self.canvas1, bg_marker_w, bg_marker_h, self.offset_x.get(), self.offset_y.get(), color=WIN1_MARKER_COLOR, line_width=MARKER_LINE_WIDTH * 1.5)
+        stimuli_utils.draw_image_corner_brackets(self.canvas1, bg_marker_w, bg_marker_h, self.offset_x.get(), self.offset_y.get(), color=WIN1_MARKER_COLOR, line_width=stimuli_utils.MARKER_LINE_WIDTH * 1.5)
         # 2. 背景の中央に、前景と同じサイズの正方形マーカーを描画
-        self.draw_image_corner_brackets(self.canvas1, bg_marker_h, bg_marker_h, self.offset_x.get(), self.offset_y.get(), color=WIN1_MARKER_COLOR, line_width=MARKER_LINE_WIDTH * 1.5)
+        stimuli_utils.draw_image_corner_brackets(self.canvas1, bg_marker_h, bg_marker_h, self.offset_x.get(), self.offset_y.get(), color=WIN1_MARKER_COLOR, line_width=stimuli_utils.MARKER_LINE_WIDTH * 1.5)
         
         # --- Window 2 (実験者側) のマーカー描画 ---
         # 基準となる前景サイズのマーカーと十字を描画
-        self.draw_image_corner_brackets(self.canvas2, fg_marker_size, fg_marker_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=False, line_width=MARKER_LINE_WIDTH)
-        self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
+        stimuli_utils.draw_image_corner_brackets(self.canvas2, fg_marker_size, fg_marker_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=False, line_width=stimuli_utils.MARKER_LINE_WIDTH)
+        stimuli_utils.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
 
     def adjust_offset(self, dx, dy):
         """矢印キーによるオフセット調整用関数"""
@@ -655,18 +532,15 @@ class ExperimentApp:
         trial_cond = self.trial_list[self.current_trial_in_block]
         ref_c = trial_cond["ref_contrast"]
         
-        if random.choice([True, False]):
-            init_c = min(1.0, ref_c * 2.0)
-        else:
-            init_c = max(0.01, ref_c / 2.0)
-        self.knob_val = math.log(init_c)
+        # 初期コントラストを0.0〜1.0の間でランダムに設定
+        self.init_contrast = random.uniform(0.0, 1.0)
         
         self.canvas1.configure(bg='black')
         self.canvas2.configure(bg='black')
         
         d_fg, d_bg = self.distance1, self.distance2
-        ppd_fg = PIXELS_PER_CM * d_fg * math.tan(math.radians(1.0))
-        ppd_bg = PIXELS_PER_CM * d_bg * math.tan(math.radians(1.0))
+        ppd_fg = stimuli_utils.PIXELS_PER_CM * d_fg * math.tan(math.radians(1.0))
+        ppd_bg = stimuli_utils.PIXELS_PER_CM * d_bg * math.tan(math.radians(1.0))
         
         width_deg = 7.9
         height_deg = 3.95
@@ -679,12 +553,12 @@ class ExperimentApp:
         cond = self.current_block_cond["condition"]
         
         # 試行ごとのベースモジュレーション(-1~1)を生成してキャッシュ
-        self.gabor_base = self._create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
+        self.gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
         
         if cond == "OST-AR (dual plane)":
-            self.noise_base = self._create_noise_base(width_bg, height_bg, ppd_bg, self.spatial_freq)
+            self.noise_base = stimuli_utils.create_noise_base(width_bg, height_bg, ppd_bg, self.spatial_freq)
         else:
-            self.noise_base = self._create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
+            self.noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
         
         # コントラストマッチング用スライダーUIをセットアップ
         self.setup_contrast_matching_ui()
@@ -703,9 +577,9 @@ class ExperimentApp:
         self.ctrl_frame.place(relx=0.5, rely=0.8, anchor='center')
         
         # スライダー (0.0 - 1.0, 左が1.0, 右が0.0)
-        self.contrast_val = tk.DoubleVar(value=0.5)
+        self.contrast_val = tk.DoubleVar(value=self.init_contrast)
         slider = tk.Scale(self.ctrl_frame, from_=1.0, to=0.0, resolution=0.01, orient=tk.HORIZONTAL,
-                          length=400, variable=self.contrast_val, command=lambda *args: self.update_stimuli())
+                          length=400, variable=self.contrast_val, showvalue=0, command=lambda *args: self.update_stimuli())
         slider.pack(pady=10)
         
         # 決定ボタン
@@ -744,22 +618,18 @@ class ExperimentApp:
         self.update_stimuli()
         return "break"
 
-        return "break"
-
     def update_stimuli(self):
         # スライダーがある場合はそこからコントラスト値を取得
         if hasattr(self, 'contrast_val'):
             c_test = self.contrast_val.get()
         else:
-            c_test = min(1.0, max(0.001, math.exp(self.knob_val)))
+            c_test = self.init_contrast
         trial = self.trial_list[self.current_trial_in_block]
-        ori = trial["orientation"]
-        ref_c = trial["ref_contrast"]
         cond = self.current_block_cond["condition"]
-        
+        ref_c = trial["ref_contrast"]
         d_fg, d_bg = self.distance1, self.distance2
-        ppd_fg = PIXELS_PER_CM * d_fg * math.tan(math.radians(1.0))
-        ppd_bg = PIXELS_PER_CM * d_bg * math.tan(math.radians(1.0))
+        ppd_fg = stimuli_utils.PIXELS_PER_CM * d_fg * math.tan(math.radians(1.0))
+        ppd_bg = stimuli_utils.PIXELS_PER_CM * d_bg * math.tan(math.radians(1.0))
         
         gap_y_deg = 2.0
         gap_y_fg = int(gap_y_deg * ppd_fg)
@@ -846,7 +716,7 @@ class ExperimentApp:
         if hasattr(self, 'contrast_val'):
             c_test = self.contrast_val.get()
         else:
-            c_test = min(1.0, max(0.001, math.exp(self.knob_val)))
+            c_test = self.init_contrast
         trial = self.trial_list[self.current_trial_in_block]
         
         right_res = self.calib_results.get("Right", {"offset_x": 0, "offset_y": 0, "pd_mean": 0})
