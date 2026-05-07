@@ -167,8 +167,8 @@ for view_cond in view_conds:
         ax.set_xlabel('Distance')
         ax.set_ylabel('Spatial Frequency (cpd)')
         
-        title = f'Score Difference (Contrast 0.0 - 1.0)\n({view_cond}, BG: {bg_lum}nit, FG: {fg_lum}nit)'
-        ax.set_title(title, fontsize=14)
+        #title = f'Score Difference (Contrast 0.0 - 1.0)\n({view_cond}, BG: {bg_lum}nit, FG: {fg_lum}nit)'
+        #ax.set_title(title, fontsize=14)
         
         # 各セルに数値を書き込む
         for i in range(len(pivot_table.index)):
