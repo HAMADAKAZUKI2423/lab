@@ -176,7 +176,7 @@ for view_cond in view_conds:
                 val = pivot_table.iloc[i, j]
                 if not np.isnan(val):
                     text_color = "white" if abs(val) > (max_int * 0.6) else "black"
-                    ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color)
+                    ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=20)
                     
         cbar = plt.colorbar(im, ax=ax)
         cbar.set_label('Score Difference')
