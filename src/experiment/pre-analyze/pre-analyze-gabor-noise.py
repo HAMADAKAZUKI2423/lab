@@ -183,7 +183,10 @@ for view_cond in view_conds:
         
         plt.tight_layout()
         
-        filename = f'heatmap_diff_{view_cond}_bg{bg_lum}_fg{fg_lum}.png'
-        plt.savefig(os.path.join(OUTPUT_DIR, filename))
-        print(f"グラフ保存: {filename}")
+        filename_png = f'heatmap_diff_{view_cond}_bg{bg_lum}_fg{fg_lum}.png'
+        plt.savefig(os.path.join(OUTPUT_DIR, filename_png))
+        filename_pdf = f'heatmap_diff_{view_cond}_bg{bg_lum}_fg{fg_lum}.pdf'
+        plt.savefig(os.path.join(OUTPUT_DIR, filename_pdf))
+        
+        print(f"グラフ保存: {filename_png} / {filename_pdf}")
         plt.close(fig)
