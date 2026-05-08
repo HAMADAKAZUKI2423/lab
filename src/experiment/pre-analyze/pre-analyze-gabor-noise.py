@@ -175,7 +175,7 @@ for view_cond in view_conds:
             for j in range(len(pivot_table.columns)):
                 val = pivot_table.iloc[i, j]
                 if not np.isnan(val):
-                    text_color = "white" if abs(val) > (max_int * 0.6) else "black"
+                    text_color = "white" if abs(val) > 1.0 else "black"
                     ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=20)
                     
         cbar = plt.colorbar(im, ax=ax)
@@ -190,3 +190,37 @@ for view_cond in view_conds:
         
         print(f"グラフ保存: {filename_png} / {filename_pdf}")
         plt.close(fig)
+
+        # --- 追加: 背景コントラスト0.0の時のスコアを出力 ---
+        pivot_0_reindexed = pivot_0.reindex(index=cpd_order, columns=custom_order)
+        
+        fig0, ax0 = plt.subplots(figsize=(8, 6))
+        im0 = ax0.imshow(pivot_0_reindexed, cmap='Reds', vmin=1, vmax=5, origin='lower', aspect='auto')
+        
+        ax0.set_xticks(np.arange(len(pivot_0_reindexed.columns)))
+        ax0.set_yticks(np.arange(len(pivot_0_reindexed.index)))
+        ax0.set_xticklabels(pivot_0_reindexed.columns)
+        ax0.set_yticklabels([f"{int(c)}" for c in pivot_0_reindexed.index])
+        
+        ax0.set_xlabel('Distance')
+        ax0.set_ylabel('Spatial Frequency (cpd)')
+        
+        for i in range(len(pivot_0_reindexed.index)):
+            for j in range(len(pivot_0_reindexed.columns)):
+                val = pivot_0_reindexed.iloc[i, j]
+                if not np.isnan(val):
+                    text_color = "white" if val > 3.5 else "black"
+                    ax0.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=20)
+                    
+        cbar0 = plt.colorbar(im0, ax=ax0)
+        cbar0.set_label('Average Score (Contrast 0.0)')
+        
+        plt.tight_layout()
+        
+        filename_png_0 = f'heatmap_score_c0.0_{view_cond}_bg{bg_lum}_fg{fg_lum}.png'
+        plt.savefig(os.path.join(OUTPUT_DIR, filename_png_0))
+        filename_pdf_0 = f'heatmap_score_c0.0_{view_cond}_bg{bg_lum}_fg{fg_lum}.pdf'
+        plt.savefig(os.path.join(OUTPUT_DIR, filename_pdf_0))
+        
+        print(f"グラフ保存: {filename_png_0} / {filename_pdf_0}")
+        plt.close(fig0)
