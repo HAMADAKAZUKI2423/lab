@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Perceptual Visibility Prediction in OST-AR — Midterm Review</title>
+<style>
+  :root{
+    --blue:#1F4E79;
+    --blue-light:#2E75B6;
+    --blue-pale:#DEEBF7;
+    --accent:#C00000;
+    --gray:#595959;
+    --bg:#ffffff;
+    --fig-bg:#eef3f9;
+    --fig-border:#8aa6c9;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  body{
+    font-family:"Helvetica Neue","Meiryo","Hiragino Kaku Gothic ProN","Arial",sans-serif;
+    background:#d0d4d9;color:#222;
+  }
+  .deck{display:flex;flex-direction:column;align-items:center;gap:24px;padding:24px;}
+  .slide{
+    width:1280px;height:720px;background:var(--bg);position:relative;
+    box-shadow:0 4px 16px rgba(0,0,0,0.15);
+    padding:56px 76px 64px 76px;overflow:hidden;page-break-after:always;
+  }
+  .slide-num{position:absolute;bottom:18px;right:30px;font-size:15px;color:#999;}
+  .footer-cite{position:absolute;bottom:18px;left:76px;font-size:15px;color:#888;font-style:italic;}
+  h1.title{font-size:48px;color:var(--blue);font-weight:700;line-height:1.25;}
+  h1.subtitle-jp{font-size:26px;color:var(--gray);font-weight:500;margin-top:18px;line-height:1.4;}
+  h2.header{
+    font-size:40px;color:var(--blue);font-weight:700;
+    border-bottom:4px solid var(--blue-light);
+    padding-bottom:14px;margin-bottom:38px;
+  }
+  h3{font-size:30px;color:var(--blue);font-weight:600;margin-bottom:18px;}
+  p,li{font-size:28px;line-height:1.55;color:#222;}
+  ul{padding-left:34px;}
+  li{margin-bottom:14px;}
+  .small{font-size:22px;color:var(--gray);}
+  .accent{color:var(--accent);font-weight:700;}
+  .blue{color:var(--blue);font-weight:700;}
+
+  .title-slide{
+    display:flex;flex-direction:column;justify-content:center;
+    background:linear-gradient(135deg,#ffffff 0%,#eaf2fb 100%);
+    border-left:14px solid var(--blue);
+  }
+  .title-slide .meta{margin-top:60px;font-size:24px;color:#333;line-height:1.8;}
+  .title-slide .lab{margin-top:8px;font-size:22px;color:var(--gray);}
+  .title-slide .date{margin-top:34px;font-size:22px;color:var(--gray);}
+
+  .figbox{
+    border:2px dashed var(--fig-border);background:var(--fig-bg);
+    color:#5a7aa3;font-style:italic;
+    display:flex;align-items:center;justify-content:center;
+    text-align:center;padding:22px;font-size:22px;border-radius:6px;line-height:1.5;
+  }
+
+  .cols{display:flex;gap:36px;}
+  .col{flex:1;min-width:0;}
+
+  table{border-collapse:collapse;width:100%;font-size:24px;}
+  th,td{border:1px solid #b8c4d4;padding:12px 16px;text-align:left;}
+  th{background:var(--blue);color:white;font-weight:600;font-size:24px;}
+  tr:nth-child(even) td{background:#f3f7fc;}
+
+  .outline-list{list-style:none;padding-left:0;font-size:30px;counter-reset:sec;}
+  .outline-list > li{
+    padding:18px 0 18px 64px;position:relative;
+    border-bottom:1px solid #e0e6ee;counter-increment:sec;
+  }
+  .outline-list > li::before{
+    content:counter(sec) ".";position:absolute;left:0;top:18px;
+    color:var(--blue);font-weight:700;
+  }
+  .outline-list > li:last-child{border-bottom:none;}
+
+  .hlbox{
+    background:var(--blue-pale);border-left:6px solid var(--blue);
+    padding:22px 28px;font-size:28px;color:#1a2e44;border-radius:4px;line-height:1.5;
+  }
+  .topbar{position:absolute;top:0;left:0;right:0;height:8px;background:var(--blue);}
+  .equation{
+    background:#f8f9fb;border:1px solid #d6dde6;
+    padding:18px 24px;font-family:"Cambria Math","Latin Modern Math",serif;
+    font-size:26px;color:#222;border-radius:4px;
+  }
+
+  /* Step list (numbered, prominent) */
+  ol.steps{list-style:none;padding-left:0;counter-reset:step;}
+  ol.steps li{
+    counter-increment:step;position:relative;padding:14px 0 14px 76px;
+    font-size:28px;line-height:1.5;border-bottom:1px solid #e6ecf3;
+  }
+  ol.steps li:last-child{border-bottom:none;}
+  ol.steps li::before{
+    content:"STEP " counter(step);
+    position:absolute;left:0;top:18px;
+    font-family:"SFMono-Regular","Menlo","Consolas",monospace;
+    font-size:14px;letter-spacing:0.18em;color:white;background:var(--blue);
+    padding:5px 9px;border-radius:3px;line-height:1;
+  }
+  ol.steps li strong{color:var(--blue);}
+
+  /* Pipeline pill row (used on Method overview) */
+  .pipeline{
+    display:flex;align-items:stretch;gap:14px;margin-top:20px;
+  }
+  .pipeline .stage{
+    flex:1;border:2px solid var(--blue-light);border-radius:8px;
+    padding:16px 18px;background:#f6fafe;
+    display:flex;flex-direction:column;justify-content:center;
+  }
+  .pipeline .stage .label{
+    font-family:"SFMono-Regular","Menlo","Consolas",monospace;
+    font-size:13px;letter-spacing:0.18em;color:var(--blue-light);text-transform:uppercase;
+    margin-bottom:6px;
+  }
+  .pipeline .stage .body{font-size:22px;color:#1a2e44;line-height:1.4;}
+  .pipeline .arrow{align-self:center;color:var(--blue-light);font-size:32px;font-weight:700;}
+  .pipeline .stage.core{background:#fff;border-style:dashed;}
+  .pipeline .stage.ext{background:var(--blue-pale);border-color:var(--blue);}
+</style>
+</head>
+<body>
+<div class="deck">
+
+<!-- ============ 1. Title ============ -->
+<section class="slide title-slide">
+  <h1 class="title">Perceptual Visibility Prediction of<br>Overlaid Content in Optical See-Through<br>Augmented Reality</h1>
+  <h1 class="subtitle-jp">光学シースルー拡張現実における<br>重畳コンテンツの知覚的視認性予測</h1>
+  <div class="meta">
+    <strong>Kazuki HAMADA</strong> &nbsp;(37-256559)<br>
+    Supervisor: Assoc. Prof. Takeshi OISHI
+  </div>
+  <div class="lab">Graduate School of Information Science and Technology, The University of Tokyo</div>
+  <div class="date">Midterm Review &nbsp;|&nbsp; May 15, 2026</div>
+  <div class="slide-num">1 / 23</div>
+</section>
+
+<!-- ============ 2. Outline ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Outline</h2>
+  <ol class="outline-list">
+    <li>Introduction</li>
+    <li>Related Work</li>
+    <li>Method</li>
+    <li>Preliminary Experiment</li>
+    <li>Discussion &amp; Future Work</li>
+  </ol>
+  <div class="slide-num">2 / 23</div>
+</section>
+
+<!-- ============ 3. Introduction (1) — OST-AR ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Introduction: Optical See-Through AR</h2>
+  <div class="cols">
+    <div class="col" style="flex:1;">
+      <ul>
+        <li>The user sees the <span class="blue">real world directly</span> through a transparent combiner.</li>
+        <li>A virtual image is <span class="blue">optically added</span> to the real-world light.</li>
+      </ul>
+      <div class="hlbox" style="margin-top:30px;">
+        FG and BG reach the eye as an <span class="accent">additive mixture</span> of light.
+      </div>
+    </div>
+    <div class="col">
+      <div class="figbox" style="height:440px;">
+        Figure: OST-AR optics —<br>
+        eye → combiner → real scene + virtual display.
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">3 / 23</div>
+</section>
+
+<!-- ============ 4. Introduction (2) — Issue ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Introduction: Visibility Depends on the Background</h2>
+  <p style="font-size:28px;margin-bottom:24px;">
+    Same virtual content looks <span class="blue">very different</span> on different backgrounds.
+  </p>
+  <div class="cols" style="gap:28px;">
+    <div class="col">
+      <div class="figbox" style="height:340px;">
+        Photo (a):<br>AR overlay on a <strong>dark, uniform</strong> BG<br>→ clear, readable.
+      </div>
+      <p style="margin-top:12px;text-align:center;font-size:24px;"><span class="blue">High visibility</span></p>
+    </div>
+    <div class="col">
+      <div class="figbox" style="height:340px;">
+        Photo (b):<br>Same overlay on a <strong>bright, cluttered</strong> BG<br>→ washed out.
+      </div>
+      <p style="margin-top:12px;text-align:center;font-size:24px;"><span class="accent">Low visibility</span></p>
+    </div>
+  </div>
+  <p style="margin-top:22px;font-size:28px;text-align:center;">
+    → Need to <span class="blue">predict visibility</span> from the FG/BG image pair.
+  </p>
+  <div class="slide-num">4 / 23</div>
+</section>
+
+<!-- ============ 5. Introduction (3) — Scope & Objective ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Introduction: Scope &amp; Objective</h2>
+  <div class="hlbox" style="font-size:30px;">
+    <strong>Goal:</strong> Build an <span class="blue">image-based visibility predictor</span> for OST-AR.
+  </div>
+  <h3 style="margin-top:36px;">Three steps</h3>
+  <ol class="steps">
+    <li><strong>Experiment</strong> — Run psychophysics to reveal how the HVS shapes visibility under OST-AR.</li>
+    <li><strong>Extension</strong> — Add processing (mainly at the model's <span class="blue">input stage</span>) to reflect those findings.</li>
+    <li><strong>Validation</strong> — Compare human ratings against the model's predictions.</li>
+  </ol>
+  <div class="slide-num">5 / 23</div>
+</section>
+
+<!-- ============ 6. Related Work (1) — Contrast perception ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Related Work (1): Contrast Perception</h2>
+
+  <!-- Setup: scope to what THIS WORK addresses (no overclaim) -->
+  <p style="font-size:28px;text-align:center;margin-bottom:30px;">
+  <span class="blue">Visibility</span> &nbsp;←&nbsp; <span class="blue">Contrast perception</span>
+  &nbsp;&nbsp;|&nbsp;&nbsp;
+  <span style="color:var(--gray);">Two phenomena addressed:</span>
+</p>
+
+  <div class="cols">
+    <!-- ① Frequency dependence -->
+    <div class="col">
+      <p style="margin-bottom:14px;">
+        <strong style="color:var(--blue);font-size:32px;vertical-align:-2px;">①</strong>
+        &nbsp;<strong style="font-size:26px;">Frequency dependence</strong>
+        &nbsp;<span class="small">(CSF)</span>
+      </p>
+      <div style="display:flex;gap:12px;">
+        <div class="figbox" style="height:260px;flex:1;">
+          Fig: Campbell–Robson chart<br>(contrast × frequency).
+        </div>
+        <div class="figbox" style="height:260px;flex:1;">
+          Fig: CSF curve<br>(sensitivity vs. SF).
+        </div>
+      </div>
+    </div>
+
+    <!-- ② Contrast masking -->
+    <div class="col">
+      <p style="margin-bottom:14px;">
+        <strong style="color:var(--blue);font-size:32px;vertical-align:-2px;">②</strong>
+        &nbsp;<strong style="font-size:26px;">Contrast masking</strong>
+      </p>
+      <div style="display:flex;gap:12px;">
+        <div class="figbox" style="height:260px;flex:1;">
+          Fig: Same target on<br>uniform vs. textured BG.
+        </div>
+        <div class="figbox" style="height:260px;flex:1;">
+          Fig: TvC curve —<br>threshold ↑ with masker contrast.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="hlbox" style="margin-top:28px;font-size:26px;text-align:center;">
+    This work models <span class="accent">② contrast masking</span> &nbsp;(not CSF directly).
+  </div>
+
+  <div class="footer-cite">Campbell &amp; Robson, J. Physiol. (1968)</div>
+  <div class="slide-num">6 / 23</div>
+</section>
+
+<!-- ============ 7. Related Work (2) — Factor-specific OST-AR studies ============ -->
+<!-- ============ 7. Related Work (2) — Single-factor models ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Related Work (2): Single-Factor OST-AR Models</h2>
+
+  <!-- Top message -->
+  <div class="hlbox" style="font-size:28px;text-align:center;margin-bottom:30px;">
+    Each model considers <span class="accent">only one</span> perceptual factor.
+  </div>
+
+  <!-- 3-row table: one row per factor, multiple refs allowed -->
+  <table style="font-size:26px;">
+    <tr>
+      <th style="width:30%;padding:14px 20px;">Perceptual factor</th>
+      <th style="padding:14px 20px;">References</th>
+    </tr>
+    <tr>
+      <td style="padding:20px;"><strong style="color:var(--blue);">Color</strong></td>
+      <td style="padding:20px;">
+        Yoon et al., 2017 &nbsp;·&nbsp; Zhang et al., TVCG 2022
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:20px;"><strong style="color:var(--blue);">Luminance</strong></td>
+      <td style="padding:20px;">
+        Liu et al., ISMAR 2022
+      </td>
+    </tr>
+    <tr>
+      <td style="padding:20px;"><strong style="color:var(--blue);">Transparency</strong></td>
+      <td style="padding:20px;">
+        Zhang &amp; Murdoch, 2021 &nbsp;·&nbsp; Li et al., 2022
+      </td>
+    </tr>
+  </table>
+
+  <!-- Bottom takeaway -->
+  <p style="margin-top:32px;font-size:28px;text-align:center;">
+    → Coverage is <span class="accent">fragmented</span> &nbsp;—&nbsp; no model handles multiple factors jointly.
+  </p>
+
+  <div class="slide-num">7 / 23</div>
+</section>
+
+<!-- ============ 8. Related Work (3) — Standard IQA limits ============ -->
+<!-- ============ 8. Related Work (3) — IQA for OST-AR ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Related Work (3): IQA for OST-AR Visibility</h2>
+
+  <!-- Point 1 (setup) + Point 2 (pivot, main message) in one hlbox -->
+  <div class="hlbox" style="font-size:26px;text-align:center;margin-bottom:26px;">
+    IQA closely relates to visibility research.<br>
+    But <span class="accent">OST-AR-specific perception</span> prevents direct application.
+  </div>
+
+  <!-- Evidence: AR-DAVID (proves P2) + Kim (P3, specific phenomenon) -->
+  <div class="cols">
+    <!-- Left: AR-DAVID — confirms P2 -->
+    <div class="col">
+      <div class="figbox" style="height:220px;">
+        Fig (from AR-DAVID):<br>
+        Existing IQA only fits with<br>
+        BG weight ≈ 0.2.
+      </div>
+      <p style="text-align:center;margin-top:12px;font-size:22px;">
+        <strong style="color:var(--blue);">Existing IQA fails directly</strong>
+      </p>
+      <p style="text-align:center;margin-top:2px;font-size:18px;color:var(--gray);font-style:italic;">
+        Chapiro et al., 2024
+      </p>
+    </div>
+
+    <!-- Right: Kim et al. — P3, specific phenomenon (BG discounting) -->
+    <div class="col">
+      <div class="figbox" style="height:220px;">
+        Fig (from Kim et al.):<br>
+        Background discounting from<br>
+        BG luminance &amp; defocus.
+      </div>
+      <p style="text-align:center;margin-top:12px;font-size:22px;">
+        <strong style="color:var(--blue);">e.g., BG discounting effect</strong>
+      </p>
+      <p style="text-align:center;margin-top:2px;font-size:18px;color:var(--gray);font-style:italic;">
+        Kim et al., 2025
+      </p>
+    </div>
+  </div>
+
+  <!-- Final takeaway: P2 reinforced + "even from IQA research" -->
+  <p style="margin-top:22px;font-size:26px;text-align:center;">
+    → OST-AR-specific perception must be modeled &nbsp;—&nbsp;
+    <em>confirmed by IQA research too.</em>
+  </p>
+
+  <div class="slide-num">8 / 23</div>
+</section>
+
+<!-- ============ 9. Related Work (4) — Fukiage's predictor ============ -->
+<!-- ============ 9. Related Work (4) — Fukiage's predictor [Page 1/2] ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Related Work (4): Fukiage's Visibility Predictor</h2>
+
+  <!-- Shortened top phrase -->
+  <div class="hlbox" style="font-size:26px;text-align:center;margin-bottom:22px;">
+    Visibility predictor for <span class="blue">semi-transparent content</span>
+    — promising for <span class="accent">OST-AR application</span>.
+  </div>
+
+  <!-- Two bullets (kept as-is from the earlier proposal) -->
+  <ul style="font-size:28px;margin-bottom:22px;">
+    <li>Considers <strong>multiple perceptual factors</strong> jointly.</li>
+    <li>Predicts visibility on <strong>α-blended (translucent)</strong> displays.</li>
+  </ul>
+
+  <!-- Figure -->
+  <div class="figbox" style="height:200px;">
+    Fig: Fukiage's pipeline overview.
+  </div>
+
+  <!-- Transition into Page 2 -->
+  <p style="margin-top:18px;font-size:26px;text-align:center;">
+    → But <span class="accent">gaps</span> remain when applied to OST-AR.
+  </p>
+
+  <div class="footer-cite">Fukiage &amp; Oishi, ACM TAP 2023</div>
+  <div class="slide-num">9 / 23</div>
+</section>
+
+<!-- ============ 10. Related Work (5) — Gaps for OST-AR ============ -->
+<!-- ============ 10. Related Work (4) — Gaps for OST-AR [Page 2/2] ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Related Work (4): Fukiage's Visibility Predictor</h2>
+
+  <!-- Top: pivot statement -->
+  <div class="hlbox" style="font-size:26px;text-align:center;margin-bottom:24px;">
+    The model assumes a <span class="accent">single 2D display</span> — not OST-AR.
+  </div>
+
+  <p style="font-size:26px;margin-bottom:14px;">Four OST-AR-specific gaps:</p>
+
+  <ul style="margin-bottom:22px;">
+    <li><span class="blue">① Accommodation</span> &nbsp;—&nbsp; induces <strong>defocus blur</strong>.</li>
+    <li><span class="blue">② Binocular disparity</span> &nbsp;—&nbsp; arises with depth; <strong>fusion</strong> is also a challenge.</li>
+    <li><span class="blue">③ BG discounting</span> &nbsp;—&nbsp; observers partly ignore the real BG.</li>
+    <li><span class="blue">④ Optical addition</span> &nbsp;—&nbsp; linear summation yields <strong>HDR-range</strong> light.</li>
+  </ul>
+
+  <!-- Bottom: positioning of this work -->
+  <p style="font-size:26px;text-align:center;">
+    → This work <span class="accent">bridges these gaps</span>, extending the model into an
+    <strong>OST-AR visibility predictor</strong>.
+  </p>
+
+  <div class="footer-cite">Fukiage &amp; Oishi, ACM TAP 2023</div>
+  <div class="slide-num">10 / 23</div>
+</section>
+
+<!-- ============ 11. Method: Overview ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Method: Overview</h2>
+
+  <div class="hlbox" style="font-size:26px;text-align:center;margin-bottom:32px;">
+    Three-step approach to extend Fukiage's model for <span class="accent">OST-AR</span>.
+  </div>
+
+  <ol class="steps">
+    <li>
+      <span class="step-badge">STEP 1</span>
+      <strong>Visibility Evaluation Experiment</strong>
+      &nbsp;—&nbsp; measure thresholds on a real OST-AR setup.
+    </li>
+    <li>
+      <span class="step-badge">STEP 2</span>
+      <strong>Model Extension</strong>
+      &nbsp;—&nbsp; incorporate four OST-AR-specific factors.
+    </li>
+    <li>
+      <span class="step-badge">STEP 3</span>
+      <strong>Evaluation of Extended Model</strong>
+      &nbsp;—&nbsp; validate against measured data.
+    </li>
+  </ol>
+
+  <div class="slide-num">11 / 23</div>
+</section>
+
+<!-- ============ 12. Method (1): Visibility Evaluation Experiment ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Method (1): Visibility Evaluation Experiment</h2>
+
+  <!-- One-phrase goal -->
+  <div class="hlbox" style="font-size:26px;text-align:center;margin-bottom:26px;">
+    Identify which OST-AR phenomena <span class="accent">significantly affect visibility</span>
+    — to guide model extension.
+  </div>
+
+  <!-- 3 phenomena under study -->
+  <p style="font-size:26px;margin-bottom:14px;">Perceptual phenomena under study:</p>
+
+  <ul style="font-size:26px;">
+    <li><span class="blue"><strong>Defocus blur</strong></span> on FG and BG.</li>
+    <li><span class="blue"><strong>Uncrossed disparity &amp; binocular fusion</strong></span>
+        &nbsp;—&nbsp; alter BG perception &amp; induce <strong>BG discounting</strong>.</li>
+    <li><span class="blue"><strong>Linear luminance summation</strong></span>
+        &nbsp;—&nbsp; alters apparent <strong>contrast</strong>.</li>
+  </ul>
+
+  <!-- Output of the analysis -->
+  <p style="margin-top:28px;font-size:26px;text-align:center;">
+    → Decide <span class="blue">which extensions to implement</span> and
+    <span class="blue">fit their parameters</span>.
+  </p>
+
+  <div class="slide-num">12 / 23</div>
+</section>
+
+<!-- ============ 13. Method (2): Model Extension ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Method (2): Model Extension</h2>
+
+  <div class="hlbox" style="font-size:26px;text-align:center;margin-bottom:24px;">
+    Extend Fukiage's pipeline with <span class="accent">four OST-AR-specific mechanisms</span>.
+  </div>
+
+  <!-- 2×2 grid of factor cards -->
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;">
+
+    <div class="figbox" style="text-align:left;padding:18px 22px;">
+      <div style="color:var(--blue);font-weight:700;font-size:26px;">① Defocus blur</div>
+      <div style="font-size:24px;margin-top:6px;">
+        PSF&nbsp;<em>h(u;&nbsp;ΔD,&nbsp;p)</em>&nbsp;applied per layer.
+      </div>
+    </div>
+
+    <div class="figbox" style="text-align:left;padding:18px 22px;">
+      <div style="color:var(--blue);font-weight:700;font-size:26px;">② Disparity &amp; fusion</div>
+      <div style="font-size:24px;margin-top:6px;">
+        Binocular gain control under uncrossed disparity.
+      </div>
+    </div>
+
+    <div class="figbox" style="text-align:left;padding:18px 22px;">
+      <div style="color:var(--blue);font-weight:700;font-size:26px;">③ Optical addition</div>
+      <div style="font-size:24px;margin-top:6px;">
+        <em>I</em><sub>retina</sub> = <em>I</em><sub>FG</sub> + α·<em>I</em><sub>BG</sub>&nbsp;(linear sum).
+      </div>
+    </div>
+
+    <div class="figbox" style="text-align:left;padding:18px 22px;">
+      <div style="color:var(--blue);font-weight:700;font-size:26px;">④ BG discounting</div>
+      <div style="font-size:24px;margin-top:6px;">
+        Down-weight BG with α ≈ 0.2.
+      </div>
+    </div>
+
+  </div>
+
+  <p style="margin-top:22px;font-size:26px;text-align:center;">
+    → Each gap from RW&nbsp;(4) is addressed by a dedicated module.
+  </p>
+
+  <div class="slide-num">13 / 23</div>
+</section>
+
+<!-- ============ 14. Method (3): Evaluation of Extended Model ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Method (3): Evaluation of Extended Model</h2>
+
+  <div class="hlbox" style="font-size:26px;text-align:center;margin-bottom:28px;">
+    Validate the extended model against <span class="blue">measured thresholds</span>.
+  </div>
+
+  <ul style="font-size:28px;">
+    <li><strong>Procedure</strong> — compare predicted vs. measured thresholds across all conditions.</li>
+    <li><strong>Metrics</strong> — correlation &amp; RMSE between prediction and ground truth.</li>
+    <li><strong>Goal</strong> — confirm the four extensions jointly improve fit on OST-AR data.</li>
+  </ul>
+
+  <div class="figbox" style="height:200px;margin-top:24px;">
+    Fig: Predicted vs. measured visibility (placeholder scatter).
+  </div>
+
+  <div class="slide-num">14 / 23</div>
+</section>
+<!-- ============ 15. Pre-exp Objective ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Preliminary Experiment: Objective</h2>
+  <div class="hlbox" style="font-size:30px;">
+    Measure how <span class="blue">visibility of an FG Gabor</span> changes with
+    spatial frequency, luminance, depth, and ocularity.
+  </div>
+  <h3 style="margin-top:40px;">Why a Gabor patch?</h3>
+  <ul>
+    <li>Localized in <span class="blue">space and frequency</span> — single CSF channel.</li>
+    <li>Standard stimulus for contrast detection &amp; masking.</li>
+    <li>Tests the additive-mixture and defocus terms directly.</li>
+  </ul>
+  <div class="slide-num">15 / 23</div>
+</section>
+
+<!-- ============ 16. Apparatus ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Preliminary Experiment: Apparatus</h2>
+  <div class="cols">
+    <div class="col">
+      <div class="figbox" style="height:480px;">
+        Figure: Top-view schematic.<br><br>
+        FG LCD → beam splitter → eye<br>
+        BG LCD → (through) → eye
+      </div>
+    </div>
+    <div class="col">
+      <h3>Specs</h3>
+      <ul style="font-size:26px;">
+        <li>2 × 27" LCD (2560×1440)</li>
+        <li>Beam splitter: T 20–30%, R 50–60%</li>
+        <li>FG ≤ 100 cd/m², BG ≤ 30 cd/m²</li>
+        <li>Variable FG / BG distances</li>
+      </ul>
+    </div>
+  </div>
+  <div class="slide-num">16 / 23</div>
+</section>
+
+<!-- ============ 17. Procedure ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Preliminary Experiment: Procedure</h2>
+  <div class="cols">
+    <div class="col" style="flex:1;">
+      <h3>Trial flow</h3>
+      <ul>
+        <li>Observer fixates the FG plane.</li>
+        <li>Gabor on FG; uniform or Gabor BG behind.</li>
+        <li>Rate visibility on a <span class="blue">5-point scale</span>.</li>
+      </ul>
+    </div>
+    <div class="col">
+      <div class="figbox" style="height:420px;">
+        Figure: Trial timeline —<br>
+        Fixation → Stimulus → Rating (1–5).
+      </div>
+    </div>
+  </div>
+  <div class="slide-num">17 / 23</div>
+</section>
+
+<!-- ============ 18. Stimulus parameters ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Preliminary Experiment: Stimulus Parameters</h2>
+  <table>
+    <tr><th>Parameter</th><th>Values</th></tr>
+    <tr><td>Patch size</td><td>7.9° × 7.9°, σ = 1°</td></tr>
+    <tr><td>Spatial frequency</td><td>2, 4, 6, 8 cpd</td></tr>
+    <tr><td>Y<sub>FG</sub></td><td>5, 50 cd/m²</td></tr>
+    <tr><td>Y<sub>BG</sub></td><td>5, 15 cd/m²</td></tr>
+    <tr><td>C<sub>FG</sub> / C<sub>BG</sub></td><td>1.0 / {0, 1}</td></tr>
+  </table>
+  <p style="margin-top:30px;font-size:26px;">Combined with depth and ocularity → full factorial design.</p>
+  <div class="slide-num">18 / 23</div>
+</section>
+
+<!-- ============ 19. Conditions ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Preliminary Experiment: Conditions</h2>
+  <h3>Distance pairs (FG, BG, ΔD)</h3>
+  <table>
+    <tr><th>Pair</th><th>FG</th><th>BG</th><th>ΔD</th></tr>
+    <tr><td>A</td><td>0.50 m</td><td>0.70 m</td><td>0.57 D</td></tr>
+    <tr><td>B</td><td>0.81 m</td><td>1.50 m</td><td>0.57 D</td></tr>
+    <tr><td>C</td><td>0.50 m</td><td>1.00 m</td><td>1.00 D</td></tr>
+    <tr><td>D</td><td>0.60 m</td><td>1.50 m</td><td>1.00 D</td></tr>
+  </table>
+  <h3 style="margin-top:30px;">Ocularity</h3>
+  <ul>
+    <li><strong>Monocular</strong> — defocus only.</li>
+    <li><strong>Binocular</strong> — adds disparity &amp; summation.</li>
+  </ul>
+  <div class="slide-num">19 / 23</div>
+</section>
+
+<!-- ============ 20. Results — Monocular ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Preliminary Experiment: Results — Monocular</h2>
+  <div class="cols">
+    <div class="col">
+      <div class="figbox" style="height:440px;">
+        Figure: Visibility heat-map<br>
+        (rows: spatial freq.; cols: distance pair).
+      </div>
+    </div>
+    <div class="col">
+      <h3>Trends</h3>
+      <ul>
+        <li>Visibility <span class="accent">drops</span> at high frequency (CSF).</li>
+        <li>Larger ΔD → stronger high-freq drop.</li>
+        <li>Higher Y<sub>FG</sub> raises overall visibility.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="slide-num">20 / 23</div>
+</section>
+
+<!-- ============ 21. Results — Binocular ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Preliminary Experiment: Results — Binocular</h2>
+  <div class="cols">
+    <div class="col">
+      <div class="figbox" style="height:440px;">
+        Figure: Visibility heat-map<br>
+        (binocular condition).
+      </div>
+    </div>
+    <div class="col">
+      <h3>Trends</h3>
+      <ul>
+        <li><span class="blue">Higher</span> overall (binocular summation).</li>
+        <li>ΔD effect is <span class="blue">smaller</span> than monocular.</li>
+        <li>Disparity may aid FG/BG segregation.</li>
+      </ul>
+    </div>
+  </div>
+  <div class="slide-num">21 / 23</div>
+</section>
+
+<!-- ============ 22. Discussion ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Discussion</h2>
+  <ul>
+    <li>Frequency dependence matches the <span class="blue">CSF</span> prediction.</li>
+    <li>Defocus acts as a <span class="blue">low-pass on BG</span>, as the PSF predicts.</li>
+    <li>Binocular condition shows clear <span class="blue">summation</span>.</li>
+    <li class="accent">Limit: only Gabor stimuli; natural images not yet tested.</li>
+  </ul>
+  <div class="hlbox" style="margin-top:30px;">
+    Findings give parameter constraints for the input-stage extensions.
+  </div>
+  <div class="slide-num">22 / 23</div>
+</section>
+
+<!-- ============ 23. Future Work + Conclusion ============ -->
+<section class="slide">
+  <div class="topbar"></div>
+  <h2 class="header">Future Work &amp; Conclusion</h2>
+  <h3>Main experiment &nbsp;<span class="small">(toward validation)</span></h3>
+  <ul>
+    <li>Natural FG overlays on natural BG photos.</li>
+    <li>2-AFC threshold + supra-threshold rating.</li>
+    <li>Compare human ratings vs. model predictions.</li>
+  </ul>
+  <h3 style="margin-top:30px;">Take-home</h3>
+  <ul>
+    <li>OST-AR visibility depends strongly on the BG.</li>
+    <li>We extend Fukiage's input stage with four OST-AR factors.</li>
+    <li>Gabor data already constrain the extension's parameters.</li>
+  </ul>
+  <div class="slide-num">23 / 23</div>
+</section>
+
+</div>
+</body>
+</html>
