@@ -110,7 +110,7 @@ class ExperimentApp:
 
         # --- 実験条件用変数 ---
         self.distance1 = 50  # Foreground fixed (cm)
-        self.distance2 = 77  # Background fixed (cm)
+        self.distance2 = 150  # Background fixed (cm)
         self.spatial_freq = 4 # Spatial frequency fixed (cpd)
         
         self.trial_list = []
@@ -605,7 +605,7 @@ class ExperimentApp:
         self.key_bindings.clear()
 
         block_trials = []
-        ref_contrasts = [0.5, 0.2]
+        ref_contrasts = [0.2, 0.3,0.4]
         orientations = [0, 90]
         for ref_c in ref_contrasts:
             for ori in orientations:
