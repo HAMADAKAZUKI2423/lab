@@ -652,7 +652,7 @@ class ExperimentApp:
         self.gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
         
         if cond == "OST-AR":
-            width_bg_expanded = int(width_bg * 1.5)
+            width_bg_expanded = int(width_bg * 2.0)
             self.noise_base = stimuli_utils.create_noise_base(width_bg_expanded, height_bg, ppd_bg, self.spatial_freq)
         else:
             self.noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
