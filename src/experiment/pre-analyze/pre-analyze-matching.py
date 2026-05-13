@@ -65,7 +65,7 @@ if not all_data:
 final_df = pd.concat(all_data, ignore_index=True)
 
 # 必要な列が揃っているか確認
-required_columns = ["Condition", "Ocularity", "Ref_Contrast", "Matched_Contrast"]
+required_columns = ["Condition", "Ocularity", "Ref_Contrast", "Matched_Contrast", "Orientation"]
 for col in required_columns:
     if col not in final_df.columns:
         print(f"Error: 必要な列 '{col}' がCSVファイルに見つかりません。")
@@ -79,80 +79,82 @@ condition_order = ["Single plane", "Single plane + defocus simulation", "OST-AR"
 ocularity_order = ["monocular", "binocular"]
 
 unique_ref_contrasts = sorted(final_df['Ref_Contrast'].dropna().unique(), reverse=True)
+unique_orientations = sorted(final_df['Orientation'].dropna().unique())
 
 for ref_c in unique_ref_contrasts:
-    plot_df = final_df[final_df['Ref_Contrast'] == ref_c]
-    if plot_df.empty:
-        continue
+    for ori in unique_orientations:
+        plot_df = final_df[(final_df['Ref_Contrast'] == ref_c) & (final_df['Orientation'] == ori)]
+        if plot_df.empty:
+            continue
+            
+        fig, ax = plt.subplots(figsize=(10, 6))
         
-    fig, ax = plt.subplots(figsize=(10, 6))
+        # 棒グラフと95%信頼区間のエラーバーを描画
+        # errorbar='ci' はデフォルトで 95% 信頼区間になります
+        sns.barplot(
+            data=plot_df, 
+            x='Condition', 
+            y='Matched_Contrast', 
+            hue='Ocularity',
+            order=condition_order,
+            hue_order=ocularity_order,
+            errorbar=('ci', 95), 
+            capsize=0.1, 
+            err_kws={'linewidth': 1.5},
+            ax=ax
+        )
+        
+        # Ref_Contrastの値の高さに横方向の点線を引く
+        ax.axhline(y=ref_c, color='red', linestyle='--', linewidth=2, label=f'Ref Contrast ({ref_c})')
+        
+        # 各バーの足元（内側）に平均(m)と分散/標準偏差(d)を記入
+        patch_idx = 0
+        for oc in ocularity_order:
+            for cond in condition_order:
+                if patch_idx < len(ax.patches):
+                    p = ax.patches[patch_idx]
+                    height = p.get_height()
+                    if pd.notna(height) and height > 0:
+                        subset = plot_df[(plot_df['Ocularity'] == oc) & (plot_df['Condition'] == cond)]
+                        if not subset.empty:
+                            m = subset['Matched_Contrast'].mean()
+                            # "d" は標準偏差 (Standard Deviation) と解釈して std() を使用しています。
+                            # もし厳密な分散 (Variance) を表示したい場合は .std() を .var() に変更してください。
+                            d = subset['Matched_Contrast'].std() 
+                            
+                            x = p.get_x() + p.get_width() / 2
+                            y = 0.1  # バーの足元付近 (ログスケールに合わせて調整)
+                            
+                            ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
+                                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+                    patch_idx += 1
     
-    # 棒グラフと95%信頼区間のエラーバーを描画
-    # errorbar='ci' はデフォルトで 95% 信頼区間になります
-    sns.barplot(
-        data=plot_df, 
-        x='Condition', 
-        y='Matched_Contrast', 
-        hue='Ocularity',
-        order=condition_order,
-        hue_order=ocularity_order,
-        errorbar=('ci', 95), 
-        capsize=0.1, 
-        err_kws={'linewidth': 1.5},
-        ax=ax
-    )
-    
-    # Ref_Contrastの値の高さに横方向の点線を引く
-    ax.axhline(y=ref_c, color='red', linestyle='--', linewidth=2, label=f'Ref Contrast ({ref_c})')
-    
-    # 各バーの足元（内側）に平均(m)と分散/標準偏差(d)を記入
-    patch_idx = 0
-    for oc in ocularity_order:
-        for cond in condition_order:
-            if patch_idx < len(ax.patches):
-                p = ax.patches[patch_idx]
-                height = p.get_height()
-                if pd.notna(height) and height > 0:
-                    subset = plot_df[(plot_df['Ocularity'] == oc) & (plot_df['Condition'] == cond)]
-                    if not subset.empty:
-                        m = subset['Matched_Contrast'].mean()
-                        # "d" は標準偏差 (Standard Deviation) と解釈して std() を使用しています。
-                        # もし厳密な分散 (Variance) を表示したい場合は .std() を .var() に変更してください。
-                        d = subset['Matched_Contrast'].std() 
-                        
-                        x = p.get_x() + p.get_width() / 2
-                        y = 0.1  # バーの足元付近 (ログスケールに合わせて調整)
-                        
-                        ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
-                                bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
-                patch_idx += 1
-
-    # グラフの見た目調整
-    ax.set_title(f'Matched Contrast by Condition and Ocularity (Ref Contrast: {ref_c})', fontsize=14)
-    ax.set_ylabel('Matched Contrast', fontsize=12)
-    ax.set_xlabel('Condition', fontsize=12)
-    ax.set_yscale('log') # 縦軸をログスケールに設定
-    ax.set_ylim(0.1, 1.0) # コントラストの最小値を0.1に固定
-    
-    # y軸の数字を指数表記ではなく通常の小数表記にし、目盛りを細かく表示する
-    ax.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
-    
-    # x軸のラベルをそのまま表示（回転なし）
-    labels = ax.get_xticklabels()
-    ax.set_xticklabels(labels)
-    
-    # 凡例の設定
-    handles, labels = ax.get_legend_handles_labels()
-    ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0, 0.25), loc='upper left', borderaxespad=0.5)
-    
-    plt.tight_layout()
-    
-    # 画像として保存
-    filename = f'matched_contrast_ref_{ref_c}.png'
-    save_path = os.path.join(OUTPUT_DIR, filename)
-    plt.savefig(save_path, dpi=300)
-    print(f"グラフ保存: {filename}")
-    plt.close(fig)
+        # グラフの見た目調整
+        ax.set_title(f'Matched Contrast by Condition and Ocularity (Ref Contrast: {ref_c}, Ori: {ori}°)', fontsize=14)
+        ax.set_ylabel('Matched Contrast', fontsize=12)
+        ax.set_xlabel('Condition', fontsize=12)
+        ax.set_yscale('log') # 縦軸をログスケールに設定
+        ax.set_ylim(0.1, 1.0) # コントラストの最小値を0.1に固定
+        
+        # y軸の数字を指数表記ではなく通常の小数表記にし、目盛りを細かく表示する
+        ax.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        
+        # x軸のラベルをそのまま表示（回転なし）
+        labels = ax.get_xticklabels()
+        ax.set_xticklabels(labels)
+        
+        # 凡例の設定
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0, 0.25), loc='upper left', borderaxespad=0.5)
+        
+        plt.tight_layout()
+        
+        # 画像として保存
+        filename = f'matched_contrast_ref_{ref_c}_ori_{int(ori)}.png'
+        save_path = os.path.join(OUTPUT_DIR, filename)
+        plt.savefig(save_path, dpi=300)
+        print(f"グラフ保存: {filename}")
+        plt.close(fig)
 
 print("解析完了")
