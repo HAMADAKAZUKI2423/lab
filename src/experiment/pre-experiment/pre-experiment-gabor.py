@@ -16,7 +16,7 @@ import math
 # --- 実験設定 ---
 VISUAL_ANGLE_DEG = 7.9   # 画像の視角 (degree)
 NUM_TRIALS_BEFORE_BREAK = 100 # 休憩に入るまでの試行回数
-NUM_REPETITIONS = 2      # 試行の反復回数 (総試行回数を指定した倍数にする)
+NUM_REPETITIONS = 1      # 試行の反復回数 (総試行回数を指定した倍数にする)
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 BASE_IMG_DIR_1 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_noise")
@@ -29,8 +29,8 @@ PUPIL_DIAMETER_MM = 4.0 # 瞳孔径 (mm)
 
 
 # --- 時間設定 (ミリ秒) ---
-TIME_PHASE_1 = 1600   # Phase 1: Image display only on Win2
-TIME_ISI = 1      # Phase 2: Inter Stimulus Interval (black screen)
+TIME_PHASE_1 = 100   # Phase 1: Image display only on Win2
+TIME_ISI = 500      # Phase 2: Inter Stimulus Interval (black screen)
 TIME_PHASE_2 = 5000    # Phase 3: Image display on both windows
 
 # --- UIデザイン設定 ---
@@ -717,9 +717,9 @@ class ExperimentApp:
         # 常に最大輝度・コントラストのガボールを提示する
         self.canvas2.create_image(self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2, image=self.photo_max_gabor, anchor='center', tags="img")
         
-        # 暗転時以外も白枠を表示
-        self.draw_image_corner_brackets(self.canvas2, fg_size, fg_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=True)
-        self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR, gap=30)
+        # マーカー表示をなくす（ref提示時）
+        # self.draw_image_corner_brackets(self.canvas2, fg_size, fg_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=True)
+        # self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR, gap=30)
         
         # 指定時間後に次のフェーズへ
         self.root.after(TIME_PHASE_1, self.phase_isi)
@@ -750,11 +750,11 @@ class ExperimentApp:
         # Window 2 に画像を表示
         self.canvas2.create_image(self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2, image=self.photo2, anchor='center', tags="img")
 
-        # 暗転時以外も白枠を表示
-        d_fg = self.distance1.get()
-        fg_marker_size = self.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
-        self.draw_image_corner_brackets(self.canvas2, fg_marker_size, fg_marker_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=True)
-        self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR, gap=30)
+        # マーカー表示をなくす（test提示時）
+        # d_fg = self.distance1.get()
+        # fg_marker_size = self.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
+        # self.draw_image_corner_brackets(self.canvas2, fg_marker_size, fg_marker_size, 0, 0, color=WIN2_MARKER_COLOR, flip_x=True)
+        # self.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR, gap=30)
 
         # 指定時間後に次のフェーズへ
         self.root.after(TIME_PHASE_2, self.phase_end_trial)
