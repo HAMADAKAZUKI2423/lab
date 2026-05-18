@@ -5,6 +5,9 @@
 import math
 import numpy as np
 from PIL import Image, ImageFilter
+import os
+import csv
+import torch
 
 
 # ==========================================
@@ -237,3 +240,245 @@ def draw_center_cross(canvas, offset_x=0, offset_y=0, color='white', gap=0):
 
     for pts in [pts_left, pts_right, pts_up, pts_down]:
         canvas.create_polygon(pts, fill=color, outline="black", width=2, tags="calib")
+
+
+# ==========================================
+# キャリブレーション・画像処理関数
+# ==========================================
+
+def load_calibration_data(log_dir):
+    """
+    DisplayBrightness キャリブレーション結果をCSVから読み込む
+    
+    Args:
+        log_dir: キャリブレーションログディレクトリ
+        
+    Returns:
+        tuple: (lums, pixels) - numpy配列
+               lums: ルミナンス値の配列
+               pixels: ピクセル値の配列
+    """
+    csv_files = []
+    if not os.path.exists(log_dir):
+        return None, None
+    
+    for file in os.listdir(log_dir):
+        if file.endswith('.csv'):
+            csv_files.append(os.path.join(log_dir, file))
+    
+    if not csv_files:
+        return None, None
+    
+    lums_list = []
+    pixels_list = []
+    for filepath in csv_files:
+        try:
+            with open(filepath, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    try:
+                        lums_list.append(float(row['luminance']))
+                        pixels_list.append(int(row['pixel_value']))
+                    except (ValueError, KeyError):
+                        continue
+        except Exception as e:
+            print(f"Warning: Could not read {filepath}: {e}")
+            continue
+    
+    if lums_list and pixels_list:
+        return np.array(lums_list), np.array(pixels_list)
+    return None, None
+
+
+def apply_torch_fft_blur(img_pil, D, pd_mm, pixels_per_deg):
+    """
+    Torch FFT を使用したデフォーカスブラー適用 (PIL Image用)
+    
+    Args:
+        img_pil: PIL Image (RGB または L mode)
+        D: Diopter (度数)
+        pd_mm: 瞳孔径 (mm)
+        pixels_per_deg: ピクセル/度数
+        
+    Returns:
+        PIL Image: ブラー後の画像
+    """
+    if D <= 0 or pd_mm <= 0:
+        return img_pil
+        
+    rad2deg = 180.0 / math.pi
+    mm = 1e-3
+    bd_deg = rad2deg * D * pd_mm * mm
+    DEFOCUS_BLUR_SCALE_FACTOR = 0.55
+    sigma = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
+    
+    if sigma <= 0:
+        return img_pil
+        
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    img_np = np.array(img_pil).astype(np.float32)
+    is_rgb = len(img_np.shape) == 3
+    
+    if is_rgb:
+        img_np = np.transpose(img_np, (2, 0, 1))
+        
+    img_tensor = torch.from_numpy(img_np).to(device)
+    h, w = img_tensor.shape[-2:]
+    
+    x_deg = torch.linspace(-w/2/pixels_per_deg, w/2/pixels_per_deg, w).to(device)
+    y_deg = torch.linspace(-h/2/pixels_per_deg, h/2/pixels_per_deg, h).to(device)
+    Y_deg, X_deg = torch.meshgrid(y_deg, x_deg, indexing='ij')
+    
+    psf = torch.exp(-((torch.sqrt(X_deg**2 + Y_deg**2)) ** 2) / (2 * sigma ** 2))
+    psf = psf / torch.sum(psf)
+    
+    def FT2(tensor):
+        tensor_shift = torch.fft.ifftshift(tensor, dim=(-2,-1))
+        tensor_ft_shift = torch.fft.fft2(tensor_shift, norm='ortho')
+        return torch.fft.fftshift(tensor_ft_shift, dim=(-2,-1))
+
+    def iFT2(tensor):
+        tensor_shift = torch.fft.ifftshift(tensor, dim=(-2,-1))
+        tensor_ift_shift = torch.fft.ifft2(tensor_shift, norm='ortho')
+        return torch.fft.fftshift(tensor_ift_shift, dim=(-2,-1))
+
+    if is_rgb:
+        psf = psf.unsqueeze(0)
+        
+    img_ft = FT2(img_tensor)
+    psf_ft = FT2(psf)
+    blur_tensor = torch.abs(iFT2(img_ft * psf_ft))
+    
+    if is_rgb:
+        for c in range(3):
+            blur_tensor[c] = blur_tensor[c] * torch.sum(img_tensor[c]) / (torch.sum(blur_tensor[c]) + 1e-8)
+    else:
+        blur_tensor = blur_tensor * torch.sum(img_tensor) / (torch.sum(blur_tensor) + 1e-8)
+        
+    blur_np = blur_tensor.cpu().numpy()
+    
+    if is_rgb:
+        blur_np = np.transpose(blur_np, (1, 2, 0))
+        
+    blur_np = np.clip(blur_np, 0, 255).astype(np.uint8)
+    return Image.fromarray(blur_np, mode=img_pil.mode)
+
+
+def apply_torch_fft_blur_luminance(lum_np, D, pd_mm, pixels_per_deg):
+    """
+    Torch FFT を使用したデフォーカスブラー適用 (輝度配列用)
+    
+    Args:
+        lum_np: 輝度配列 (numpy float32)
+        D: Diopter (度数)
+        pd_mm: 瞳孔径 (mm)
+        pixels_per_deg: ピクセル/度数
+        
+    Returns:
+        numpy array: ブラー後の輝度配列
+    """
+    if D <= 0 or pd_mm <= 0:
+        return lum_np
+        
+    rad2deg = 180.0 / math.pi
+    mm = 1e-3
+    bd_deg = rad2deg * D * pd_mm * mm
+    DEFOCUS_BLUR_SCALE_FACTOR = 0.55
+    sigma = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
+    
+    if sigma <= 0:
+        return lum_np
+        
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
+    img_tensor = torch.from_numpy(lum_np.astype(np.float32)).to(device)
+    h, w = img_tensor.shape[-2:]
+    
+    x_deg = torch.linspace(-w/2/pixels_per_deg, w/2/pixels_per_deg, w).to(device)
+    y_deg = torch.linspace(-h/2/pixels_per_deg, h/2/pixels_per_deg, h).to(device)
+    Y_deg, X_deg = torch.meshgrid(y_deg, x_deg, indexing='ij')
+    
+    psf = torch.exp(-((torch.sqrt(X_deg**2 + Y_deg**2)) ** 2) / (2 * sigma ** 2))
+    psf = psf / torch.sum(psf)
+    
+    def FT2(tensor):
+        tensor_shift = torch.fft.ifftshift(tensor, dim=(-2,-1))
+        tensor_ft_shift = torch.fft.fft2(tensor_shift, norm='ortho')
+        return torch.fft.fftshift(tensor_ft_shift, dim=(-2,-1))
+
+    def iFT2(tensor):
+        tensor_shift = torch.fft.ifftshift(tensor, dim=(-2,-1))
+        tensor_ift_shift = torch.fft.ifft2(tensor_shift, norm='ortho')
+        return torch.fft.fftshift(tensor_ift_shift, dim=(-2,-1))
+
+    img_ft = FT2(img_tensor)
+    psf_ft = FT2(psf)
+    blur_tensor = torch.abs(iFT2(img_ft * psf_ft))
+    
+    blur_tensor = blur_tensor * torch.sum(img_tensor) / (torch.sum(blur_tensor) + 1e-8)
+        
+    return blur_tensor.cpu().numpy()
+
+
+def calculate_defocus_blur_parameters(D, pd_mm, pixels_per_deg):
+    """
+    デフォーカスブラーのパラメータを計算
+    
+    Args:
+        D: Diopter (度数)
+        pd_mm: 瞳孔径 (mm)
+        pixels_per_deg: ピクセル/度数
+        
+    Returns:
+        dict: パラメータ辞書 {sigma, bd_deg}
+    """
+    if D <= 0 or pd_mm <= 0:
+        return {"sigma": 0.0, "bd_deg": 0.0}
+        
+    rad2deg = 180.0 / math.pi
+    mm = 1e-3
+    bd_deg = rad2deg * D * pd_mm * mm
+    DEFOCUS_BLUR_SCALE_FACTOR = 0.55
+    sigma = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
+    
+    return {"sigma": sigma, "bd_deg": bd_deg}
+
+
+def create_block_trials(param_dict, num_repetitions, shuffle=True):
+    """
+    実験ブロック用の試行リストを生成
+    
+    Args:
+        param_dict: パラメータ辞書
+                   matching: {"ref_contrasts": [...], "orientations": [...]}
+                   gabor: {"spatial_freqs": [...], ...}
+                   image: {"images": [...]}
+        num_repetitions: 反復回数
+        shuffle: シャッフルするか (default True)
+        
+    Returns:
+        list: 試行リスト [{"param1": val1, "param2": val2, ...}, ...]
+    """
+    trials = []
+    
+    # param_dict のすべてのキーと値の組み合わせを生成
+    keys = list(param_dict.keys())
+    values_lists = [param_dict[k] if isinstance(param_dict[k], list) else [param_dict[k]] for k in keys]
+    
+    # 全組み合わせを生成
+    import itertools
+    combinations = list(itertools.product(*values_lists))
+    
+    # 反復回数分複製
+    for _ in range(num_repetitions):
+        for combo in combinations:
+            trial_dict = {keys[i]: combo[i] for i in range(len(keys))}
+            trials.append(trial_dict)
+    
+    # シャッフル
+    if shuffle:
+        import random
+        random.shuffle(trials)
+    
+    return trials
