@@ -15,7 +15,7 @@ import datetime
 # ==========================================
 # 実験環境の物理パラメータ
 FG_DISTANCES_CM = [50] # 前景用の距離リスト (cm)
-BG_DISTANCES_CM = [150] # 背景用の距離リスト (cm)
+BG_DISTANCES_CM = [77] # 背景用の距離リスト (cm)
 SCREEN_WIDTH_CM = 59.67    # 画面の横幅実寸 (cm) ※ベゼルを含まない表示領域
 SCREEN_RES_X_PX = 2560    # 画面の横解像度 (px)
 STIM_WIDTH_DEG = 7.9     # 刺激の幅 (度)
@@ -328,12 +328,16 @@ def generate_matching_stimuli(output_dir, distances_fg, distances_bg, calib_data
     mean_lum = 15
     contrast = 1.0
 
+    def wrapper_noise(w, h, p, c, angle_deg=0):
+        return create_band_limited_noise(w, h, p, f_center_cpd=c)
+
     # 刺激パターンのリスト: (名前, 関数, 角度)
     patterns = [
         ("checker", create_checkerboard, 0),
         ("checker_45", create_checkerboard, 45),
         ("stripe", create_stripe, 0),
-        ("border", create_stripe, 90)
+        ("border", create_stripe, 90),
+        ("noise", wrapper_noise, 0)
     ]
 
     # 前景用

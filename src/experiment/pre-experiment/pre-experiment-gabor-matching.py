@@ -110,7 +110,7 @@ class ExperimentApp:
 
         # --- 実験条件用変数 ---
         self.distance1 = 50  # Foreground fixed (cm)
-        self.distance2 = 150  # Background fixed (cm)
+        self.distance2 = 77  # Background fixed (cm)
         self.spatial_freq = 4 # Spatial frequency fixed (cpd)
         
         self.trial_list = []
