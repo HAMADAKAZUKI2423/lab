@@ -276,11 +276,22 @@ def load_calibration_data(log_dir):
             with open(filepath, 'r', encoding='utf-8') as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    try:
-                        lums_list.append(float(row['luminance']))
-                        pixels_list.append(int(row['pixel_value']))
-                    except (ValueError, KeyError):
-                        continue
+                    # ヘッダ名が異なる場合に対応
+                    t_lum = None
+                    p_val = None
+                    if "Target_Luminance(cd/m2)" in row and "Pixel_Value" in row:
+                        t_lum = row["Target_Luminance(cd/m2)"]
+                        p_val = row["Pixel_Value"]
+                    elif "luminance" in row and "pixel_value" in row:
+                        t_lum = row["luminance"]
+                        p_val = row["pixel_value"]
+                    
+                    if t_lum is not None and p_val is not None:
+                        try:
+                            lums_list.append(float(t_lum))
+                            pixels_list.append(int(p_val))
+                        except ValueError:
+                            pass
         except Exception as e:
             print(f"Warning: Could not read {filepath}: {e}")
             continue

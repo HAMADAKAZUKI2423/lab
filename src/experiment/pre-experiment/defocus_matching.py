@@ -93,8 +93,8 @@ def setup_defocus_matching_ui(app):
         app.root.unbind(key, binding_id)
     app.key_bindings.clear()
 
-    # パターンと空間周波数の組み合わせ（計8ペア）を作成
-    patterns = ["checker", "checker_45", "stripe", "border"]
+    # パターンと空間周波数の組み合わせを作成
+    patterns = ["checker", "checker_45", "stripe", "border", "noise"]
     cpds = [2, 4]
     app.defocus_match_patterns = [(p, c) for p in patterns for c in cpds]
     random.shuffle(app.defocus_match_patterns)
