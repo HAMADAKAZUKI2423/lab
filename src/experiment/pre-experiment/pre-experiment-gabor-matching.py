@@ -511,7 +511,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         self.save_preview_images()
         
-        conditions = ["Single plane", "Single plane + defocus simulation", "OST-AR"]
+        conditions = ["Single plane", "Single plane + defocus simulation", "Dual plane", "Dual plane flat"]
         ocularities = ["monocular", "binocular"]
         self.blocks = []
         
@@ -679,14 +679,14 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, 
                                                           self.spatial_freq, orientation=ori)
         
-        if cond == "OST-AR":
+        if cond in ["Dual plane", "Dual plane flat"]:
             width_bg_expanded = int(width_bg * 2.0)
             self.noise_base = stimuli_utils.create_noise_base(width_bg_expanded, height_bg, ppd_bg, self.spatial_freq)
         else:
             self.noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
         
         L_bg = 15.0
-        C_bg = 1.0
+        C_bg = 0.0 if cond == "Dual plane flat" else 1.0
         lum_noise_temp = L_bg * (1.0 + C_bg * self.noise_base)
         
         cond = self.current_block_cond["condition"]
@@ -781,7 +781,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         img_ref_fg = Image.fromarray(pix_ref_fg, mode='L')
         self.photo_ref_fg = ImageTk.PhotoImage(img_ref_fg)
         
-        if cond == "OST-AR":
+        if cond in ["Dual plane", "Dual plane flat"]:
             lum_test_fg = L_fg * (1.0 + c_test * self.gabor_base)
             pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
             img_test_fg = Image.fromarray(pix_test_fg, mode='L')
