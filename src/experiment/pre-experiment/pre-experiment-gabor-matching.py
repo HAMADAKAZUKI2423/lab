@@ -387,8 +387,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.offset_y.set(0)
         self.pupil_diameter_val.set(4.0)
         
-        is_new_eye = (self.current_calib_eye_idx == 0)
-        self.setup_calibration_ui_matching(is_new_eye=is_new_eye)
+        self.setup_calibration_ui_matching(is_new_eye=True)
     
     def update_calibration_view(self, *args):
         """キャリブレーション画面の表示を更新する"""
@@ -485,13 +484,6 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
     
     def _on_calibration_done(self):
         """瞳孔径キャリブレーション完了後の処理"""
-        current_eye = self.calibration_eyes[self.current_calib_eye_idx]
-        self.calib_results[current_eye] = {
-            "offset_x": self.offset_x.get(),
-            "offset_y": self.offset_y.get(),
-            "pd_mean": self.pupil_diameter_val.get()
-        }
-        self.current_calib_eye_idx += 1
         
         self.canvas1.delete("all")
         self.canvas2.delete("all")
@@ -561,7 +553,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
                 os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png")
             )
         
-        c_test = 0.5
+        c_test = 0.4
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
         Image.fromarray(pix_test_fg, mode='L').save(
