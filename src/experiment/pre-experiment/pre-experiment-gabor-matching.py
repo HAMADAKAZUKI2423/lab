@@ -70,7 +70,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         # matching固有の変数
         self.distance1 = 50  # Foreground distance (cm)
-        self.distance2 = 77  # Background distance (cm)
+        self.distance2 = 150  # Background distance (cm)
         self.spatial_freq = SPATIAL_FREQ
         self.pupil_diameter_val = tk.DoubleVar(value=4.0)
         
@@ -536,8 +536,8 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         height_fg = int(height_deg * ppd_fg)
         
         ori = 0
-        gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, 
-                                                     self.spatial_freq, orientation=ori)
+        gabor_base = stimuli_utils.create_cosine_windowed_grating_base(width_fg, height_fg, ppd_fg, 
+                                                                       self.spatial_freq, orientation=ori)
         noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, 
                                                      self.spatial_freq)
         
@@ -668,8 +668,8 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         ori = trial["orientation"]
         
-        self.gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, 
-                                                          self.spatial_freq, orientation=ori)
+        self.gabor_base = stimuli_utils.create_cosine_windowed_grating_base(width_fg, height_fg, ppd_fg, 
+                                                                            self.spatial_freq, orientation=ori)
         
         if cond in ["Dual plane", "Dual plane flat"]:
             width_bg_expanded = int(width_bg * 2.0)

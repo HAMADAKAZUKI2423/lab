@@ -142,6 +142,81 @@ def create_gabor_base(width_px, height_px, ppd, cpd, orientation=0, phase=0, sig
     return grating * envelope
 
 
+def create_cosine_windowed_disk(width_px, height_px, ppd, disk_diameter_deg=3.0, fade_width_deg=0.5):
+    """
+    一定コントラストの円形刺激（端はコサイン波で減衰）を生成する
+
+    Args:
+        width_px (int): 画像幅 (ピクセル)
+        height_px (int): 画像高さ (ピクセル)
+        ppd (float): ピクセル/度数 (pixels per degree)
+        disk_diameter_deg (float): フェードアウト部分を含む円盤の総直径（度数）
+        fade_width_deg (float): コサイン波で減衰するエッジ部分の幅（度数）
+
+    Returns:
+        np.ndarray: 刺激マスクを表す (height_px, width_px) 形状の 0.0 から 1.0 の値を持つ
+                    2D numpy 配列
+    """
+    # 度数からピクセルへ変換
+    total_radius_px = (disk_diameter_deg / 2.0) * ppd
+    fade_width_px = fade_width_deg * ppd
+    flat_radius_px = total_radius_px - fade_width_px
+
+    if flat_radius_px < 0:
+        # フェード幅が半径より大きい場合、円全体がフェードになる
+        flat_radius_px = 0
+        fade_width_px = total_radius_px
+
+    # 座標グリッドを作成
+    x = np.linspace(-width_px / 2, width_px / 2, width_px)
+    y = np.linspace(-height_px / 2, height_px / 2, height_px)
+    X, Y = np.meshgrid(x, y)
+    R = np.sqrt(X**2 + Y**2)
+
+    # マスクを作成
+    mask = np.zeros((height_px, width_px))
+
+    # 平坦な領域
+    mask[R <= flat_radius_px] = 1.0
+
+    # コサインフェード領域
+    fade_zone = (R > flat_radius_px) & (R <= total_radius_px)
+    if fade_width_px > 0:
+        r_norm = (R[fade_zone] - flat_radius_px) / fade_width_px
+        mask[fade_zone] = (np.cos(r_norm * np.pi) + 1.0) / 2.0
+
+    return mask
+
+
+def create_cosine_windowed_grating_base(width_px, height_px, ppd, cpd, orientation=0, phase=0, disk_diameter_deg=3.0, fade_width_deg=0.5):
+    """
+    コサイン窓を用いた円形グレーティングの基盤パターン（-1~1）を生成する
+    
+    Args:
+        width_px: 画像幅 (ピクセル)
+        height_px: 画像高さ (ピクセル)
+        ppd: ピクセル/度数 (pixels per degree)
+        cpd: 空間周波数 (cycles per degree)
+        orientation: 向き (度数, 0~180)
+        phase: 位相 (ラジアン)
+        disk_diameter_deg: フェードアウト部分を含む円盤の総直径（度数）
+        fade_width_deg: コサイン波で減衰するエッジ部分の幅（度数）
+    
+    Returns:
+        np.ndarray: 正規化されたパターン (-1~1)
+    """
+    x = np.linspace(-width_px/2, width_px/2, width_px) / ppd
+    y = np.linspace(-height_px/2, height_px/2, height_px) / ppd
+    X, Y = np.meshgrid(x, y)
+    theta = np.deg2rad(orientation)
+    X_rot = X * np.cos(theta) + Y * np.sin(theta)
+    grating = np.sin(2 * np.pi * cpd * X_rot + phase)
+    
+    envelope = create_cosine_windowed_disk(width_px, height_px, ppd, disk_diameter_deg, fade_width_deg)
+    
+    return grating * envelope
+
+
 # ==========================================
 # ユーティリティ関数
 # ==========================================

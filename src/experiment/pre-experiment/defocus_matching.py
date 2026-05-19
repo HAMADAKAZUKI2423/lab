@@ -5,6 +5,8 @@ import tkinter as tk
 import os
 import random
 import math
+import csv
+import datetime
 from PIL import Image, ImageTk, ImageFilter
 import stimuli_utils
 import numpy as np
@@ -153,6 +155,18 @@ def _next_defocus_matching_step(app):
     pd_val = app.pupil_diameter_val.get()
     app.match_pd_results.append(pd_val)
     print(f"Defocus match result: {pattern}_{cpd}cpd -> {pd_val}mm")
+    
+    if not hasattr(app, 'detailed_defocus_results'):
+        app.detailed_defocus_results = []
+        
+    current_eye = app.calibration_eyes[app.current_calib_eye_idx] if hasattr(app, 'calibration_eyes') else "Unknown"
+    app.detailed_defocus_results.append({
+        "ID": app.participant_id.get() if hasattr(app, 'participant_id') else "Unknown",
+        "Eye": current_eye,
+        "Pattern": pattern,
+        "Spatial_Freq(cpd)": cpd,
+        "Matched_PD(mm)": pd_val
+    })
 
     app.current_match_idx += 1
     if app.current_match_idx < len(app.defocus_match_patterns):
@@ -181,6 +195,26 @@ def finish_eye_defocus_matching(app):
     # Canvas をクリアしてから次のステップへ
     app.canvas1.delete("all")
     app.canvas2.delete("all")
+    
+    # すべての目 (左右) のデフォーカスマッチングが終わったらCSVに保存する
+    if app.current_calib_eye_idx >= len(app.calibration_eyes):
+        if hasattr(app, 'detailed_defocus_results') and app.detailed_defocus_results:
+            p_id = app.participant_id.get() if hasattr(app, 'participant_id') else "Unknown"
+            now = datetime.datetime.now()
+            date_str = now.strftime("%Y%m%d")
+            
+            result_dir = getattr(app, 'result_dir', os.path.join(lab_root, "results", "tables", "pre-experiment-matching"))
+            save_folder = os.path.join(result_dir, f"{p_id}_{date_str}")
+            if not os.path.exists(save_folder):
+                os.makedirs(save_folder)
+                
+            filename = os.path.join(save_folder, f"defocus_matching_{p_id}_{now.strftime('%Y%m%d_%H%M%S')}.csv")
+            with open(filename, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.DictWriter(f, fieldnames=["ID", "Eye", "Pattern", "Spatial_Freq(cpd)", "Matched_PD(mm)"])
+                writer.writeheader()
+                writer.writerows(app.detailed_defocus_results)
+            print(f"Detailed defocus matching results saved to {filename}")
+
     app.start_eye_calibration()
 
 def _handle_defocus_key_press(app, event):
