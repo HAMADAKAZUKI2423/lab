@@ -4,7 +4,7 @@
 """
 import math
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageTk
 import os
 import csv
 import torch
@@ -576,3 +576,56 @@ def create_block_trials(param_dict, num_repetitions, shuffle=True):
         random.shuffle(trials)
     
     return trials
+
+
+def lum_to_photo(lum_np, lums, pixels):
+    """
+    輝度配列をピクセル値に変換して ImageTk.PhotoImage を返す
+
+    Args:
+        lum_np: 輝度配列 (numpy float)
+        lums: 参照ルミナンス配列
+        pixels: 参照ピクセル値配列
+
+    Returns:
+        ImageTk.PhotoImage
+    """
+    pix = np.interp(lum_np, lums, pixels).astype(np.uint8)
+    img = Image.fromarray(pix, mode='L')
+    return ImageTk.PhotoImage(img)
+
+
+def lum_to_pil(lum_np, lums, pixels):
+    """
+    輝度配列を PIL.Image に変換して返す（保存や加工に使用）
+    """
+    pix = np.interp(lum_np, lums, pixels).astype(np.uint8)
+    return Image.fromarray(pix, mode='L')
+
+
+def generate_matching_photos(gabor_base, cached_lum_noise, fg_lums, fg_pixels, bg_lums, bg_pixels,
+                             L_fg=35.0, L_bg=15.0, L_ref=50.0, c_test=0.4, ref_c=0.2, cond='Single plane'):
+    """
+    gabor_base とノイズ基盤から、表示に使う PhotoImage を生成するヘルパ。
+    返り値は辞書で、キーに必要な PhotoImage を格納する。
+    この関数は表示のための変換ロジックを一箇所にまとめる。
+    """
+    out = {}
+
+    # 参照 (reference)
+    lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
+    out['photo_ref_fg'] = lum_to_photo(lum_ref_fg, fg_lums, fg_pixels)
+
+    if cond in ["Dual plane", "Dual plane flat"]:
+        lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
+        out['photo_test_fg'] = lum_to_photo(lum_test_fg, fg_lums, fg_pixels)
+
+        lum_noise_bg = cached_lum_noise
+        out['photo_noise_bg'] = lum_to_photo(lum_noise_bg, bg_lums, bg_pixels)
+    else:
+        lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
+        lum_noise = cached_lum_noise
+        lum_test_total = lum_noise + lum_test_fg
+        out['photo_test'] = lum_to_photo(lum_test_total, fg_lums, fg_pixels)
+
+    return out

@@ -44,6 +44,8 @@ lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 
 BASE_IMG_DIR_1 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-image", "bg_noise")
 BASE_IMG_DIR_2 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-image", "fg_image")
+IMG_DIR_1 = BASE_IMG_DIR_1
+IMG_DIR_2 = BASE_IMG_DIR_2
 RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-image")
 FIGURE_DIR = os.path.join(lab_root, "results", "figures", "pre-experiment-image")
 PARTICIPANT_DATA_DIR = os.path.join(lab_root, "data", "processed", "tables", "pre-experiment-image")
@@ -119,30 +121,31 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         self.setup_participant_info_ui()
     
-    def setup_participant_info_ui(self):
+    def setup_experiment_ui(self):
+        """
+        実験固有の設定UI（被験者登録後に表示される）
+        参加者ID/年齢などの登録UIは `ExperimentBaseUI.setup_participant_info_ui` を使用します。
+        """
         if hasattr(self, 'participant_frame') and self.participant_frame and self.participant_frame.winfo_exists():
             self.participant_frame.destroy()
-            
+
         self.participant_frame = tk.Frame(self.root, bg='gray', padx=20, pady=20)
         self.participant_frame.place(relx=0.5, rely=0.5, anchor='center')
 
         tk.Label(self.participant_frame, text="Experiment Setup", font=("Arial", 16)).grid(row=0, column=0, columnspan=2, pady=10)
 
+        # Participant info fields are managed by base class variables and were populated by check_participant_id/register_and_start
         tk.Label(self.participant_frame, text="Participant ID:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
-        entry_id = tk.Entry(self.participant_frame, textvariable=self.participant_id)
-        entry_id.grid(row=1, column=1, padx=5, pady=5)
-        entry_id.focus_set()
+        tk.Label(self.participant_frame, text=self.participant_id.get()).grid(row=1, column=1, padx=5, pady=5)
 
-        tk.Label(self.participant_frame, text="Age:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
-        tk.Entry(self.participant_frame, textvariable=self.participant_age).grid(row=2, column=1, padx=5, pady=5)
+        tk.Label(self.participant_frame, text="Age:").grid(row=2, column=0, sticky='w', padx=5, pady=5)
+        tk.Label(self.participant_frame, text=self.participant_age.get()).grid(row=2, column=1, padx=5, pady=5)
 
         tk.Label(self.participant_frame, text="Gender:").grid(row=3, column=0, sticky='w', padx=5, pady=5)
-        gender_combo = ttk.Combobox(self.participant_frame, textvariable=self.participant_gender, values=["Male", "Female", "Other"])
-        gender_combo.grid(row=3, column=1, padx=5, pady=5)
-        gender_combo.set("Male")
+        tk.Label(self.participant_frame, text=self.participant_gender.get()).grid(row=3, column=1, padx=5, pady=5)
 
         tk.Label(self.participant_frame, text="IPD (mm):").grid(row=4, column=0, sticky='w', padx=5, pady=5)
-        tk.Entry(self.participant_frame, textvariable=self.participant_ipd).grid(row=4, column=1, padx=5, pady=5)
+        tk.Label(self.participant_frame, text=self.participant_ipd.get()).grid(row=4, column=1, padx=5, pady=5)
 
         tk.Label(self.participant_frame, text="Foreground Distance (cm):").grid(row=5, column=0, sticky='w', padx=5, pady=5)
         tk.Entry(self.participant_frame, textvariable=self.distance1).grid(row=5, column=1, padx=5, pady=5)
@@ -155,10 +158,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         btn.bind('<Return>', lambda event: self.start_calibration())
 
     def start_calibration(self):
-        if not self.participant_id.get() or not self.participant_age.get() or not self.participant_ipd.get():
-            messagebox.showwarning("Input Error", "Please enter ID, Age, and IPD.")
-            return
-        
+        # distance の妥当性チェックのみ行い、キャリブレーションへ移行
         try:
             self.distance1.get()
             self.distance2.get()
@@ -170,8 +170,19 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.width = self.win1.winfo_width()
         self.height = self.win1.winfo_height()
 
-        self.participant_frame.destroy()
+        if hasattr(self, 'participant_frame') and self.participant_frame and self.participant_frame.winfo_exists():
+            self.participant_frame.destroy()
         self.setup_calibration_ui()
+
+    def on_participant_confirmed(self):
+        """
+        ExperimentBaseUI.check_participant_id() または register_and_start() から呼ばれるコールバック。
+        被験者情報がロードされた後、画像実験固有の設定UIを表示する。
+        """
+        self.win1.update_idletasks()
+        self.width = self.win1.winfo_width()
+        self.height = self.win1.winfo_height()
+        self.setup_experiment_ui()
 
     def _reset_to_setup_ui(self):
         if hasattr(self, 'ctrl_frame') and self.ctrl_frame and self.ctrl_frame.winfo_exists():
@@ -204,39 +215,38 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         stimuli_utils.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
 
     def setup_calibration_ui(self, is_break=False):
-        self.update_calibration_view()
-        
-        self.ctrl_frame = tk.Frame(self.root, bg='gray')
-        self.ctrl_frame.place(relx=0.5, rely=0.8, anchor='center')
-
-        self.clear_key_bindings()
-
-        if is_break:
-            instruction_text = "This is a break. You can adjust the position if needed.\nPress 'Resume Experiment' to continue."
-            button_text = "Resume Experiment"
-            button_command = self.resume_experiment
-        else:
-            instruction_text = "Use the arrow keys to adjust the position of the red frame."
-            button_text = "Calibration Done, Next"
-            button_command = lambda: defocus_matching.setup_defocus_matching_ui_image(self)
-
-        tk.Label(self.ctrl_frame, text=instruction_text, bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
-
-        btn = tk.Button(self.ctrl_frame, text=button_text, command=button_command)
-        btn.pack(pady=10)
-        btn.focus_set()
-        
-        self.key_bindings['<Return>'] = self.root.bind('<Return>', lambda event: button_command())
-        self.key_bindings['<Left>'] = self.root.bind('<Left>', lambda e: self.adjust_offset(-1, 0))
-        self.key_bindings['<Right>'] = self.root.bind('<Right>', lambda e: self.adjust_offset(1, 0))
-        self.key_bindings['<Up>'] = self.root.bind('<Up>', lambda e: self.adjust_offset(0, -1))
-        self.key_bindings['<Down>'] = self.root.bind('<Down>', lambda e: self.adjust_offset(0, 1))
+        # Use base-class calibration UI to handle controls and bindings
+        super().setup_calibration_ui(is_break=is_break)
 
     def resume_experiment(self):
         self.ctrl_frame.destroy()
         self.canvas1.delete("all")
         self.canvas2.delete("all")
         self.run_trial()
+
+    def on_calibration_complete(self):
+        """
+        キャリブレーション完了時に呼ばれるコールバック。
+        実験開始前のキャリブなら `start_experiment` を呼び、休憩後のキャリブなら `resume_experiment` を呼ぶ。
+        """
+        # remove control frame and calibration markers
+        try:
+            if self.ctrl_frame and self.ctrl_frame.winfo_exists():
+                self.ctrl_frame.destroy()
+        except Exception:
+            pass
+
+        # decide whether we are mid-experiment (break) or initial calibration
+        if hasattr(self, 'trial_list') and self.trial_list and self.current_trial_index > 0 and self.current_trial_index < len(self.trial_list):
+            # mid-experiment break -> resume
+            self.canvas1.delete("all")
+            self.canvas2.delete("all")
+            self.resume_experiment()
+        else:
+            # initial calibration -> start experiment
+            self.canvas1.delete("all")
+            self.canvas2.delete("all")
+            self.start_experiment()
 
     def start_break(self):
         self.canvas1.delete("all")

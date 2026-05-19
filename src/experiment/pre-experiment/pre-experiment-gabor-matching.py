@@ -307,22 +307,22 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         # Reference Gabor patches
         for ref_c in [0.2, 0.4]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
-            pix_ref_fg = np.interp(lum_ref_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
-            Image.fromarray(pix_ref_fg, mode='L').save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
+            pil_ref = stimuli_utils.lum_to_pil(lum_ref_fg, self.fg_lums, self.fg_pixels)
+            pil_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
             
         # Single plane stimulus
         c_test = 0.4
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
-        pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_test_fg, mode='L').save(os.path.join(save_dir, "single_plane_foreground.png"))
-        
+        pil_test_fg = stimuli_utils.lum_to_pil(lum_test_fg, self.fg_lums, self.fg_pixels)
+        pil_test_fg.save(os.path.join(save_dir, "single_plane_foreground.png"))
+
         lum_noise = L_bg * (1.0 + C_bg * noise_base)
-        pix_noise = np.interp(lum_noise, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_noise, mode='L').save(os.path.join(save_dir, "single_plane_background.png"))
-        
+        pil_noise = stimuli_utils.lum_to_pil(lum_noise, self.fg_lums, self.fg_pixels)
+        pil_noise.save(os.path.join(save_dir, "single_plane_background.png"))
+
         lum_total = lum_noise + lum_test_fg
-        pix_total = np.interp(lum_total, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_total, mode='L').save(os.path.join(save_dir, "single_plane_combined.png"))
+        pil_total = stimuli_utils.lum_to_pil(lum_total, self.fg_lums, self.fg_pixels)
+        pil_total.save(os.path.join(save_dir, "single_plane_combined.png"))
 
     def setup_experiment_blocks(self):
         dom_eye = self.participant_dominance.get()
@@ -671,15 +671,21 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.gabor_base = stimuli_utils.create_cosine_windowed_grating_base(width_fg, height_fg, ppd_fg, 
                                                                             self.spatial_freq, orientation=ori)
         
-        if cond in ["Dual plane", "Dual plane flat"]:
-            width_bg_expanded = int(width_bg * 2.0)
-            self.noise_base = stimuli_utils.create_noise_base(width_bg_expanded, height_bg, ppd_bg, self.spatial_freq)
-        else:
-            self.noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
-        
         L_bg = 15.0
-        C_bg = 0.0 if cond == "Dual plane flat" else 1.0
-        lum_noise_temp = L_bg * (1.0 + C_bg * self.noise_base)
+        
+        if cond == "Dual plane flat":
+            # コントラスト0の場合、重いFFTノイズ生成処理をスキップ
+            width_bg_expanded = int(width_bg * 2.5)
+            self.noise_base = None
+            lum_noise_temp = np.full((height_bg, width_bg_expanded), L_bg, dtype=np.float32)
+        else:
+            if cond == "Dual plane":
+                width_bg_expanded = int(width_bg * 2.5)
+                self.noise_base = stimuli_utils.create_noise_base(width_bg_expanded, height_bg, ppd_bg, self.spatial_freq)
+            else:
+                self.noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
+            
+            lum_noise_temp = L_bg * (1.0 + self.noise_base)
         
         cond = self.current_block_cond["condition"]
         if cond == "Single plane + defocus simulation":
@@ -768,34 +774,23 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         L_bg = 15.0
         L_ref = 50.0
         
-        lum_ref_fg = L_ref * (1.0 + ref_c * self.gabor_base)
-        pix_ref_fg = np.interp(lum_ref_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        img_ref_fg = Image.fromarray(pix_ref_fg, mode='L')
-        self.photo_ref_fg = ImageTk.PhotoImage(img_ref_fg)
-        
+        # Generate PhotoImage objects for reference/test/background using helper
+        photos = stimuli_utils.generate_matching_photos(
+            self.gabor_base, self.cached_lum_noise,
+            self.fg_lums, self.fg_pixels, self.bg_lums, self.bg_pixels,
+            L_fg=L_fg, L_bg=L_bg, L_ref=L_ref, c_test=c_test, ref_c=ref_c, cond=cond
+        )
+
+        self.photo_ref_fg = photos.get('photo_ref_fg')
         if cond in ["Dual plane", "Dual plane flat"]:
-            lum_test_fg = L_fg * (1.0 + c_test * self.gabor_base)
-            pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
-            img_test_fg = Image.fromarray(pix_test_fg, mode='L')
-            
-            lum_noise_bg = self.cached_lum_noise
-            pix_noise_bg = np.interp(lum_noise_bg, self.bg_lums, self.bg_pixels).astype(np.uint8)
-            img_noise_bg = Image.fromarray(pix_noise_bg, mode='L')
-            
-            self.photo_test_fg = ImageTk.PhotoImage(img_test_fg)
-            self.photo_noise_bg = ImageTk.PhotoImage(img_noise_bg)
-            
+            self.photo_test_fg = photos.get('photo_test_fg')
+            self.photo_noise_bg = photos.get('photo_noise_bg')
+
             self.canvas2.create_image(cx2, cy2 - gap_y_fg, image=self.photo_ref_fg, anchor='center', tags="stim")
             self.canvas1.create_image(cx1, cy1 + gap_y_bg, image=self.photo_noise_bg, anchor='center', tags="stim")
             self.canvas2.create_image(cx2, cy2 + gap_y_fg, image=self.photo_test_fg, anchor='center', tags="stim")
         else:
-            lum_test_fg = L_fg * (1.0 + c_test * self.gabor_base)
-            lum_noise = self.cached_lum_noise
-            lum_test_total = lum_noise + lum_test_fg
-            pix_test = np.interp(lum_test_total, self.fg_lums, self.fg_pixels).astype(np.uint8)
-            img_test = Image.fromarray(pix_test, mode='L')
-            self.photo_test = ImageTk.PhotoImage(img_test)
-            
+            self.photo_test = photos.get('photo_test')
             self.canvas2.create_image(cx2, cy2 - gap_y_fg, image=self.photo_ref_fg, anchor='center', tags="stim")
             self.canvas2.create_image(cx2, cy2 + gap_y_fg, image=self.photo_test, anchor='center', tags="stim")
     

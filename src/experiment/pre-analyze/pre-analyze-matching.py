@@ -75,7 +75,7 @@ print("\n--- Generating bar charts ---")
         
 # 描画用の設定
 sns.set_theme(style="whitegrid")
-condition_order = ["Single plane", "Single plane + defocus simulation", "OST-AR"]
+condition_order = ["Single plane", "Single plane + defocus simulation", "Dual plane", "Dual plane flat"]
 ocularity_order = ["monocular", "binocular"]
 
 unique_ref_contrasts = sorted(final_df['Ref_Contrast'].dropna().unique(), reverse=True)
