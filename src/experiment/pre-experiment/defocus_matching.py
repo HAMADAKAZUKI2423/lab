@@ -390,8 +390,8 @@ def update_defocus_view_gabor(app):
     app.canvas2.delete("match")
     app.canvas2.delete("calib")
 
-    d_fg = app.distance1.get()
-    d_bg = app.distance2.get()
+    d_fg = app.distance1
+    d_bg = app.distance2
     fg_size = app.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
     bg_size = app.get_size_for_visual_angle(d_bg, VISUAL_ANGLE_DEG)
 
