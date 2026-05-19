@@ -7,13 +7,14 @@ gabor固有のロジックのみを実装
 """
 
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import ttk, messagebox
 import os
 import csv
 import datetime
 import random
 import math
 import numpy as np
+import glob
 from PIL import Image, ImageTk
 
 from experiment_base_ui import ExperimentBaseUI
@@ -40,8 +41,10 @@ lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 BASE_IMG_DIR_1 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "bg_noise")
 BASE_IMG_DIR_2 = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor", "fg_gabor")
 RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor")
+FIGURE_DIR = os.path.join(lab_root, "results", "figures", "pre-experiment-gabor")
+PARTICIPANT_DATA_DIR = os.path.join(lab_root, "data", "processed", "tables", "pre-experiment-gabor")
 
-for dir_path in [RESULT_DIR]:
+for dir_path in [RESULT_DIR, FIGURE_DIR, PARTICIPANT_DATA_DIR]:
     if not os.path.exists(dir_path):
         os.makedirs(dir_path)
 
@@ -62,7 +65,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
     """
     
     def __init__(self, root):
-        ExperimentBaseUI.__init__(self, root, os.path.join(lab_root, "data", "processed", "tables", "pre-experiment-gabor"))
+        ExperimentBaseUI.__init__(self, root, PARTICIPANT_DATA_DIR)
         ExperimentTrialLoop.__init__(self)
         
         self.root = root
@@ -70,8 +73,8 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.root.configure(bg=BG_COLOR)
         
         # gabor固有の変数
-        self.distance1 = tk.IntVar(value=50)
-        self.distance2 = tk.IntVar(value=70)
+        self.distance1 = 50
+        self.distance2 = 70
         self.viewing_condition = tk.StringVar(value="Binocular")
         self.spatial_freq = tk.StringVar(value="2,8")
         
@@ -82,6 +85,29 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         self.pupil_diameter_val = tk.DoubleVar(value=4.0)
         self.evaluation_val = tk.IntVar(value=3)
+        
+        self.calibration_eyes = ["Right", "Left"]
+        self.current_calib_eye_idx = 0
+        self.calib_results = {}
+        
+        self.current_pd_mean = 0.0
+        self.current_pd_std = 0.0
+        
+        self.participant_dominance = tk.StringVar(value="Right")
+        
+        # キャリブレーションデータ
+        fg_calib_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "fg_calibration_log")
+        bg_calib_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "bg_calibration_log")
+        
+        self.fg_lums, self.fg_pixels = stimuli_utils.load_calibration_data(fg_calib_dir)
+        self.bg_lums, self.bg_pixels = stimuli_utils.load_calibration_data(bg_calib_dir)
+        
+        if self.fg_lums is None or self.bg_lums is None:
+            print("Warning: Calibration data not found. Linear mapping will be used.")
+            self.fg_lums = np.array([0.0, 100.0])
+            self.fg_pixels = np.array([0, 255])
+            self.bg_lums = np.array([0.0, 100.0])
+            self.bg_pixels = np.array([0, 255])
         
         # ウィンドウのセットアップ
         screen_w = self.root.winfo_screenwidth()
@@ -112,12 +138,168 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         self.setup_participant_info_ui()
     
+    def setup_participant_info_ui(self):
+        """ステップ0-1: ID入力UIを構築し表示する"""
+        self.participant_frame = tk.Frame(self.root, bg='gray', padx=20, pady=20)
+        self.participant_frame.place(relx=0.5, rely=0.5, anchor='center')
+
+        tk.Label(self.participant_frame, text="Enter Participant ID", font=("Arial", 16)).grid(row=0, column=0, columnspan=2, pady=10)
+
+        tk.Label(self.participant_frame, text="Participant ID:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
+        entry_id = tk.Entry(self.participant_frame, textvariable=self.participant_id)
+        entry_id.grid(row=1, column=1, padx=5, pady=5)
+        entry_id.focus_set()
+
+        btn = tk.Button(self.participant_frame, text="Next", command=self.check_participant_id)
+        btn.grid(row=2, column=0, columnspan=2, pady=20)
+        btn.bind('<Return>', lambda event: self.check_participant_id())
+        entry_id.bind('<Return>', lambda event: self.check_participant_id())
+
+    def check_participant_id(self, event=None):
+        pid = self.participant_id.get().strip()
+        if not pid:
+            messagebox.showwarning("Input Error", "Please enter a Participant ID.")
+            return
+        
+        filepath = os.path.join(PARTICIPANT_DATA_DIR, "participants.csv")
+        found = False
+        if os.path.exists(filepath):
+            with open(filepath, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    if row["ID"] == pid:
+                        self.participant_age.set(row["Age"])
+                        self.participant_gender.set(row["Gender"])
+                        self.participant_ipd.set(row["IPD"])
+                        self.participant_dominance.set(row.get("Dominance", "Right"))
+                        found = True
+                        break
+        
+        self.participant_frame.destroy()
+        
+        if found:
+            self.start_calibration_sequence()
+        else:
+            self.setup_new_participant_ui()
+
+    def setup_new_participant_ui(self):
+        """ステップ0-2: 新規被験者の情報入力UI"""
+        self.participant_frame = tk.Frame(self.root, bg='gray', padx=20, pady=20)
+        self.participant_frame.place(relx=0.5, rely=0.5, anchor='center')
+
+        tk.Label(self.participant_frame, text=f"New Participant Registration (ID: {self.participant_id.get()})", font=("Arial", 16)).grid(row=0, column=0, columnspan=2, pady=10)
+
+        tk.Label(self.participant_frame, text="Age:").grid(row=1, column=0, sticky='w', padx=5, pady=5)
+        entry_age = tk.Entry(self.participant_frame, textvariable=self.participant_age)
+        entry_age.grid(row=1, column=1, padx=5, pady=5)
+        entry_age.focus_set()
+
+        tk.Label(self.participant_frame, text="Gender:").grid(row=2, column=0, sticky='w', padx=5, pady=5)
+        gender_combo = ttk.Combobox(self.participant_frame, textvariable=self.participant_gender, values=["Male", "Female", "Other"])
+        gender_combo.grid(row=2, column=1, padx=5, pady=5)
+        gender_combo.set("Male")
+
+        tk.Label(self.participant_frame, text="IPD (mm):").grid(row=3, column=0, sticky='w', padx=5, pady=5)
+        tk.Entry(self.participant_frame, textvariable=self.participant_ipd).grid(row=3, column=1, padx=5, pady=5)
+
+        tk.Label(self.participant_frame, text="Eye Dominance:").grid(row=4, column=0, sticky='w', padx=5, pady=5)
+        dom_combo = ttk.Combobox(self.participant_frame, textvariable=self.participant_dominance, values=["Right", "Left"])
+        dom_combo.grid(row=4, column=1, padx=5, pady=5)
+        dom_combo.set("Right")
+
+        btn = tk.Button(self.participant_frame, text="Register and Next", command=self.register_and_start)
+        btn.grid(row=5, column=0, columnspan=2, pady=20)
+        btn.bind('<Return>', lambda event: self.register_and_start())
+
+    def register_and_start(self, event=None):
+        if not self.participant_age.get() or not self.participant_ipd.get():
+            messagebox.showwarning("Input Error", "Please enter Age and IPD.")
+            return
+        self.save_participant_data()
+        self.participant_frame.destroy()
+        self.start_calibration_sequence()
+
+    def save_participant_data(self):
+        if not os.path.exists(PARTICIPANT_DATA_DIR):
+            os.makedirs(PARTICIPANT_DATA_DIR)
+        filepath = os.path.join(PARTICIPANT_DATA_DIR, "participants.csv")
+        fieldnames = ["ID", "Age", "Gender", "IPD", "Dominance"]
+        rows = []
+        found = False
+        if os.path.exists(filepath):
+            with open(filepath, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for r in reader:
+                    if r["ID"] == self.participant_id.get():
+                        r["Age"] = self.participant_age.get()
+                        r["Gender"] = self.participant_gender.get()
+                        r["IPD"] = self.participant_ipd.get()
+                        r["Dominance"] = self.participant_dominance.get()
+                        found = True
+                    rows.append(r)
+        if not found:
+            rows.append({
+                "ID": self.participant_id.get(), "Age": self.participant_age.get(),
+                "Gender": self.participant_gender.get(), "IPD": self.participant_ipd.get(),
+                "Dominance": self.participant_dominance.get()
+            })
+        with open(filepath, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(rows)
+
+    def start_calibration_sequence(self):
+        self.win1.update_idletasks()
+        self.width = self.win1.winfo_width()
+        self.height = self.win1.winfo_height()
+
+        self.calibration_eyes = ["Right", "Left"]
+        self.current_calib_eye_idx = 0
+        self.calib_results = {}
+        self.start_eye_calibration()
+
+    def start_eye_calibration(self):
+        if self.current_calib_eye_idx >= len(self.calibration_eyes):
+            self.setup_experiment_blocks()
+            return
+            
+        current_eye = self.calibration_eyes[self.current_calib_eye_idx]
+        messagebox.showinfo("Calibration", f"Next: Calibration for {current_eye} Eye.\nPlease cover the other eye.")
+        self.offset_x.set(0)
+        self.offset_y.set(0)
+        self.pupil_diameter_val.set(4.0)
+        self.setup_calibration_ui(is_new_eye=True)
+    
     def on_participant_confirmed(self):
         """参加者確認後"""
         self.win1.update_idletasks()
         self.width = self.win1.winfo_width()
         self.height = self.win1.winfo_height()
         self.setup_experiment_ui()
+    
+    def setup_experiment_blocks(self):
+        """実験ブロック構成"""
+        dom_eye = self.participant_dominance.get()
+        if dom_eye not in self.calib_results:
+            dom_eye = "Right"
+        self.offset_x.set(self.calib_results[dom_eye]["offset_x"])
+        self.offset_y.set(self.calib_results[dom_eye]["offset_y"])
+        self.current_pd_mean = self.calib_results[dom_eye]["pd_mean"]
+        
+        first_view = self.viewing_condition.get()
+        second_view = "Monocular" if first_view == "Binocular" else "Binocular"
+        view_conditions = [first_view, second_view]
+        
+        self.blocks = []
+        for view in view_conditions:
+            for cpd in self.selected_spatial_freqs:
+                self.blocks.append({"viewing_condition": view, "spatial_freq": str(cpd)})
+        
+        random.shuffle(self.blocks)
+        
+        self.current_block_index = 0
+        self.current_trial_in_experiment = 0
+        self.start_block()
     
     def setup_experiment_ui(self):
         """実験設定UI"""
@@ -127,27 +309,41 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         tk.Label(frame, text="Experiment Setup", font=("Arial", 16)).grid(row=0, column=0, columnspan=2, pady=10)
         
         tk.Label(frame, text="Foreground Distance (cm):").grid(row=1, column=0, sticky='w', padx=5, pady=5)
-        tk.Entry(frame, textvariable=self.distance1).grid(row=1, column=1, padx=5, pady=5)
+        dist1_entry = tk.Entry(frame)
+        dist1_entry.insert(0, str(self.distance1))
+        dist1_entry.grid(row=1, column=1, padx=5, pady=5)
         
         tk.Label(frame, text="Background Distance (cm):").grid(row=2, column=0, sticky='w', padx=5, pady=5)
-        tk.Entry(frame, textvariable=self.distance2).grid(row=2, column=1, padx=5, pady=5)
+        dist2_entry = tk.Entry(frame)
+        dist2_entry.insert(0, str(self.distance2))
+        dist2_entry.grid(row=2, column=1, padx=5, pady=5)
         
         tk.Label(frame, text="First Viewing Condition:").grid(row=3, column=0, sticky='w', padx=5, pady=5)
-        from tkinter import ttk
         view_combo = ttk.Combobox(frame, textvariable=self.viewing_condition, values=["Binocular", "Monocular"])
         view_combo.grid(row=3, column=1, padx=5, pady=5)
         
         tk.Label(frame, text="Spatial Freqs (cpd, comma-separated):").grid(row=4, column=0, sticky='w', padx=5, pady=5)
-        tk.Entry(frame, textvariable=self.spatial_freq).grid(row=4, column=1, padx=5, pady=5)
+        cpd_entry = tk.Entry(frame)
+        cpd_entry.insert(0, self.spatial_freq.get())
+        cpd_entry.grid(row=4, column=1, padx=5, pady=5)
         
-        btn = tk.Button(frame, text="Setup Complete", command=lambda: self._on_setup_complete(frame))
+        def on_setup_complete():
+            try:
+                self.distance1 = int(dist1_entry.get())
+                self.distance2 = int(dist2_entry.get())
+                spatial_freqs_str = cpd_entry.get().strip()
+                if not spatial_freqs_str:
+                    raise ValueError("Spatial frequency cannot be empty.")
+                self.selected_spatial_freqs = [int(s.strip()) for s in spatial_freqs_str.split(',')]
+            except (ValueError, tk.TclError):
+                messagebox.showwarning("Input Error", "Please enter valid numbers.")
+                return
+            frame.destroy()
+            self.setup_experiment_blocks()
+        
+        btn = tk.Button(frame, text="Setup Complete", command=on_setup_complete)
         btn.grid(row=5, column=0, columnspan=2, pady=20)
-    
-    def _on_setup_complete(self, frame):
-        """実験設定完了"""
-        try:
-            self.distance1.get()
-            self.distance2.get()
+
             spatial_freqs_str = self.spatial_freq.get().strip()
             if not spatial_freqs_str:
                 raise ValueError("Spatial frequency cannot be empty.")

@@ -269,8 +269,7 @@ def load_calibration_data(log_dir):
     if not csv_files:
         return None, None
     
-    lums_list = []
-    pixels_list = []
+    lum_pixel_data = {}
     for filepath in csv_files:
         try:
             with open(filepath, 'r', encoding='utf-8') as f:
@@ -288,16 +287,25 @@ def load_calibration_data(log_dir):
                     
                     if t_lum is not None and p_val is not None:
                         try:
-                            lums_list.append(float(t_lum))
-                            pixels_list.append(int(p_val))
+                            t_lum_f = float(t_lum)
+                            p_val_i = int(p_val)
+                            lum_pixel_data.setdefault(t_lum_f, []).append(p_val_i)
                         except ValueError:
                             pass
         except Exception as e:
             print(f"Warning: Could not read {filepath}: {e}")
             continue
     
-    if lums_list and pixels_list:
-        return np.array(lums_list), np.array(pixels_list)
+    avg_map = []
+    for t_lum, p_list in sorted(lum_pixel_data.items()):
+        if p_list:
+            avg_map.append((t_lum, int(np.round(np.mean(p_list)))))
+            
+    if avg_map:
+        lums = np.array([x[0] for x in avg_map])
+        pixels = np.array([x[1] for x in avg_map])
+        return lums, pixels
+
     return None, None
 
 
