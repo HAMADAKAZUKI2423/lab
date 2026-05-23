@@ -475,3 +475,81 @@ def save_color_matching_results(app):
     # ここではカラーマッチングの完了を示す
     if hasattr(app, 'finish_color_matching_callback'):
         app.finish_color_matching_callback()
+
+
+# ============================================================
+# 変換処理のテスト関数 (モジュール単独実行時に実行されます)
+# ============================================================
+
+def _test_basic_colors():
+    """基本色での変換テスト"""
+    print("=" * 60)
+    print("Basic Color Conversion Test")
+    print("=" * 60)
+    
+    test_colors = {
+        'Red': np.array([1.0, 0.0, 0.0]),
+        'Green': np.array([0.0, 1.0, 0.0]),
+        'Blue': np.array([0.0, 0.0, 1.0]),
+        'White': np.array([1.0, 1.0, 1.0]),
+        'Black': np.array([0.0, 0.0, 0.0]),
+        'Gray': np.array([0.5, 0.5, 0.5]),
+    }
+    
+    for name, rgb in test_colors.items():
+        xyz = rgb_to_xyz(rgb)
+        rgb_back = xyz_to_rgb(xyz)
+        error = np.linalg.norm(rgb - rgb_back)
+        print(f"\n{name}:")
+        print(f"  RGB: {rgb}")
+        print(f"  XYZ: {xyz}")
+        print(f"  RGB (converted back): {rgb_back}")
+        print(f"  Error: {error:.6f}")
+
+def _test_custom_colors():
+    """カスタム色での変換テスト"""
+    print("\n" + "=" * 60)
+    print("Custom Color Conversion Test")
+    print("=" * 60)
+    
+    fg_orange = np.array([200, 130, 50], dtype=np.float32) / 255.0
+    xyz_fg = rgb_to_xyz(fg_orange)
+    
+    x_factor, z_factor = 1.2, 0.9
+    adjusted_xyz = np.array([xyz_fg[0] * x_factor, xyz_fg[1], xyz_fg[2] * z_factor])
+    adjusted_rgb = xyz_to_rgb(adjusted_xyz)
+    
+    print(f"FG Orange (RGB 0-1): {fg_orange}")
+    print(f"FG Orange (XYZ): {xyz_fg}")
+    print(f"Adjusted XYZ (X*{x_factor}, Y*1.0, Z*{z_factor}): {adjusted_xyz}")
+    print(f"Adjusted RGB (0-1): {adjusted_rgb}")
+    print(f"Adjusted RGB (0-255): {adjusted_rgb * 255}")
+
+def _test_round_trip():
+    """往復変換テスト"""
+    print("\n" + "=" * 60)
+    print("Round-Trip Conversion Test")
+    print("=" * 60)
+    
+    np.random.seed(42)
+    for i in range(5):
+        rgb_orig = np.random.rand(3)
+        xyz = rgb_to_xyz(rgb_orig)
+        rgb_final = xyz_to_rgb(xyz)
+        error = np.linalg.norm(rgb_orig - rgb_final)
+        print(f"\nTest {i+1}:")
+        print(f"  Original RGB: {rgb_orig}")
+        print(f"  Final RGB: {rgb_final}")
+        print(f"  Error: {error:.8f}")
+
+
+if __name__ == "__main__":
+    # color_matching.py が直接実行された場合はテストを行う
+    print("Running self-tests for color conversion functions...\n")
+    _test_basic_colors()
+    _test_custom_colors()
+    _test_round_trip()
+    
+    print("\n" + "=" * 60)
+    print("All tests completed!")
+    print("=" * 60)

@@ -7,6 +7,8 @@ import tkinter as tk
 from tkinter import ttk
 import os
 import sys
+import numpy as np
+from PIL import Image, ImageTk
 
 # Add parent directories to path
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -147,6 +149,54 @@ class ColorMatchingApp:
         if hasattr(self, 'color_match_results'):
             for result in self.color_match_results:
                 print(f"  {result['condition']}: X={result['x_factor']:.2f}, Z={result['z_factor']:.2f}")
+
+            # 変換行列の計算
+            M_test_to_ref, M_ref_to_test, _, _ = color_matching.calculate_matching_matrices(self.color_match_results)
+            print("\n=== Matrix (Test -> Ref) ===")
+            print(M_test_to_ref)
+            
+            # テスト画像の生成 (カラーガボール)
+            print("\nGenerating color gabor patch...")
+            size_px = 300
+            ppd = 40
+            cpd = 2
+            img_rgb = color_matching.create_color_gabor(size_px, ppd, cpd)
+            
+            # 変換行列を適用
+            print("Applying conversion matrix...")
+            img_test_to_ref = color_matching.apply_matrix_to_image(img_rgb, M_test_to_ref)
+            
+            # PIL画像に変換してクリップ
+            img_orig_pil = Image.fromarray(np.uint8(np.clip(img_rgb * 255, 0, 255)))
+            img_converted_pil = Image.fromarray(np.uint8(np.clip(img_test_to_ref * 255, 0, 255)))
+            
+            self.photo_orig = ImageTk.PhotoImage(img_orig_pil)
+            self.photo_converted = ImageTk.PhotoImage(img_converted_pil)
+            
+            # キャンバスに表示
+            self.canvas1.delete("all")
+            self.canvas2.delete("all")
+            
+            cx1, cy1 = self.canvas1.winfo_width() // 2, self.canvas1.winfo_height() // 2
+            self.canvas1.create_image(cx1, cy1, image=self.photo_orig, anchor='center')
+            self.canvas1.create_text(cx1, cy1 - size_px // 2 - 20, text="Original Image (Test)", fill="white", font=("Arial", 16))
+            
+            cx2, cy2 = self.canvas2.winfo_width() // 2, self.canvas2.winfo_height() // 2
+            self.canvas2.create_image(cx2, cy2, image=self.photo_converted, anchor='center')
+            self.canvas2.create_text(cx2, cy2 - size_px // 2 - 20, text="Converted Image (Ref)", fill="white", font=("Arial", 16))
+            
+            # コントロール用UIを更新
+            if hasattr(self, 'ctrl_frame') and self.ctrl_frame.winfo_exists():
+                self.ctrl_frame.destroy()
+                
+            self.ctrl_frame = tk.Frame(self.root, bg='gray')
+            self.ctrl_frame.place(relx=0.5, rely=0.8, anchor='center')
+            
+            tk.Label(self.ctrl_frame, text="Conversion Preview\nWindow 1: Original\nWindow 2: Converted", 
+                     bg='gray', fg='white', font=("Arial", 12)).pack(pady=10, padx=20)
+            
+            btn = tk.Button(self.ctrl_frame, text="Finish App", command=self.root.quit)
+            btn.pack(pady=10)
 
 
 def main():
