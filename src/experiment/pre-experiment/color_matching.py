@@ -185,44 +185,52 @@ def _on_color_matching_calibration_complete(app):
 def update_color_matching_calibration_view(app):
     app.canvas1.delete("calib")
     app.canvas2.delete("calib")
-
+    # Compute sizes separately: Window1 uses background distance (distance2), Window2 uses foreground distance (distance1)
     d_fg = app.distance1
-    square_size = stimuli_utils.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
-    square_size = min(square_size,
-                      app.canvas1.winfo_height() - 120,
-                      app.canvas1.winfo_width() - 120,
-                      app.canvas2.winfo_height() - 120,
-                      app.canvas2.winfo_width() - 120)
-    square_size = max(100, square_size)
+    d_bg = getattr(app, 'distance2', None) if hasattr(app, 'distance2') else None
+
+    pixels_per_cm_win1 = getattr(app, 'pixels_per_cm_win1', None)
+    pixels_per_cm_win2 = getattr(app, 'pixels_per_cm_win2', None)
+
+    # size for Window1 (background)
+    if d_bg is None:
+        d_bg = d_fg
+    size_win1 = stimuli_utils.get_size_for_visual_angle(
+        d_bg, VISUAL_ANGLE_DEG, canvas=app.canvas1,
+        pixels_per_cm=(pixels_per_cm_win1 if pixels_per_cm_win1 is not None else stimuli_utils.PIXELS_PER_CM)
+    )
+    size_win1 = min(size_win1, app.canvas1.winfo_height() - 120, app.canvas1.winfo_width() - 120)
+    size_win1 = max(100, size_win1)
+
+    # size for Window2 (foreground)
+    size_win2 = stimuli_utils.get_size_for_visual_angle(
+        d_fg, VISUAL_ANGLE_DEG, canvas=app.canvas2,
+        pixels_per_cm=(pixels_per_cm_win2 if pixels_per_cm_win2 is not None else stimuli_utils.PIXELS_PER_CM)
+    )
+    size_win2 = min(size_win2, app.canvas2.winfo_height() - 120, app.canvas2.winfo_width() - 120)
+    size_win2 = max(100, size_win2)
 
     cx1 = app.canvas1.winfo_width() // 2 + int(app.offset_x.get())
     cy1 = app.canvas1.winfo_height() // 2 + int(app.offset_y.get())
     cx2 = app.canvas2.winfo_width() // 2
     cy2 = app.canvas2.winfo_height() // 2
 
-    half = square_size // 2
-    x01 = cx1 - half
-    y01 = cy1 - half
-    x11 = cx1 + half
-    y11 = cy1 + half
-    x02 = cx2 - half
-    y02 = cy2 - half
-    x12 = cx2 + half
-    y12 = cy2 + half
-
+    # Draw markers with distinct sizes for each window
     stimuli_utils.draw_image_corner_brackets(
-        app.canvas1, square_size, square_size,
+        app.canvas1, size_win1, size_win1,
         offset_x=int(app.offset_x.get()), offset_y=int(app.offset_y.get()),
         color='red', line_width=stimuli_utils.MARKER_LINE_WIDTH * 1.5
     )
     stimuli_utils.draw_image_corner_brackets(
-        app.canvas2, square_size, square_size,
+        app.canvas2, size_win2, size_win2,
         offset_x=0, offset_y=0,
         color='white', line_width=stimuli_utils.MARKER_LINE_WIDTH
     )
     stimuli_utils.draw_center_cross(app.canvas2, offset_x=0, offset_y=0, color='white')
-    app.canvas1.create_text(cx1, y01 - 20, text='Window 1 Calibration', fill='red', font=("Arial", 14), tags='calib')
-    app.canvas2.create_text(cx2, y02 - 20, text='Window 2 Calibration', fill='white', font=("Arial", 14), tags='calib')
+    label_y1 = cy1 - size_win1 // 2
+    label_y2 = cy2 - size_win2 // 2
+    app.canvas1.create_text(cx1, label_y1 - 20, text='Window 1 Calibration', fill='red', font=("Arial", 14), tags='calib')
+    app.canvas2.create_text(cx2, label_y2 - 20, text='Window 2 Calibration', fill='white', font=("Arial", 14), tags='calib')
 
 
 def setup_color_matching_ui(app):
@@ -236,8 +244,8 @@ def setup_color_matching_ui(app):
     # 条件を R, G, B の3色に設定
     app.color_match_conditions = ["R", "G", "B"]
     app.current_condition_idx = 0
-    app.color_match_results = []  # 各条件の調整結果を保存
-    
+    app.color_match_results = []
+
     _show_color_matching_step(app)
 
 
@@ -367,7 +375,13 @@ def update_color_view(app):
     x_factor = app.color_x_factor_val.get()
     z_factor = app.color_z_factor_val.get()
     ref_xyz = rgb_to_xyz(ref_color_rgb)
-    y_fixed = ref_xyz[1]
+    # 元の実装: y_fixed = ref_xyz[1]
+    if condition == "R":
+        y_fixed = 0.3  # RのY値を固定
+    elif condition == "G":
+        y_fixed = 0.3  # GのY値を固定
+    else:
+        y_fixed = 0.3  # BのY値を固定
     adjusted_xyz = np.array([
         ref_xyz[0] * x_factor,
         y_fixed,
@@ -375,17 +389,28 @@ def update_color_view(app):
     ])
     test_color_rgb = xyz_to_rgb(adjusted_xyz)
 
+    # Compute sizes for each window: Window1 uses background distance, Window2 uses foreground distance
     d_fg = app.distance1
-    square_size = stimuli_utils.get_size_for_visual_angle(d_fg, VISUAL_ANGLE_DEG)
-    square_size = min(square_size,
-                      app.canvas1.winfo_height() - 120,
-                      app.canvas1.winfo_width() - 120,
-                      app.canvas2.winfo_height() - 120,
-                      app.canvas2.winfo_width() - 120)
-    square_size = max(120, square_size)
-    half = square_size // 2
+    d_bg = getattr(app, 'distance2', d_fg)
+    pixels_per_cm_win1 = getattr(app, 'pixels_per_cm_win1', None)
+    pixels_per_cm_win2 = getattr(app, 'pixels_per_cm_win2', None)
 
-    def draw_half_square(canvas, offset_x=0, offset_y=0, label='', show_ref=False, show_test=False):
+    size_win1 = stimuli_utils.get_size_for_visual_angle(
+        d_bg, VISUAL_ANGLE_DEG, canvas=app.canvas1,
+        pixels_per_cm=(pixels_per_cm_win1 if pixels_per_cm_win1 is not None else stimuli_utils.PIXELS_PER_CM)
+    )
+    size_win1 = min(size_win1, app.canvas1.winfo_height() - 120, app.canvas1.winfo_width() - 120)
+    size_win1 = max(120, size_win1)
+
+    size_win2 = stimuli_utils.get_size_for_visual_angle(
+        d_fg, VISUAL_ANGLE_DEG, canvas=app.canvas2,
+        pixels_per_cm=(pixels_per_cm_win2 if pixels_per_cm_win2 is not None else stimuli_utils.PIXELS_PER_CM)
+    )
+    size_win2 = min(size_win2, app.canvas2.winfo_height() - 120, app.canvas2.winfo_width() - 120)
+    size_win2 = max(120, size_win2)
+
+    def draw_half_square(canvas, square_size, offset_x=0, offset_y=0, label='', show_ref=False, show_test=False):
+        half = square_size // 2
         width = canvas.winfo_width() if canvas.winfo_width() > 1 else 1920
         height = canvas.winfo_height() if canvas.winfo_height() > 1 else 1080
         cx = width // 2 + offset_x
@@ -408,10 +433,10 @@ def update_color_view(app):
         canvas.create_line(x0, mid_y, x1, mid_y, fill='white', width=2, tags='match')
         canvas.create_text(cx, y0 - 20, text=label, fill='white', font=("Arial", 12), tags='match')
 
-    draw_half_square(app.canvas1, offset_x=int(app.offset_x.get()), offset_y=int(app.offset_y.get()),
-                     label='Window 1', show_ref=False, show_test=True)
-    draw_half_square(app.canvas2, offset_x=0, offset_y=0,
-                     label='Window 2', show_ref=True, show_test=False)
+    draw_half_square(app.canvas1, size_win1, offset_x=int(app.offset_x.get()), offset_y=int(app.offset_y.get()),
+                     label='Window 1', show_ref=True, show_test=False)
+    draw_half_square(app.canvas2, size_win2, offset_x=0, offset_y=0,
+                     label='Window 2', show_ref=False, show_test=True)
 
 
 def save_color_matching_results(app):

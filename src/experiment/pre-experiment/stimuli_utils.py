@@ -221,20 +221,32 @@ def create_cosine_windowed_grating_base(width_px, height_px, ppd, cpd, orientati
 # ユーティリティ関数
 # ==========================================
 
-def get_size_for_visual_angle(distance_cm, angle_deg, pixels_per_cm=PIXELS_PER_CM):
+def get_size_for_visual_angle(distance_cm, angle_deg, pixels_per_cm=PIXELS_PER_CM, canvas=None):
     """
     指定された視角と距離から、対応するピクセルサイズを計算する
-    
+
     Args:
         distance_cm: 観視距離 (cm)
         angle_deg: 視角 (度数)
-        pixels_per_cm: モニタのPPC (ピクセル/cm)
-    
+        pixels_per_cm: モニタのPPC (ピクセル/cm)。`canvas`を指定した場合は無視されます。
+        canvas: (optional) Tkinter Canvas/Widget。与えるとそのウィジェットのDPIからピクセル密度を取得します。
+
     Returns:
         int: 対応するピクセルサイズ (四捨五入)
     """
     if distance_cm <= 0:
         return 0
+
+    # canvasが与えられたらそのウィジェットの DPI 情報から pixels_per_cm を計算する
+    if canvas is not None:
+        try:
+            # winfo_fpixels('1i') は1インチあたりのピクセル数を返す
+            ppi = float(canvas.winfo_fpixels('1i'))
+            pixels_per_cm = ppi / 2.54
+        except Exception:
+            # 取得できなければ既定値を使う
+            pixels_per_cm = pixels_per_cm
+
     # 物理サイズ[cm] = 2 * 距離[cm] * tan(視角[rad] / 2)
     angle_rad = math.radians(angle_deg)
     size_cm = 2 * distance_cm * math.tan(angle_rad / 2)

@@ -64,6 +64,19 @@ class ColorMatchingApp:
         self.result_dir = os.path.join(lab_root, "results", "tables", "pre-experiment-color-matching")
 
         # UI初期化
+        # Update and set canvas explicit sizes to match screen (like gabor app)
+        self.root.update_idletasks()
+        try:
+            screen_w = self.root.winfo_screenwidth()
+            screen_h = self.root.winfo_screenheight()
+            self.width = screen_w
+            self.height = screen_h
+            self.canvas1.config(width=self.width, height=self.height)
+            self.canvas2.config(width=self.width, height=self.height)
+        except Exception:
+            # keep defaults if measurement fails
+            pass
+
         self._setup_ui()
         
     def _setup_ui(self):
@@ -95,7 +108,35 @@ class ColorMatchingApp:
         self.canvas2.delete("all")
         self.win1.lift()
 
-        # カラーマッチング位置キャリブレーションを起動
+        # ウィジェットサイズ・DPI情報が更新されるよう待つ
+        self.root.update_idletasks()
+        self.win1.update_idletasks()
+        self.canvas1.update_idletasks()
+        self.canvas2.update_idletasks()
+
+        # Canvas の DPI (ppi) を用いて pixels_per_cm を計算して保存
+        try:
+            ppi1 = float(self.canvas1.winfo_fpixels('1i'))
+            self.pixels_per_cm_win1 = ppi1 / 2.54
+        except Exception:
+            self.pixels_per_cm_win1 = stimuli_utils.PIXELS_PER_CM
+
+        try:
+            ppi2 = float(self.canvas2.winfo_fpixels('1i'))
+            self.pixels_per_cm_win2 = ppi2 / 2.54
+        except Exception:
+            self.pixels_per_cm_win2 = stimuli_utils.PIXELS_PER_CM
+
+        # DEBUG: print computed DPI / pixels_per_cm and derived square size
+        try:
+            print(f"DEBUG: ppi1={ppi1 if 'ppi1' in locals() else 'n/a'}, pixels_per_cm_win1={self.pixels_per_cm_win1}")
+            print(f"DEBUG: ppi2={ppi2 if 'ppi2' in locals() else 'n/a'}, pixels_per_cm_win2={self.pixels_per_cm_win2}")
+            # compute example square size for verification
+            test_sq = stimuli_utils.get_size_for_visual_angle(self.distance1, 7.9, canvas=self.canvas1)
+            print(f"DEBUG: test square_size (1) = {test_sq}")
+        except Exception:
+            pass
+
         self.finish_color_matching_callback = self._on_color_matching_finished
         color_matching.setup_color_matching_calibration(self)
         
