@@ -592,6 +592,22 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.current_block_cond = self.blocks[self.current_block_index]
         self.current_trial_in_block = 0
         
+        # 条件に応じてキャリブレーション結果（瞳孔径、オフセット）を読み込む
+        oc = self.current_block_cond["ocularity"]
+        if oc == "left":
+            target_eye = "Left"
+        elif oc == "right":
+            target_eye = "Right"
+        else: # binocular
+            target_eye = self.participant_dominance.get()
+            if target_eye not in self.calib_results:
+                target_eye = "Right"
+                
+        if target_eye in self.calib_results:
+            self.offset_x.set(self.calib_results[target_eye]["offset_x"])
+            self.offset_y.set(self.calib_results[target_eye]["offset_y"])
+            self.current_pd_mean = self.calib_results[target_eye]["pd_mean"]
+        
         self.setup_block_confirmation_ui()
     
     def setup_block_confirmation_ui(self):
