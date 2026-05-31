@@ -103,6 +103,55 @@ def rgb_to_hex(rgb_normalized):
     rgb_int = np.round(np.clip(rgb_normalized, 0, 1) * 255).astype(int)
     return "#{:02x}{:02x}{:02x}".format(*rgb_int)
 
+def calculate_matching_matrices(color_match_results):
+    """
+    カラーマッチングの結果から、変換行列を計算する
+    
+    Args:
+        color_match_results: [{'condition': 'R', 'x_factor': 1.0, 'z_factor': 1.0}, ...]
+        
+    Returns:
+        M_test_to_ref: Window 2 (Test) を Window 1 (Ref) に合わせる変換行列 (3x3)
+        M_ref_to_test: Window 1 (Ref) から Window 2 (Test) への変換行列 (3x3)
+        matrix_ref: Window 1のRGBベースベクトルのXYZ値 (3x3)
+        matrix_test: Window 2の調整後RGBベースベクトルのXYZ値 (3x3)
+    """
+    factors = {res['condition']: (res['x_factor'], res['z_factor']) for res in color_match_results}
+    
+    # 基準となるRGB (1,0,0), (0,1,0), (0,0,1)
+    rgb_r = np.array([1.0, 0.0, 0.0])
+    rgb_g = np.array([0.0, 1.0, 0.0])
+    rgb_b = np.array([0.0, 0.0, 1.0])
+    
+    xyz_ref_r = rgb_to_xyz(rgb_r)
+    xyz_ref_g = rgb_to_xyz(rgb_g)
+    xyz_ref_b = rgb_to_xyz(rgb_b)
+    
+    # Reference Matrix (列ベクトルとして並べる)
+    matrix_ref = np.column_stack([xyz_ref_r, xyz_ref_g, xyz_ref_b])
+    
+    y_fixed = 0.3
+    
+    # Test Matrix の算出 (各色のXとZをファクターで調整、Yは固定)
+    x_r, z_r = factors.get('R', (1.0, 1.0))
+    xyz_test_r = np.array([xyz_ref_r[0] * x_r, y_fixed, xyz_ref_r[2] * z_r])
+    
+    x_g, z_g = factors.get('G', (1.0, 1.0))
+    xyz_test_g = np.array([xyz_ref_g[0] * x_g, y_fixed, xyz_ref_g[2] * z_g])
+    
+    x_b, z_b = factors.get('B', (1.0, 1.0))
+    xyz_test_b = np.array([xyz_ref_b[0] * x_b, y_fixed, xyz_ref_b[2] * z_b])
+    
+    matrix_test = np.column_stack([xyz_test_r, xyz_test_g, xyz_test_b])
+    
+    # M_ref_to_test * matrix_ref = matrix_test  ->  M_ref_to_test = matrix_test * inv(matrix_ref)
+    M_ref_to_test = matrix_test @ np.linalg.inv(matrix_ref)
+    
+    # M_test_to_ref はその逆行列
+    M_test_to_ref = np.linalg.inv(M_ref_to_test)
+    
+    return M_test_to_ref, M_ref_to_test, matrix_ref, matrix_test
+
 
 # ============================================================
 # カラーマッチング UI 関数
