@@ -504,7 +504,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.save_preview_images()
         
         conditions = ["Single plane", "Single plane + defocus simulation", "Dual plane", "Dual plane flat"]
-        ocularities = ["monocular", "binocular"]
+        ocularities = ["left", "right", "binocular"]
         self.blocks = []
         
         for cond in conditions:
@@ -607,8 +607,12 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         cond = self.current_block_cond["condition"]
         oc = self.current_block_cond["ocularity"]
         
-        eye_inst = "Please use your DOMINANT eye and COVER the other eye." if oc == "monocular" \
-                   else "Please use BOTH eyes."
+        if oc == "left":
+            eye_inst = "Please use your LEFT eye and COVER the right eye."
+        elif oc == "right":
+            eye_inst = "Please use your RIGHT eye and COVER the left eye."
+        else:
+            eye_inst = "Please use BOTH eyes."
         
         instruction_text = (f"[Block {self.current_block_index + 1}/{len(self.blocks)}]\n"
                           f"Condition: {cond}\nOcularity: {oc}\n\n"
