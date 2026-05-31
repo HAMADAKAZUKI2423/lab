@@ -22,6 +22,7 @@ from experiment_base_ui import ExperimentBaseUI
 from experiment_trial_loop import ExperimentTrialLoop
 import stimuli_utils
 import defocus_matching
+import color_matching
 
 
 # ==========================================
@@ -255,18 +256,6 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.calib_results = {}
         self.start_eye_calibration()
 
-    def start_eye_calibration(self):
-        if self.current_calib_eye_idx >= len(self.calibration_eyes):
-            self.setup_experiment_blocks()
-            return
-            
-        current_eye = self.calibration_eyes[self.current_calib_eye_idx]
-        messagebox.showinfo("Calibration", f"Next: Calibration for {current_eye} Eye.\nPlease cover the other eye.")
-        self.offset_x.set(0)
-        self.offset_y.set(0)
-        self.pupil_diameter_val.set(4.0)
-        self.setup_calibration_ui(is_new_eye=True)
-    
     def on_participant_confirmed(self):
         """参加者確認後、キャリブレーション開始"""
         self.win1.update_idletasks()
@@ -374,7 +363,15 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
     # ========== matching固有のメソッド ==========
     
     def start_eye_calibration(self):
-        """瞳孔径キャリブレーション開始"""
+        """瞳孔径キャリブレーション・カラーマッチング開始"""
+        if not hasattr(self, 'color_match_results_all'):
+            self.color_match_results_all = []
+            
+        # 直前に完了した目のカラーマッチングが未完了なら実行
+        if self.current_calib_eye_idx > len(self.color_match_results_all):
+            self.start_color_matching_phase()
+            return
+            
         if self.current_calib_eye_idx >= len(self.calibration_eyes):
             self.setup_experiment_blocks()
             return
@@ -491,8 +488,44 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         # デフォーカスマッチング
         defocus_matching.setup_defocus_matching_ui(self)
     
+    def start_color_matching_phase(self):
+        """カラーマッチングフェーズの開始"""
+        self.finish_color_matching_callback = self._on_color_matching_finished
+        # オフセット変数をリセットせずに呼ぶことで位置を引き継ぐ
+        color_matching.setup_color_matching_ui(self)
+
+    def _on_color_matching_finished(self):
+        """カラーマッチング完了時のコールバック"""
+        if hasattr(self, 'color_match_results') and self.color_match_results:
+            self.color_match_results_all.append(self.color_match_results)
+        self.start_eye_calibration()
+
     def setup_experiment_blocks(self):
         """実験ブロック構成を設定"""
+        # 左右のカラーマッチング結果から平均ファクターを計算
+        if hasattr(self, 'color_match_results_all') and self.color_match_results_all:
+            avg_results = []
+            for cond in ["R", "G", "B"]:
+                x_vals = []
+                z_vals = []
+                for res_list in self.color_match_results_all:
+                    for res in res_list:
+                        if res['condition'] == cond:
+                            x_vals.append(res['x_factor'])
+                            z_vals.append(res['z_factor'])
+                
+                if x_vals and z_vals:
+                    avg_results.append({
+                        'condition': cond,
+                        'x_factor': sum(x_vals) / len(x_vals),
+                        'z_factor': sum(z_vals) / len(z_vals)
+                    })
+            
+            if avg_results:
+                M_test_to_ref, _, _, _ = color_matching.calculate_matching_matrices(avg_results)
+                self.color_matrix = M_test_to_ref
+                self.avg_color_match_results = avg_results
+
         dom_eye = self.participant_dominance.get()
         if dom_eye not in self.calib_results:
             dom_eye = "Right"
@@ -778,7 +811,8 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         photos = stimuli_utils.generate_matching_photos(
             self.gabor_base, self.cached_lum_noise,
             self.fg_lums, self.fg_pixels, self.bg_lums, self.bg_pixels,
-            L_fg=L_fg, L_bg=L_bg, L_ref=L_ref, c_test=c_test, ref_c=ref_c, cond=cond
+            L_fg=L_fg, L_bg=L_bg, L_ref=L_ref, c_test=c_test, ref_c=ref_c, cond=cond,
+            color_matrix=getattr(self, 'color_matrix', None)
         )
 
         self.photo_ref_fg = photos.get('photo_ref_fg')
@@ -808,6 +842,11 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         right_res = self.calib_results.get("Right", {"offset_x": 0, "offset_y": 0, "pd_mean": 0})
         left_res = self.calib_results.get("Left", {"offset_x": 0, "offset_y": 0, "pd_mean": 0})
         
+        x_factors = [r['x_factor'] for r in getattr(self, 'avg_color_match_results', [])]
+        z_factors = [r['z_factor'] for r in getattr(self, 'avg_color_match_results', [])]
+        color_x_mean = sum(x_factors) / len(x_factors) if x_factors else 1.0
+        color_z_mean = sum(z_factors) / len(z_factors) if z_factors else 1.0
+        
         self.add_trial_result({
             "ID": self.participant_id.get(),
             "Age": self.participant_age.get(),
@@ -826,7 +865,9 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             "OffsetY_Right": right_res["offset_y"],
             "PD_Left": left_res["pd_mean"],
             "OffsetX_Left": left_res["offset_x"],
-            "OffsetY_Left": left_res["offset_y"]
+            "OffsetY_Left": left_res["offset_y"],
+            "Color_X_Mean": round(color_x_mean, 4),
+            "Color_Z_Mean": round(color_z_mean, 4)
         })
         
         self.current_trial_in_block += 1

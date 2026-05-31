@@ -290,6 +290,11 @@ def setup_color_matching_ui(app):
     app.canvas2.delete("all")
     _clear_key_bindings(app)
 
+    if not hasattr(app, 'color_x_factor_val'):
+        app.color_x_factor_val = tk.DoubleVar(value=1.0)
+    if not hasattr(app, 'color_z_factor_val'):
+        app.color_z_factor_val = tk.DoubleVar(value=1.0)
+
     # 条件を R, G, B の3色に設定
     app.color_match_conditions = ["R", "G", "B"]
     app.current_condition_idx = 0
