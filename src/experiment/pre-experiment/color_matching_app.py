@@ -142,6 +142,23 @@ class ColorMatchingApp:
         self.finish_color_matching_callback = self._on_color_matching_finished
         color_matching.setup_color_matching_calibration(self)
         
+    def save_matrix_to_csv(self, matrix, filepath=None):
+        """変換行列をCSVファイルとして保存するメソッド"""
+        if filepath is None:
+            print("保存先が指定されていないため、行列のCSV保存をスキップします。")
+            return
+            
+        import csv
+        try:
+            with open(filepath, 'w', newline='', encoding='utf-8') as f:
+                writer = csv.writer(f)
+                # numpy配列の場合はリストに変換してから書き込む
+                matrix_data = matrix.tolist() if hasattr(matrix, 'tolist') else matrix
+                writer.writerows(matrix_data)
+            print(f"Matrix successfully saved to: {filepath}")
+        except Exception as e:
+            print(f"Error saving matrix to CSV: {e}")
+
     def _on_color_matching_finished(self):
         """カラーマッチング完了時の処理"""
         print("Color matching completed")
@@ -154,6 +171,9 @@ class ColorMatchingApp:
             M_test_to_ref, M_ref_to_test, _, _ = color_matching.calculate_matching_matrices(self.color_match_results)
             print("\n=== Matrix (Test -> Ref) ===")
             print(M_test_to_ref)
+            
+            # TODO: 後で保存先を指定して行列を保存する
+            self.save_matrix_to_csv(M_test_to_ref, filepath=None)
             
             # テスト画像の生成 (カラーガボール)
             print("\nGenerating color gabor patch...")
