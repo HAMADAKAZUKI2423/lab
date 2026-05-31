@@ -590,7 +590,7 @@ def create_block_trials(param_dict, num_repetitions, shuffle=True):
     return trials
 
 
-def lum_to_photo(lum_np, lums, pixels):
+def lum_to_photo(lum_np, lums, pixels, color_matrix=None):
     """
     輝度配列をピクセル値に変換して ImageTk.PhotoImage を返す
 
@@ -598,12 +598,24 @@ def lum_to_photo(lum_np, lums, pixels):
         lum_np: 輝度配列 (numpy float)
         lums: 参照ルミナンス配列
         pixels: 参照ピクセル値配列
+        color_matrix: (optional) 3x3 の色補正行列 (numpy array)
 
     Returns:
         ImageTk.PhotoImage
     """
-    pix = np.interp(lum_np, lums, pixels).astype(np.uint8)
-    img = Image.fromarray(pix, mode='L')
+    pix = np.interp(lum_np, lums, pixels)
+    
+    if color_matrix is not None:
+        # (H, W) -> (H, W, 3) のRGB配列へ拡張
+        rgb_array = np.stack((pix, pix, pix), axis=-1)
+        # 行列一括適用
+        corrected_rgb = np.dot(rgb_array, color_matrix.T)
+        pix_uint8 = np.clip(corrected_rgb, 0, 255).astype(np.uint8)
+        img = Image.fromarray(pix_uint8, mode='RGB')
+    else:
+        pix_uint8 = pix.astype(np.uint8)
+        img = Image.fromarray(pix_uint8, mode='L')
+        
     return ImageTk.PhotoImage(img)
 
 
@@ -616,7 +628,8 @@ def lum_to_pil(lum_np, lums, pixels):
 
 
 def generate_matching_photos(gabor_base, cached_lum_noise, fg_lums, fg_pixels, bg_lums, bg_pixels,
-                             L_fg=35.0, L_bg=15.0, L_ref=50.0, c_test=0.4, ref_c=0.2, cond='Single plane'):
+                             L_fg=35.0, L_bg=15.0, L_ref=50.0, c_test=0.4, ref_c=0.2, cond='Single plane',
+                             color_matrix=None):
     """
     gabor_base とノイズ基盤から、表示に使う PhotoImage を生成するヘルパ。
     返り値は辞書で、キーに必要な PhotoImage を格納する。
@@ -624,20 +637,22 @@ def generate_matching_photos(gabor_base, cached_lum_noise, fg_lums, fg_pixels, b
     """
     out = {}
 
-    # 参照 (reference)
+    # 参照 (reference) は Window 2 に表示されるため補正対象
     lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
-    out['photo_ref_fg'] = lum_to_photo(lum_ref_fg, fg_lums, fg_pixels)
+    out['photo_ref_fg'] = lum_to_photo(lum_ref_fg, fg_lums, fg_pixels, color_matrix)
 
     if cond in ["Dual plane", "Dual plane flat"]:
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
-        out['photo_test_fg'] = lum_to_photo(lum_test_fg, fg_lums, fg_pixels)
+        out['photo_test_fg'] = lum_to_photo(lum_test_fg, fg_lums, fg_pixels, color_matrix)
 
         lum_noise_bg = cached_lum_noise
-        out['photo_noise_bg'] = lum_to_photo(lum_noise_bg, bg_lums, bg_pixels)
+        # Window 1 用は補正なし
+        out['photo_noise_bg'] = lum_to_photo(lum_noise_bg, bg_lums, bg_pixels, None)
     else:
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         lum_noise = cached_lum_noise
         lum_test_total = lum_noise + lum_test_fg
-        out['photo_test'] = lum_to_photo(lum_test_total, fg_lums, fg_pixels)
+        # Window 2 用なので補正あり
+        out['photo_test'] = lum_to_photo(lum_test_total, fg_lums, fg_pixels, color_matrix)
 
     return out
