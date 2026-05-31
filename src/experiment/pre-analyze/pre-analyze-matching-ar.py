@@ -81,7 +81,12 @@ print("\n--- Generating bar charts (AR Extended Contrast) ---")
 # 描画用の設定
 sns.set_theme(style="whitegrid")
 condition_order = ["Single plane", "Single plane + defocus simulation", "Dual plane", "Dual plane flat"]
-ocularity_order = ["monocular", "binocular"]
+
+# ラベルの揺れ(大文字・小文字)を統一
+final_df['Ocularity'] = final_df['Ocularity'].str.lower()
+
+# データに存在する条件のみを順に抽出 (過去の monocular にも対応)
+ocularity_order = [oc for oc in ["left", "right", "binocular", "monocular"] if oc in final_df['Ocularity'].unique()]
 
 unique_ref_contrasts = sorted(final_df['Ref_Contrast'].dropna().unique(), reverse=True)
 unique_orientations = sorted(final_df['Orientation'].dropna().unique())
