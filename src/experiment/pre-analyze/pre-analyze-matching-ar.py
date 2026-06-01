@@ -80,7 +80,7 @@ print("\n--- Generating bar charts (AR Extended Contrast) ---")
         
 # 描画用の設定
 sns.set_theme(style="whitegrid")
-condition_order = ["Single plane", "Single plane + defocus simulation", "Dual plane", "Dual plane flat"]
+condition_order = ["Single plane", "Single plane + defocus simulation", "OST-AR"]
 ocularity_order = ["monocular", "binocular"]
 
 unique_ref_contrasts = sorted(final_df['Ref_Contrast'].dropna().unique(), reverse=True)
@@ -234,4 +234,70 @@ for ref_c in unique_ref_contrasts:
         print(f"グラフ保存: {filename}")
         plt.close(fig)
 
-print("解析完了")
+print("\n--- Generating bar charts (Raw Contrast) ---")
+for ref_c in unique_ref_contrasts:
+    for ori in unique_orientations:
+        plot_df = final_df[(final_df['Ref_Contrast'] == ref_c) & (final_df['Orientation'] == ori)]
+        if plot_df.empty:
+            continue
+            
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        sns.barplot(
+            data=plot_df, 
+            x='Condition', 
+            y='Matched_Contrast', 
+            hue='Ocularity',
+            order=condition_order,
+            hue_order=ocularity_order,
+            errorbar=('ci', 95), 
+            capsize=0.1, 
+            err_kws={'linewidth': 1.5},
+            ax=ax
+        )
+        
+        ax.axhline(y=ref_c, color='red', linestyle='--', linewidth=2, label=f'Ref Contrast ({ref_c})')
+        
+        patch_idx = 0
+        for oc in ocularity_order:
+            for cond in condition_order:
+                if patch_idx < len(ax.patches):
+                    p = ax.patches[patch_idx]
+                    height = p.get_height()
+                    if pd.notna(height) and height > 0:
+                        subset = plot_df[(plot_df['Ocularity'] == oc) & (plot_df['Condition'] == cond)]
+                        if not subset.empty:
+                            m = subset['Matched_Contrast'].mean()
+                            d = subset['Matched_Contrast'].std() 
+                            
+                            x = p.get_x() + p.get_width() / 2
+                            y = 0.1  # バーの足元付近
+                            
+                            ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
+                                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
+                    patch_idx += 1
+    
+        ax.set_title(f'Matched Contrast by Condition and Ocularity (Ref Contrast: {ref_c}, Ori: {ori}°)', fontsize=14)
+        ax.set_ylabel('Matched Contrast (Raw)', fontsize=12)
+        ax.set_xlabel('Condition', fontsize=12)
+        ax.set_yscale('log')
+        
+        ax.set_ylim(0.1, 1.0) 
+        ax.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        
+        labels = ax.get_xticklabels()
+        ax.set_xticklabels(labels)
+        
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0, 0.25), loc='upper left', borderaxespad=0.5)
+        
+        plt.tight_layout()
+        
+        filename = f'matched_raw_contrast_ref_{ref_c}_ori_{int(ori)}.png'
+        save_path = os.path.join(OUTPUT_DIR, filename)
+        plt.savefig(save_path, dpi=300)
+        print(f"グラフ保存: {filename}")
+        plt.close(fig)
+
+print(f"解析完了: {target_folder_name} (パス: {TARGET_DIR})")

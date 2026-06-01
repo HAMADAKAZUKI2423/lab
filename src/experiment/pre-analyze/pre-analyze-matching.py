@@ -158,4 +158,4 @@ for ref_c in unique_ref_contrasts:
         print(f"グラフ保存: {filename}")
         plt.close(fig)
 
-print("解析完了")
+print(f"解析完了: {file_paths} (パス: {TARGET_DIR})")
