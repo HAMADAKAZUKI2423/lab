@@ -88,6 +88,13 @@ final_df['Ocularity'] = final_df['Ocularity'].str.lower()
 # データに存在する条件のみを順に抽出 (過去の monocular にも対応)
 ocularity_order = [oc for oc in ["left", "right", "binocular", "monocular"] if oc in final_df['Ocularity'].unique()]
 
+custom_palette = {
+    "left": sns.color_palette()[0],       # 青 (元の色)
+    "right": sns.color_palette()[3],      # 赤
+    "binocular": sns.color_palette()[4],  # 紫
+    "monocular": sns.color_palette()[0]   # 青
+}
+
 unique_ref_contrasts = sorted(final_df['Ref_Contrast'].dropna().unique(), reverse=True)
 unique_orientations = sorted(final_df['Orientation'].dropna().unique())
 
@@ -107,6 +114,7 @@ for ref_c in unique_ref_contrasts:
             hue='Ocularity',
             order=condition_order,
             hue_order=ocularity_order,
+            palette=custom_palette,
             errorbar=('ci', 95), 
             capsize=0.1, 
             err_kws={'linewidth': 1.5},
@@ -189,6 +197,7 @@ for ref_c in unique_ref_contrasts:
             hue='Ocularity',
             order=condition_order,
             hue_order=ocularity_order,
+            palette=custom_palette,
             errorbar=('ci', 95), 
             capsize=0.1, 
             err_kws={'linewidth': 1.5},
