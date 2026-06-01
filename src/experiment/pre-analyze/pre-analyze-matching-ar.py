@@ -6,6 +6,9 @@ import seaborn as sns
 import os
 import glob
 import argparse
+import math
+import numpy as np
+import torch
 
 # 解析対象のフォルダ
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -80,7 +83,7 @@ print("\n--- Generating bar charts (AR Extended Contrast) ---")
         
 # 描画用の設定
 sns.set_theme(style="whitegrid")
-condition_order = ["Single plane", "Single plane + defocus simulation", "OST-AR"]
+condition_order = ["Single plane", "Single plane + defocus simulation", "Dual plane", "Dual plane flat"]
 ocularity_order = ["monocular", "binocular"]
 
 unique_ref_contrasts = sorted(final_df['Ref_Contrast'].dropna().unique(), reverse=True)
@@ -159,14 +162,110 @@ for ref_c in unique_ref_contrasts:
         plt.close(fig)
 
 # --- 追加: エンハンスコントラストの計算とグラフ出力 ---
-# 背景ノイズのコントラスト（CSVに含まれていない場合は1.0と仮定）
-C_bg = 1.0
+_blur_attenuation_cache = {}
 
-# エンハンスコントラストの計算式:
-# Y_max = L_fg * (1 + C_fg) + L_bg * (1 + C_bg)
-# Y_min = L_fg * (1 - C_fg) + L_bg * (1 - C_bg)
-# C_enhanced = (Y_max - Y_min) / (Y_max + Y_min) = (L_fg * C_fg + L_bg * C_bg) / (L_fg + L_bg)
-final_df['Matched_Contrast_Enhanced'] = (final_df['Matched_Contrast'] * L_fg + C_bg * L_bg) / (L_fg + L_bg)
+def calculate_blur_attenuation_cached(pd_mm, d_fg=50.0, d_bg=150.0, f_center_cpd=4.0):
+    pd_mm_round = round(pd_mm, 2)
+    if pd_mm_round in _blur_attenuation_cache:
+        return _blur_attenuation_cache[pd_mm_round]
+        
+    if pd_mm_round <= 0:
+        return 1.0
+        
+    # パラメータ設定
+    PIXELS_PER_CM = 1 / 0.02331
+    ppd_fg = PIXELS_PER_CM * d_fg * math.tan(math.radians(1.0))
+    width_deg = 7.9
+    height_deg = 3.95
+    width_fg = int(width_deg * ppd_fg)
+    height_fg = int(height_deg * ppd_fg)
+    
+    # 基準ノイズ画像の生成
+    np.random.seed(42)
+    white_noise = np.random.normal(0, 1, (height_fg, width_fg))
+    ft_noise = np.fft.fftshift(np.fft.fft2(white_noise))
+    
+    fx = np.fft.fftshift(np.fft.fftfreq(width_fg, d=1/ppd_fg))
+    fy = np.fft.fftshift(np.fft.fftfreq(height_fg, d=1/ppd_fg))
+    FX, FY = np.meshgrid(fx, fy)
+    R = np.sqrt(FX**2 + FY**2)
+    
+    bandwidth_octave = 1.0
+    f_min = f_center_cpd / (2 ** (bandwidth_octave / 2))
+    f_max = f_center_cpd * (2 ** (bandwidth_octave / 2))
+    mask = (R >= f_min) & (R <= f_max)
+    
+    ft_filtered = ft_noise * mask
+    noise_filtered = np.real(np.fft.ifft2(np.fft.ifftshift(ft_filtered)))
+    
+    max_val = np.max(np.abs(noise_filtered))
+    if max_val > 0:
+        noise_filtered = noise_filtered / max_val
+        
+    L_bg_temp = 15.0
+    C_bg_orig = 1.0
+    lum_noise = L_bg_temp * (1.0 + C_bg_orig * noise_filtered)
+    
+    rms_orig = np.std(lum_noise)
+    
+    # ブラーの適用
+    D = abs(1/(d_fg/100.0) - 1/(d_bg/100.0))
+    rad2deg = 180.0 / math.pi
+    mm = 1e-3
+    bd_deg = rad2deg * D * pd_mm_round * mm
+    DEFOCUS_BLUR_SCALE_FACTOR = 0.55
+    sigma = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
+    
+    if sigma <= 0:
+        _blur_attenuation_cache[pd_mm_round] = 1.0
+        return 1.0
+        
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    img_tensor = torch.from_numpy(lum_noise.astype(np.float32)).to(device)
+    h, w = img_tensor.shape[-2:]
+    
+    x_deg = torch.linspace(-w/2/ppd_fg, w/2/ppd_fg, w).to(device)
+    y_deg = torch.linspace(-h/2/ppd_fg, h/2/ppd_fg, h).to(device)
+    Y_deg, X_deg = torch.meshgrid(y_deg, x_deg, indexing='ij')
+    
+    psf = torch.exp(-((torch.sqrt(X_deg**2 + Y_deg**2)) ** 2) / (2 * sigma ** 2))
+    psf = psf / torch.sum(psf)
+    
+    def FT2(tensor):
+        tensor_shift = torch.fft.ifftshift(tensor, dim=(-2,-1))
+        tensor_ft_shift = torch.fft.fft2(tensor_shift, norm='ortho')
+        return torch.fft.fftshift(tensor_ft_shift, dim=(-2,-1))
+
+    def iFT2(tensor):
+        tensor_shift = torch.fft.ifftshift(tensor, dim=(-2,-1))
+        tensor_ift_shift = torch.fft.ifft2(tensor_shift, norm='ortho')
+        return torch.fft.fftshift(tensor_ift_shift, dim=(-2,-1))
+
+    img_ft = FT2(img_tensor)
+    psf_ft = FT2(psf)
+    blur_tensor = torch.abs(iFT2(img_ft * psf_ft))
+    
+    blur_tensor = blur_tensor * torch.sum(img_tensor) / (torch.sum(blur_tensor) + 1e-8)
+    lum_blur = blur_tensor.cpu().numpy()
+    
+    rms_blur = np.std(lum_blur)
+    
+    val = float(rms_blur / rms_orig) if rms_orig > 0 else 1.0
+    _blur_attenuation_cache[pd_mm_round] = val
+    return val
+
+def get_effective_c_bg(row):
+    if row['Condition'] == 'Single plane + defocus simulation':
+        pd_r = row.get('PD_Right', 0)
+        pd_l = row.get('PD_Left', 0)
+        pds = [p for p in (pd_r, pd_l) if pd.notna(p) and p > 0]
+        pd_mean = sum(pds) / len(pds) if pds else 4.0
+        return calculate_blur_attenuation_cached(pd_mean)
+    return 1.0
+
+print("\n--- Calculating effective background contrast and Enhanced Contrast ---")
+final_df['Effective_C_bg'] = final_df.apply(get_effective_c_bg, axis=1)
+final_df['Matched_Contrast_Enhanced'] = (final_df['Matched_Contrast'] * L_fg + final_df['Effective_C_bg'] * L_bg) / (L_fg + L_bg)
 
 print("\n--- Generating bar charts (Enhanced Contrast) ---")
 for ref_c in unique_ref_contrasts:
