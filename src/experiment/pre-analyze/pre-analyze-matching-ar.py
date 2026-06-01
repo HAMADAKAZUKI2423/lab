@@ -89,9 +89,9 @@ final_df['Ocularity'] = final_df['Ocularity'].str.lower()
 ocularity_order = [oc for oc in ["left", "right", "binocular", "monocular"] if oc in final_df['Ocularity'].unique()]
 
 custom_palette = {
-    "left": sns.color_palette()[0],       # 青 (元の色)
-    "right": sns.color_palette()[3],      # 赤
-    "binocular": sns.color_palette()[4],  # 紫
+    "left": sns.color_palette()[0],       # 青 
+    "right": sns.color_palette()[2],      # 緑 
+    "binocular": sns.color_palette()[1],  # orange
     "monocular": sns.color_palette()[0]   # 青
 }
 
