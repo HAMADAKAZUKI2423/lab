@@ -282,6 +282,18 @@ def update_defocus_view(app):
     img_bg = img_bg.resize((bg_size, bg_size // 2), Image.LANCZOS)
     
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT) # 実験者ビュー用に左右反転
+    color_matrix = getattr(app, 'color_matrix', None)
+    if color_matrix is not None:
+        img_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_fg, color_matrix)
+
+    img_fg = stimuli_utils.scale_image_to_target_luminance(
+        img_fg, 30.0,
+        getattr(app, 'fg_lums', None), getattr(app, 'fg_pixels', None)
+    )
+    img_bg = stimuli_utils.scale_image_to_target_luminance(
+        img_bg, 30.0,
+        getattr(app, 'bg_lums', None), getattr(app, 'bg_pixels', None)
+    )
 
     dy_fg = fg_size // 4
     dy_bg = -bg_size // 4
@@ -464,9 +476,19 @@ def update_defocus_view_gabor(app):
     img_fg = img_fg.resize((fg_size, fg_size // 2), Image.LANCZOS)
     img_fg = apply_torch_fft_blur(img_fg, D, pd_mm, pixels_per_deg_fg)
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT)
+    color_matrix = getattr(app, 'color_matrix', None)
+    if color_matrix is not None:
+        img_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_fg, color_matrix)
 
-    # 背景用 (Sharp)
+    img_fg = stimuli_utils.scale_image_to_target_luminance(
+        img_fg, 30.0,
+        getattr(app, 'fg_lums', None), getattr(app, 'fg_pixels', None)
+    )
     img_bg = img_bg.resize((bg_size, bg_size // 2), Image.LANCZOS)
+    img_bg = stimuli_utils.scale_image_to_target_luminance(
+        img_bg, 30.0,
+        getattr(app, 'bg_lums', None), getattr(app, 'bg_pixels', None)
+    )
 
     dy_fg = fg_size // 4
     dy_bg = -bg_size // 4
@@ -593,8 +615,19 @@ def update_defocus_view_image(app):
     img_fg = img_fg.resize((fg_size, fg_size // 2), Image.LANCZOS)
     img_fg = apply_torch_fft_blur(img_fg, D, PUPIL_DIAMETER_MM, pixels_per_deg_fg)
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT)
+    color_matrix = getattr(app, 'color_matrix', None)
+    if color_matrix is not None:
+        img_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_fg, color_matrix)
 
+    img_fg = stimuli_utils.scale_image_to_target_luminance(
+        img_fg, 30.0,
+        getattr(app, 'fg_lums', None), getattr(app, 'fg_pixels', None)
+    )
     img_bg = img_bg.resize((bg_size, bg_size // 2), Image.LANCZOS)
+    img_bg = stimuli_utils.scale_image_to_target_luminance(
+        img_bg, 30.0,
+        getattr(app, 'bg_lums', None), getattr(app, 'bg_pixels', None)
+    )
 
     dy_fg = fg_size // 4
     dy_bg = -bg_size // 4

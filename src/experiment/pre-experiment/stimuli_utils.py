@@ -593,30 +593,92 @@ def create_block_trials(param_dict, num_repetitions, shuffle=True):
 def lum_to_photo(lum_np, lums, pixels, color_matrix=None):
     """
     輝度配列をピクセル値に変換して ImageTk.PhotoImage を返す
+    
+    色補正行列が指定された場合、色補正を行いつつ輝度ドリフトを補正する
+    （色補正行列による輝度変化を補正し、元の輝度分布を保持）
 
     Args:
         lum_np: 輝度配列 (numpy float)
         lums: 参照ルミナンス配列
         pixels: 参照ピクセル値配列
         color_matrix: (optional) 3x3 の色補正行列 (numpy array)
+                      グレースケール(G,G,G) に適用される
 
     Returns:
-        ImageTk.PhotoImage
+        ImageTk.PhotoImage (グレースケール or RGB)
     """
     pix = np.interp(lum_np, lums, pixels)
     
     if color_matrix is not None:
-        # (H, W) -> (H, W, 3) のRGB配列へ拡張
-        rgb_array = np.stack((pix, pix, pix), axis=-1)
-        # 行列一括適用
-        corrected_rgb = np.dot(rgb_array, color_matrix.T)
-        pix_uint8 = np.clip(corrected_rgb, 0, 255).astype(np.uint8)
-        img = Image.fromarray(pix_uint8, mode='RGB')
+        img = Image.fromarray(pix.astype(np.uint8), mode='L')
+        img = apply_color_matrix_preserve_luminance(img, color_matrix)
     else:
         pix_uint8 = pix.astype(np.uint8)
         img = Image.fromarray(pix_uint8, mode='L')
         
     return ImageTk.PhotoImage(img)
+
+
+def apply_color_matrix_preserve_luminance(img, color_matrix, luma_weights=(0.2126, 0.7152, 0.0722)):
+    """
+    Apply a 3x3 color matrix to a PIL image while preserving luminance.
+
+    Args:
+        img: PIL.Image (RGB or L)
+        color_matrix: numpy array shape (3, 3)
+        luma_weights: weights for luminance calculation
+
+    Returns:
+        PIL.Image in RGB mode
+    """
+    img_rgb = img.convert('RGB')
+    arr = np.asarray(img_rgb, dtype=np.float32)
+    corrected = np.dot(arr, color_matrix.T)
+    luma = np.array(luma_weights, dtype=np.float32)
+    original_luminance = np.dot(arr, luma)
+    corrected_luminance = np.dot(corrected, luma)
+    scale = np.where(corrected_luminance > 1e-6,
+                    original_luminance / corrected_luminance,
+                    1.0)
+    corrected_scaled = corrected * scale[:, :, np.newaxis]
+    corrected_scaled = np.clip(corrected_scaled, 0, 255).astype(np.uint8)
+    return Image.fromarray(corrected_scaled, mode='RGB')
+
+
+def scale_image_to_target_luminance(img, target_lum, lums=None, pixels=None, luma_weights=(0.2126, 0.7152, 0.0722)):
+    """
+    Scale an image so its mean luminance becomes target_lum (cd/m2).
+
+    If calibration data are available, map pixel values to luminance using the provided
+    (lums, pixels) pair and then convert the scaled luminance back to pixel values.
+    Otherwise use grayscale image mean as a proxy.
+    """
+    img_rgb = img.convert('RGB')
+    arr = np.asarray(img_rgb, dtype=np.float32)
+    luma_weights = np.array(luma_weights, dtype=np.float32)
+
+    gray = np.dot(arr, luma_weights)
+    if lums is not None and pixels is not None and len(lums) > 1 and len(pixels) > 1:
+        # Map grayscale intensity through calibration curve to cd/m2
+        lum_map = np.interp(gray, pixels, lums)
+        mean_lum = float(np.mean(lum_map))
+        if mean_lum <= 1e-6:
+            return img_rgb
+
+        target_lum_map = lum_map * float(target_lum) / mean_lum
+        # Convert scaled luminance back to pixel values using calibration curve
+        scaled_gray = np.interp(target_lum_map, lums, pixels)
+        ratio = np.where(gray > 1e-6, scaled_gray / gray, 0.0)
+        scaled_arr = np.clip(arr * ratio[:, :, np.newaxis], 0, 255).astype(np.uint8)
+        return Image.fromarray(scaled_arr, mode='RGB')
+    else:
+        mean_lum = float(np.mean(gray))
+        if mean_lum <= 1e-6:
+            return img_rgb
+
+        scale = float(target_lum) / mean_lum
+        scaled = np.clip(arr * scale, 0, 255).astype(np.uint8)
+        return Image.fromarray(scaled, mode='RGB')
 
 
 def lum_to_pil(lum_np, lums, pixels):
