@@ -14,20 +14,20 @@ import datetime
 # 1. ユーザー環境設定 (ここを書き換えてください)
 # ==========================================
 # 実験環境の物理パラメータ
-FG_DISTANCES_CM = [50, 60, 81] # 前景用の距離リスト (cm)
-BG_DISTANCES_CM = [70, 100, 150] # 背景用の距離リスト (cm)
+FG_DISTANCES_CM = [50] # 前景用の距離リスト (cm)
+BG_DISTANCES_CM = [150] # 背景用の距離リスト (cm)
 SCREEN_WIDTH_CM = 59.67    # 画面の横幅実寸 (cm) ※ベゼルを含まない表示領域
 SCREEN_RES_X_PX = 2560    # 画面の横解像度 (px)
 STIM_WIDTH_DEG = 7.9     # 刺激の幅 (度)
 STIM_HEIGHT_DEG = 7.9     # 刺激の高さ (度)
 
 # 刺激画像パラメータ
-FG_SPATIAL_FREQS_CPD = [2,4,6,8] # 前景ガボールパッチの空間周波数のリスト (cpd)
-BG_SPATIAL_FREQS_CPD = [2,4,6,8] # 背景ノイズの空間周波数リスト (cpd)
-FG_MEAN_LUMINANCES_CDM2 = [50, 5]   # 前景用平均輝度リスト (cd/m^2)
-BG_MEAN_LUMINANCES_CDM2 = [15, 5]   # 背景用平均輝度リスト (cd/m^2)
-FG_CONTRASTS = [1.0]      # 前景用コントラストリスト
-BG_CONTRASTS = [0.0, 1.0]      # 背景用コントラストリスト
+FG_SPATIAL_FREQS_CPD = [4] # 前景ガボールパッチの空間周波数のリスト (cpd)
+BG_SPATIAL_FREQS_CPD = [4] # 背景ノイズの空間周波数リスト (cpd)
+FG_MEAN_LUMINANCES_CDM2 = [35]   # 前景用平均輝度リスト (cd/m^2)
+BG_MEAN_LUMINANCES_CDM2 = [15]   # 背景用平均輝度リスト (cd/m^2)
+FG_CONTRASTS = [0.2, 0.5]      # 前景用コントラストリスト
+BG_CONTRASTS = [1.0]      # 背景用コントラストリスト
 # ガボールパッチパラメータ 
 GABOR_SIGMA_DEG = 1.0     # ガボールパッチの標準偏差 (度)
 
@@ -36,7 +36,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 
 # --- 保存設定 ---
-OUTPUT_DIR_PRE = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-gabor")
+OUTPUT_DIR_PRE = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-matching")
 OUTPUT_DIR_MAIN = os.path.join(lab_root, "data", "processed", "images", "main-experiment-gabor")
 
 # ==========================================
@@ -204,21 +204,44 @@ def create_band_limited_noise(width_px, height_px, ppd, f_center_cpd, bandwidth_
     
     return noise_filtered
 
-def create_checkerboard(width_px, height_px, ppd, cpd):
+def create_checkerboard(width_px, height_px, ppd, cpd, angle_deg=0):
     """
     指定されたピクセルサイズと空間周波数(cpd)で白黒のチェッカーボードを作成する。
-    値は -1 と 1 で返す。
+    値は -1 と 1 で返す。角度指定(angle_deg)で回転可能。
     """
     square_size = ppd / (2 * cpd)
     
-    x = np.arange(width_px)
-    y = np.arange(height_px)
+    x = np.arange(width_px) - width_px / 2
+    y = np.arange(height_px) - height_px / 2
     X, Y = np.meshgrid(x, y)
     
-    checker = ((X // square_size).astype(int) + (Y // square_size).astype(int)) % 2
+    theta = np.deg2rad(angle_deg)
+    X_rot = X * np.cos(theta) - Y * np.sin(theta)
+    Y_rot = X * np.sin(theta) + Y * np.cos(theta)
+    
+    checker = ((np.floor(X_rot / square_size).astype(int)) + (np.floor(Y_rot / square_size).astype(int))) % 2
     checker = checker * 2 - 1
     
     return checker
+
+def create_stripe(width_px, height_px, ppd, cpd, angle_deg=0):
+    """
+    指定されたピクセルサイズと空間周波数(cpd)で白黒のストライプ（またはボーダー）を作成する。
+    値は -1 と 1 で返す。angle_deg=0で縦縞(ストライプ)、angle_deg=90で横縞(ボーダー)。
+    """
+    stripe_width = ppd / (2 * cpd)
+    
+    x = np.arange(width_px) - width_px / 2
+    y = np.arange(height_px) - height_px / 2
+    X, Y = np.meshgrid(x, y)
+    
+    theta = np.deg2rad(angle_deg)
+    X_rot = X * np.cos(theta) - Y * np.sin(theta)
+    
+    stripe = (np.floor(X_rot / stripe_width).astype(int)) % 2
+    stripe = stripe * 2 - 1
+    
+    return stripe
 
 def generate_gabor_stimuli(output_dir, distances, fg_params_list, bg_params_list, calib_data):
     """前景用のガボール刺激画像をまとめて生成する"""
@@ -292,46 +315,60 @@ def generate_noise_stimuli(output_dir, distances, fg_params_list, bg_params_list
                 noise_filename = os.path.join(noise_dir, f"FG_{fg_mean_lum}_{fg_contrast}_BG_{bg_mean_lum}_{bg_contrast}.png")
                 plt.imsave(noise_filename, pixel_map_noise, cmap='gray', vmin=0, vmax=255)
 
-def generate_checkerboard_stimuli(output_dir, distances_fg, distances_bg, calib_data):
-    """デフォーカスマッチング用のチェッカーボード刺激を生成する"""
-    print("\n--- Generating Checkerboard Patches (Defocus Matching) ---")
+def generate_matching_stimuli(output_dir, distances_fg, distances_bg, calib_data):
+    """デフォーカスマッチング用の刺激を生成する"""
+    print("\n--- Generating Matching Patches (Defocus Matching) ---")
     fg_sorted_lums, fg_sorted_pixels = calib_data[0]
     bg_sorted_lums, bg_sorted_pixels = calib_data[1]
 
     matching_dir = os.path.join(output_dir, "defocus-matching")
     os.makedirs(matching_dir, exist_ok=True)
 
-    checker_cpds = [1, 2, 4]  # チェッカーボードの空間周波数 (cpd)
+    cpds = [2, 4]  # 空間周波数 (cpd)
     mean_lum = 15
     contrast = 1.0
 
+    def wrapper_noise(w, h, p, c, angle_deg=0):
+        return create_band_limited_noise(w, h, p, f_center_cpd=c)
+
+    # 刺激パターンのリスト: (名前, 関数, 角度)
+    patterns = [
+        ("checker", create_checkerboard, 0),
+        ("checker_45", create_checkerboard, 45),
+        ("stripe", create_stripe, 0),
+        ("border", create_stripe, 90),
+        ("noise", wrapper_noise, 0)
+    ]
+
     # 前景用
     for distance in distances_fg:
-        for cpd in checker_cpds:
+        for cpd in cpds:
             ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
             req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
             
-            checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
-            lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
-            pixel_map_v = luminance_to_pixel(lum_map_v, fg_sorted_lums, fg_sorted_pixels)
-            
-            filename = os.path.join(matching_dir, f"FG_checker_{distance}cm_{cpd}cpd.png")
-            plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
-            print(f"  Saved FG checker ({distance}cm, {cpd}cpd): {filename}")
+            for name, func, angle in patterns:
+                mod_v = func(req_w, req_h, ppd, cpd, angle_deg=angle)
+                lum_map_v = mean_lum * (1 + contrast * mod_v)
+                pixel_map_v = luminance_to_pixel(lum_map_v, fg_sorted_lums, fg_sorted_pixels)
+                
+                filename = os.path.join(matching_dir, f"FG_{name}_{distance}cm_{cpd}cpd.png")
+                plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
+                print(f"  Saved FG {name} ({distance}cm, {cpd}cpd): {filename}")
 
     # 背景用
     for distance in distances_bg:
-        for cpd in checker_cpds:
+        for cpd in cpds:
             ppd = calculate_ppd(distance, SCREEN_WIDTH_CM, SCREEN_RES_X_PX)
             req_w, req_h = get_stimulus_pixel_size(STIM_WIDTH_DEG, STIM_HEIGHT_DEG/2, ppd)
             
-            checker_mod_v = create_checkerboard(req_w, req_h, ppd, cpd)
-            lum_map_v = mean_lum * (1 + contrast * checker_mod_v)
-            pixel_map_v = luminance_to_pixel(lum_map_v, bg_sorted_lums, bg_sorted_pixels)
-            
-            filename = os.path.join(matching_dir, f"BG_checker_{distance}cm_{cpd}cpd.png")
-            plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
-            print(f"  Saved BG checker ({distance}cm, {cpd}cpd): {filename}")
+            for name, func, angle in patterns:
+                mod_v = func(req_w, req_h, ppd, cpd, angle_deg=angle)
+                lum_map_v = mean_lum * (1 + contrast * mod_v)
+                pixel_map_v = luminance_to_pixel(lum_map_v, bg_sorted_lums, bg_sorted_pixels)
+                
+                filename = os.path.join(matching_dir, f"BG_{name}_{distance}cm_{cpd}cpd.png")
+                plt.imsave(filename, pixel_map_v, cmap='gray', vmin=0, vmax=255)
+                print(f"  Saved BG {name} ({distance}cm, {cpd}cpd): {filename}")
 
 # ==========================================
 # 4. メイン実行ブロック
@@ -408,8 +445,8 @@ if __name__ == "__main__":
         calib_data=(bg_sorted_lums, bg_sorted_pixels)
     )
 
-    # --- デフォーカスマッチング用のチェッカー画像の生成 ---
-    generate_checkerboard_stimuli(
+    # --- デフォーカスマッチング用の刺激画像の生成 ---
+    generate_matching_stimuli(
         output_dir=OUTPUT_DIR,
         distances_fg=FG_DISTANCES_CM,
         distances_bg=BG_DISTANCES_CM,
