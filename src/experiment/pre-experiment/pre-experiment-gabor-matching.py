@@ -299,10 +299,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
         noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
         
-        L_fg = 35.0
+        L_fg = 25.0
         L_bg = 15.0
         C_bg = 1.0
-        L_ref = 50.0
+        L_ref = 40.0
         
         # Reference Gabor patches
         for ref_c in [0.2, 0.4]:
@@ -850,7 +850,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         # 試行リストを生成
         ref_contrasts = [0.2, 0.4]
-        orientations = [0, 90]
+        orientations = [0]
         
         self.trial_list = []
         for ref_c in ref_contrasts:
