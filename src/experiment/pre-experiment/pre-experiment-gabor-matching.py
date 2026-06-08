@@ -281,7 +281,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
     def save_preview_images(self):
         """デフォーカスの効き方などの確認用画像を保存する"""
         now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d")
+        date_str = now.strftime("%Y%m%d_%H%M%S")
         p_id = self.participant_id.get()
         save_dir = os.path.join(FIGURE_DIR, f"{p_id}_{date_str}", "stimuli")
         if not os.path.exists(save_dir):
@@ -520,7 +520,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
     def save_preview_images(self):
         """プレビュー画像を保存"""
         now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d")
+        date_str = now.strftime("%Y%m%d_%H%M%S")
         p_id = self.participant_id.get()
         save_dir = os.path.join(FIGURE_DIR, f"{p_id}_{date_str}", "stimulis")
         
@@ -876,14 +876,14 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         p_id = self.participant_id.get()
         now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d")
+        date_str = now.strftime("%Y%m%d_%H%M%S")
         save_folder = os.path.join(RESULT_DIR, f"{p_id}_{date_str}")
         
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
         
         filename = os.path.join(save_folder, 
-                               f"result_{p_id}_{now.strftime('%Y%m%d_%H%M%S')}.csv")
+                               f"result_{p_id}_{date_str}.csv")
         
         if self.results:
             with open(filename, 'w', newline='', encoding='utf-8') as f:

@@ -440,13 +440,13 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             
         p_id = self.participant_id.get()
         now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d")
+        date_str = now.strftime("%Y%m%d_%H%M%S")
         save_folder = os.path.join(RESULT_DIR, f"{p_id}_{date_str}")
         
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
             
-        filename = os.path.join(save_folder, f"result_{p_id}_{now.strftime('%Y%m%d_%H%M%S')}.csv")
+        filename = os.path.join(save_folder, f"result_{p_id}_{date_str}.csv")
         
         with open(filename, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
