@@ -70,7 +70,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         # matching固有の変数
         self.distance1 = 50  # Foreground distance (cm)
-        self.distance2 = 150  # Background distance (cm)
+        self.distance2 = 100  # Background distance (cm)
         self.spatial_freq = SPATIAL_FREQ
         self.pupil_diameter_val = tk.DoubleVar(value=4.0)
         
@@ -850,7 +850,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         # 試行リストを生成
         ref_contrasts = [0.2, 0.4]
-        orientations = [0, 90]
+        orientations = [0]
         
         self.trial_list = []
         for ref_c in ref_contrasts:
