@@ -492,27 +492,64 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         defocus_matching.setup_defocus_matching_ui(self)
     
     def setup_experiment_blocks(self):
-        """実験ブロック構成を設定"""
+        """実験ブロック構成を設定
+
+        - 各眼性（binocular / monocular）を1つのブロックとする
+        - 各ブロック内の条件順をシャッフルする
+        - どちらのブロックが先かもランダム化する
+        """
         dom_eye = self.participant_dominance.get()
         if dom_eye not in self.calib_results:
             dom_eye = "Right"
-        
+
         self.offset_x.set(self.calib_results[dom_eye]["offset_x"])
         self.offset_y.set(self.calib_results[dom_eye]["offset_y"])
         self.current_pd_mean = self.calib_results[dom_eye]["pd_mean"]
-        
+
         self.save_preview_images()
-        
+
+        # キャリブレーション画面の更新（マーカー描画）
+        self.canvas1.delete("calib")
+        self.canvas2.delete("calib")
+
+        fg_marker_size = stimuli_utils.get_size_for_visual_angle(self.distance1, VISUAL_ANGLE_DEG)
+        bg_marker_h = stimuli_utils.get_size_for_visual_angle(self.distance2, VISUAL_ANGLE_DEG)
+        bg_marker_w = stimuli_utils.get_size_for_visual_angle(self.distance2, VISUAL_ANGLE_DEG * 2)
+
+        # Window 1
+        stimuli_utils.draw_image_corner_brackets(
+            self.canvas1, bg_marker_w, bg_marker_h, 
+            self.offset_x.get(), self.offset_y.get(), 
+            color=WIN1_MARKER_COLOR, line_width=stimuli_utils.MARKER_LINE_WIDTH * 1.5
+        )
+        stimuli_utils.draw_image_corner_brackets(
+            self.canvas1, bg_marker_h, bg_marker_h, 
+            self.offset_x.get(), self.offset_y.get(), 
+            color=WIN1_MARKER_COLOR, line_width=stimuli_utils.MARKER_LINE_WIDTH * 1.5
+        )
+
+        # Window 2
+        stimuli_utils.draw_image_corner_brackets(
+            self.canvas2, fg_marker_size, fg_marker_size, 
+            0, 0, color=WIN2_MARKER_COLOR, line_width=stimuli_utils.MARKER_LINE_WIDTH
+        )
+        stimuli_utils.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
+
         conditions = ["Single plane", "Single plane + defocus simulation", "Dual plane", "Dual plane flat"]
-        ocularities = ["monocular", "binocular"]
-        self.blocks = []
-        
-        for cond in conditions:
-            for oc in ocularities:
-                self.blocks.append({"condition": cond, "ocularity": oc})
-        
-        random.shuffle(self.blocks)
-        
+
+        # ブロックごとに条件を作成してシャッフル
+        bino_block = [{"condition": c, "ocularity": "binocular"} for c in conditions]
+        mono_block = [{"condition": c, "ocularity": "monocular"} for c in conditions]
+
+        random.shuffle(bino_block)
+        random.shuffle(mono_block)
+
+        # どちらのブロックを先にするかランダムに決定して結合
+        if random.choice([True, False]):
+            self.blocks = bino_block + mono_block
+        else:
+            self.blocks = mono_block + bino_block
+
         self.current_block_index = 0
         self.current_trial_in_experiment = 0
         self.start_block()
