@@ -150,6 +150,10 @@ def _show_defocus_matching_step(app):
     update_defocus_view(app)
 
 def _next_defocus_matching_step(app):
+    # Guard: if called after completion, ignore
+    if not hasattr(app, 'defocus_match_patterns') or app.current_match_idx >= len(app.defocus_match_patterns):
+        return
+
     # 結果を記録
     pattern, cpd = app.defocus_match_patterns[app.current_match_idx]
     pd_val = app.pupil_diameter_val.get()
@@ -214,6 +218,14 @@ def finish_eye_defocus_matching(app):
                 writer.writeheader()
                 writer.writerows(app.detailed_defocus_results)
             print(f"Detailed defocus matching results saved to {filename}")
+
+    # Clear any remaining key bindings to avoid callbacks after finish
+    try:
+        for key, binding_id in list(app.key_bindings.items()):
+            app.root.unbind(key, binding_id)
+    except Exception:
+        pass
+    app.key_bindings.clear()
 
     app.start_eye_calibration()
 

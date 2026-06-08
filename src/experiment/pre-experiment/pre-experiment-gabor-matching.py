@@ -549,36 +549,63 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         for ref_c in [0.2, 0.4]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
             pix_ref_fg = np.interp(lum_ref_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
-            Image.fromarray(pix_ref_fg, mode='L').save(
-                os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png")
-            )
+            img_ref = Image.fromarray(pix_ref_fg, mode='L')
+            if getattr(self, 'color_matrix', None) is not None:
+                img_ref = stimuli_utils.apply_color_matrix_preserve_luminance(img_ref, self.color_matrix)
+            img_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
         
         c_test = 0.4
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_test_fg, mode='L').save(
-            os.path.join(save_dir, "single_plane_foreground.png")
-        )
+        img_test_fg = Image.fromarray(pix_test_fg, mode='L')
+        if getattr(self, 'color_matrix', None) is not None:
+            img_test_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_test_fg, self.color_matrix)
+        img_test_fg.save(os.path.join(save_dir, "single_plane_foreground.png"))
         
         lum_noise = L_bg * (1.0 + C_bg * noise_base)
-        pix_noise = np.interp(lum_noise, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_noise, mode='L').save(
-            os.path.join(save_dir, "single_plane_background.png")
-        )
+        # Background should be mapped using background calibration
+        pix_noise = np.interp(lum_noise, self.bg_lums, self.bg_pixels).astype(np.uint8)
+        img_noise = Image.fromarray(pix_noise, mode='L')
+        if getattr(self, 'color_matrix', None) is not None:
+            img_noise = stimuli_utils.apply_color_matrix_preserve_luminance(img_noise, self.color_matrix)
+        img_noise.save(os.path.join(save_dir, "single_plane_background.png"))
+
+        # Also save dual-plane specific foreground/background using respective calibrations
+        # Foreground (uses foreground calibration)
+        img_test_fg.save(os.path.join(save_dir, "dual_plane_foreground.png"))
+
+        # Background for dual plane (use background calibration mapping)
+        pix_noise_bg = np.interp(lum_noise, self.bg_lums, self.bg_pixels).astype(np.uint8)
+        img_noise_bg = Image.fromarray(pix_noise_bg, mode='L')
+        if getattr(self, 'color_matrix', None) is not None:
+            img_noise_bg = stimuli_utils.apply_color_matrix_preserve_luminance(img_noise_bg, self.color_matrix)
+        img_noise_bg.save(os.path.join(save_dir, "dual_plane_background.png"))
         
         lum_total = lum_noise + lum_test_fg
         pix_total = np.interp(lum_total, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_total, mode='L').save(os.path.join(save_dir, "single_plane_combined.png"))
+        img_total = Image.fromarray(pix_total, mode='L')
+        if getattr(self, 'color_matrix', None) is not None:
+            img_total = stimuli_utils.apply_color_matrix_preserve_luminance(img_total, self.color_matrix)
+        img_total.save(os.path.join(save_dir, "single_plane_combined.png"))
         
         D = abs(1/(self.distance1/100.0) - 1/(self.distance2/100.0))
         pd_mm = self.current_pd_mean if self.current_pd_mean > 0 else 4.0
         lum_noise_defocus = stimuli_utils.apply_torch_fft_blur_luminance(lum_noise, D, pd_mm, ppd_fg)
-        pix_noise_defocus = np.interp(lum_noise_defocus, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_noise_defocus, mode='L').save(os.path.join(save_dir, "single_plane_defocus_background.png"))
+        pix_noise_defocus = np.interp(lum_noise_defocus, self.bg_lums, self.bg_pixels).astype(np.uint8)
+        img_noise_defocus = Image.fromarray(pix_noise_defocus, mode='L')
+        if getattr(self, 'color_matrix', None) is not None:
+            img_noise_defocus = stimuli_utils.apply_color_matrix_preserve_luminance(img_noise_defocus, self.color_matrix)
+        img_noise_defocus.save(os.path.join(save_dir, "single_plane_defocus_background.png"))
+
+        # Dual-plane defocus background (mapped with background calibration)
+        img_noise_defocus.save(os.path.join(save_dir, "dual_plane_defocus_background.png"))
         
         lum_total_defocus = lum_noise_defocus + lum_test_fg
         pix_total_defocus = np.interp(lum_total_defocus, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_total_defocus, mode='L').save(os.path.join(save_dir, "single_plane_defocus_combined.png"))
+        img_total_defocus = Image.fromarray(pix_total_defocus, mode='L')
+        if getattr(self, 'color_matrix', None) is not None:
+            img_total_defocus = stimuli_utils.apply_color_matrix_preserve_luminance(img_total_defocus, self.color_matrix)
+        img_total_defocus.save(os.path.join(save_dir, "single_plane_defocus_combined.png"))
     
     def start_block(self):
         """ブロック開始"""
