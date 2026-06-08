@@ -769,7 +769,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         cx1, cy1 = self.width//2 + self.offset_x.get(), self.height//2 + self.offset_y.get()
         cx2, cy2 = self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2
-        
+    
         L_fg = 15.0
         L_bg = 15.0
         L_ref = 30.0
