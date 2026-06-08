@@ -287,11 +287,11 @@ def update_defocus_view(app):
         img_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_fg, color_matrix)
 
     img_fg = stimuli_utils.scale_image_to_target_luminance(
-        img_fg, 30.0,
+        img_fg, 15.0,
         getattr(app, 'fg_lums', None), getattr(app, 'fg_pixels', None)
     )
     img_bg = stimuli_utils.scale_image_to_target_luminance(
-        img_bg, 30.0,
+        img_bg, 15.0,
         getattr(app, 'bg_lums', None), getattr(app, 'bg_pixels', None)
     )
 

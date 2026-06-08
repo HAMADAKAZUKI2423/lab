@@ -595,7 +595,7 @@ def lum_to_photo(lum_np, lums, pixels, color_matrix=None):
     輝度配列をピクセル値に変換して ImageTk.PhotoImage を返す
     
     色補正行列が指定された場合、色補正を行いつつ輝度ドリフトを補正する
-    （色補正行列による輝度変化を補正し、元の輝度分布を保持）
+    （色補正行列による輝度変化を補正し、元の物理輝度を保持）
 
     Args:
         lum_np: 輝度配列 (numpy float)
@@ -608,14 +608,12 @@ def lum_to_photo(lum_np, lums, pixels, color_matrix=None):
         ImageTk.PhotoImage (グレースケール or RGB)
     """
     pix = np.interp(lum_np, lums, pixels)
+    img = Image.fromarray(pix.astype(np.uint8), mode='L')
     
     if color_matrix is not None:
-        img = Image.fromarray(pix.astype(np.uint8), mode='L')
         img = apply_color_matrix_preserve_luminance(img, color_matrix)
-    else:
-        pix_uint8 = pix.astype(np.uint8)
-        img = Image.fromarray(pix_uint8, mode='L')
-        
+        img = scale_image_to_target_luminance(img, lum_np, lums=lums, pixels=pixels)
+
     return ImageTk.PhotoImage(img)
 
 
@@ -661,14 +659,22 @@ def scale_image_to_target_luminance(img, target_lum, lums=None, pixels=None, lum
     if lums is not None and pixels is not None and len(lums) > 1 and len(pixels) > 1:
         # Map grayscale intensity through calibration curve to cd/m2
         lum_map = np.interp(gray, pixels, lums)
-        mean_lum = float(np.mean(lum_map))
-        if mean_lum <= 1e-6:
-            return img_rgb
+        target_lum_arr = np.asarray(target_lum, dtype=np.float32)
 
-        target_lum_map = lum_map * float(target_lum) / mean_lum
-        # Convert scaled luminance back to pixel values using calibration curve
-        scaled_gray = np.interp(target_lum_map, lums, pixels)
-        ratio = np.where(gray > 1e-6, scaled_gray / gray, 0.0)
+        if target_lum_arr.ndim == 0:
+            mean_lum = float(np.mean(lum_map))
+            if mean_lum <= 1e-6:
+                return img_rgb
+
+            target_lum_map = lum_map * float(target_lum) / mean_lum
+            scaled_gray = np.interp(target_lum_map, lums, pixels)
+            ratio = np.where(gray > 1e-6, scaled_gray / gray, 0.0)
+        else:
+            if target_lum_arr.shape != gray.shape:
+                target_lum_arr = np.broadcast_to(target_lum_arr, gray.shape)
+            scaled_gray = np.interp(target_lum_arr, lums, pixels)
+            ratio = np.where(gray > 1e-6, scaled_gray / gray, 0.0)
+
         scaled_arr = np.clip(arr * ratio[:, :, np.newaxis], 0, 255).astype(np.uint8)
         return Image.fromarray(scaled_arr, mode='RGB')
     else:
