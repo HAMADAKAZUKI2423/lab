@@ -507,7 +507,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.current_pd_mean = self.calib_results[dom_eye]["pd_mean"]
 
         self.save_preview_images()
-<<<<<<< HEAD
+
 
         # キャリブレーション画面の更新（マーカー描画）
         self.canvas1.delete("calib")
@@ -551,19 +551,6 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         else:
             self.blocks = mono_block + bino_block
 
-=======
-        
-        conditions = ["Single plane", "Dual plane"]
-        ocularities = ["binocular"]
-        self.blocks = []
-        
-        for cond in conditions:
-            for oc in ocularities:
-                self.blocks.append({"condition": cond, "ocularity": oc})
-        
-        random.shuffle(self.blocks)
-        
->>>>>>> origin/experiment/gabor/matching/lum_change
         self.current_block_index = 0
         self.current_trial_in_experiment = 0
         self.start_block()
