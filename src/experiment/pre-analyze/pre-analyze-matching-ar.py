@@ -75,9 +75,42 @@ for col in required_columns:
         exit()
 
 # --- 記録された前景単体コントラストを合成後のAR拡張コントラストに変換 ---
-L_fg = 35.0
+# Load luminance config: prefer per-run config saved in the target folder, then global config
+L_fg = 15.0
 L_bg = 15.0
-final_df['Matched_Contrast_AR'] = final_df['Matched_Contrast'] * (L_fg / (L_fg + L_bg))
+L_ref = 30.0
+used_cfg_path = os.path.join(TARGET_DIR, 'used_experiment_config.json')
+if os.path.exists(used_cfg_path):
+    try:
+        import json
+        used_cfg = json.load(open(used_cfg_path, 'r', encoding='utf-8'))
+        L_fg = float(used_cfg.get('L_fg', L_fg))
+        L_bg = float(used_cfg.get('L_bg', L_bg))
+        L_ref = float(used_cfg.get('L_ref', L_ref))
+    except Exception:
+        pass
+else:
+    config_path = os.path.join(lab_root, 'config', 'experiment_conditions.json')
+    if os.path.exists(config_path):
+        try:
+            import json
+            cfg = json.load(open(config_path, 'r', encoding='utf-8'))
+            L_fg = float(cfg.get('L_fg', L_fg))
+            L_bg = float(cfg.get('L_bg', L_bg))
+            L_ref = float(cfg.get('L_ref', L_ref))
+        except Exception:
+            pass
+
+# Ensure luminance columns exist in the concatenated dataframe; prefer existing per-row values
+if 'L_fg' not in final_df.columns:
+    final_df['L_fg'] = L_fg
+if 'L_bg' not in final_df.columns:
+    final_df['L_bg'] = L_bg
+if 'L_ref' not in final_df.columns:
+    final_df['L_ref'] = L_ref
+
+# Compute AR-extended matched contrast using per-row luminance values
+final_df['Matched_Contrast_AR'] = final_df['Matched_Contrast'] * (final_df['L_fg'] / (final_df['L_fg'] + final_df['L_bg']))
 
 print("\n--- Generating bar charts (AR Extended Contrast) ---")
         
@@ -202,7 +235,7 @@ def calculate_blur_attenuation_cached(pd_mm, d_fg=50.0, d_bg=150.0, f_center_cpd
     if max_val > 0:
         noise_filtered = noise_filtered / max_val
         
-    L_bg_temp = 15.0
+    L_bg_temp = L_bg
     C_bg_orig = 1.0
     lum_noise = L_bg_temp * (1.0 + C_bg_orig * noise_filtered)
     
