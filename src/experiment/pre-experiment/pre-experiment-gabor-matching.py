@@ -507,6 +507,51 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.current_pd_mean = self.calib_results[dom_eye]["pd_mean"]
 
         self.save_preview_images()
+<<<<<<< HEAD
+
+        # キャリブレーション画面の更新（マーカー描画）
+        self.canvas1.delete("calib")
+        self.canvas2.delete("calib")
+
+        fg_marker_size = stimuli_utils.get_size_for_visual_angle(self.distance1, VISUAL_ANGLE_DEG)
+        bg_marker_h = stimuli_utils.get_size_for_visual_angle(self.distance2, VISUAL_ANGLE_DEG)
+        bg_marker_w = stimuli_utils.get_size_for_visual_angle(self.distance2, VISUAL_ANGLE_DEG * 2)
+
+        # Window 1
+        stimuli_utils.draw_image_corner_brackets(
+            self.canvas1, bg_marker_w, bg_marker_h, 
+            self.offset_x.get(), self.offset_y.get(), 
+            color=WIN1_MARKER_COLOR, line_width=stimuli_utils.MARKER_LINE_WIDTH * 1.5
+        )
+        stimuli_utils.draw_image_corner_brackets(
+            self.canvas1, bg_marker_h, bg_marker_h, 
+            self.offset_x.get(), self.offset_y.get(), 
+            color=WIN1_MARKER_COLOR, line_width=stimuli_utils.MARKER_LINE_WIDTH * 1.5
+        )
+
+        # Window 2
+        stimuli_utils.draw_image_corner_brackets(
+            self.canvas2, fg_marker_size, fg_marker_size, 
+            0, 0, color=WIN2_MARKER_COLOR, line_width=stimuli_utils.MARKER_LINE_WIDTH
+        )
+        stimuli_utils.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
+
+        conditions = ["Single plane", "Single plane + defocus simulation", "Dual plane", "Dual plane flat"]
+
+        # ブロックごとに条件を作成してシャッフル
+        bino_block = [{"condition": c, "ocularity": "binocular"} for c in conditions]
+        mono_block = [{"condition": c, "ocularity": "monocular"} for c in conditions]
+
+        random.shuffle(bino_block)
+        random.shuffle(mono_block)
+
+        # どちらのブロックを先にするかランダムに決定して結合
+        if random.choice([True, False]):
+            self.blocks = bino_block + mono_block
+        else:
+            self.blocks = mono_block + bino_block
+
+=======
         
         conditions = ["Single plane", "Dual plane"]
         ocularities = ["binocular"]
@@ -518,6 +563,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         random.shuffle(self.blocks)
         
+>>>>>>> origin/experiment/gabor/matching/lum_change
         self.current_block_index = 0
         self.current_trial_in_experiment = 0
         self.start_block()
@@ -854,7 +900,11 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.ctrl_frame.destroy()
         
         # 試行リストを生成
+<<<<<<< HEAD
+        ref_contrasts = [0.2, 0.4]
+=======
         ref_contrasts = [0.1, 0.2, 0.3]
+>>>>>>> origin/experiment/gabor/matching/lum_change
         orientations = [0]
         
         self.trial_list = []
