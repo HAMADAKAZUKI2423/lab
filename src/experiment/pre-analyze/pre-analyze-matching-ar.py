@@ -173,9 +173,9 @@ for ref_c in unique_ref_contrasts:
         ax.set_xlabel('Condition', fontsize=12)
         ax.set_yscale('log') # 縦軸をログスケールに設定
         
-        ax.set_ylim(0.1, 1.0) 
-        ax.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        ax.set_ylim(0.05, 1.0) 
+        ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
         
         # x軸のラベルをそのまま表示（回転なし）
         labels = ax.get_xticklabels()
@@ -348,9 +348,9 @@ for ref_c in unique_ref_contrasts:
         ax.set_xlabel('Condition', fontsize=12)
         ax.set_yscale('log')
         
-        ax.set_ylim(0.1, 1.0) 
-        ax.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        ax.set_ylim(0.05, 1.0) 
+        ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
         
         labels = ax.get_xticklabels()
         ax.set_xticklabels(labels)
@@ -414,9 +414,9 @@ for ref_c in unique_ref_contrasts:
         ax.set_xlabel('Condition', fontsize=12)
         ax.set_yscale('log')
         
-        ax.set_ylim(0.1, 1.0) 
-        ax.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        ax.set_ylim(0.05, 1.0) 
+        ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
         
         labels = ax.get_xticklabels()
         ax.set_xticklabels(labels)
