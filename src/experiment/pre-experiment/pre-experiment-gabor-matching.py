@@ -281,7 +281,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
     def save_preview_images(self):
         """デフォーカスの効き方などの確認用画像を保存する"""
         now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d")
+        date_str = now.strftime("%Y%m%d_%H%M%S")
         p_id = self.participant_id.get()
         save_dir = os.path.join(FIGURE_DIR, f"{p_id}_{date_str}", "stimuli")
         if not os.path.exists(save_dir):
@@ -299,10 +299,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
         noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
         
-        L_fg = 35.0
+        L_fg = 15.0
         L_bg = 15.0
         C_bg = 1.0
-        L_ref = 50.0
+        L_ref = 30.0
         
         # Reference Gabor patches
         for ref_c in [0.2, 0.4]:
@@ -507,6 +507,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.current_pd_mean = self.calib_results[dom_eye]["pd_mean"]
 
         self.save_preview_images()
+<<<<<<< HEAD
 
         # キャリブレーション画面の更新（マーカー描画）
         self.canvas1.delete("calib")
@@ -550,6 +551,19 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         else:
             self.blocks = mono_block + bino_block
 
+=======
+        
+        conditions = ["Single plane", "Dual plane"]
+        ocularities = ["binocular"]
+        self.blocks = []
+        
+        for cond in conditions:
+            for oc in ocularities:
+                self.blocks.append({"condition": cond, "ocularity": oc})
+        
+        random.shuffle(self.blocks)
+        
+>>>>>>> origin/experiment/gabor/matching/lum_change
         self.current_block_index = 0
         self.current_trial_in_experiment = 0
         self.start_block()
@@ -557,7 +571,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
     def save_preview_images(self):
         """プレビュー画像を保存"""
         now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d")
+        date_str = now.strftime("%Y%m%d_%H%M%S")
         p_id = self.participant_id.get()
         save_dir = os.path.join(FIGURE_DIR, f"{p_id}_{date_str}", "stimulis")
         
@@ -578,10 +592,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, 
                                                      self.spatial_freq)
         
-        L_fg = 35.0
+        L_fg = 15.0
         L_bg = 15.0
         C_bg = 1.0
-        L_ref = 50.0
+        L_ref = 30.0
         
         for ref_c in [0.2, 0.4]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
@@ -806,10 +820,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         cx1, cy1 = self.width//2 + self.offset_x.get(), self.height//2 + self.offset_y.get()
         cx2, cy2 = self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2
-        
-        L_fg = 35.0
+    
+        L_fg = 15.0
         L_bg = 15.0
-        L_ref = 50.0
+        L_ref = 30.0
         
         # Generate PhotoImage objects for reference/test/background using helper
         photos = stimuli_utils.generate_matching_photos(
@@ -886,7 +900,11 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.ctrl_frame.destroy()
         
         # 試行リストを生成
+<<<<<<< HEAD
         ref_contrasts = [0.2, 0.4]
+=======
+        ref_contrasts = [0.1, 0.2, 0.3]
+>>>>>>> origin/experiment/gabor/matching/lum_change
         orientations = [0]
         
         self.trial_list = []
@@ -913,14 +931,14 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         p_id = self.participant_id.get()
         now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d")
+        date_str = now.strftime("%Y%m%d_%H%M%S")
         save_folder = os.path.join(RESULT_DIR, f"{p_id}_{date_str}")
         
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
         
         filename = os.path.join(save_folder, 
-                               f"result_{p_id}_{now.strftime('%Y%m%d_%H%M%S')}.csv")
+                               f"result_{p_id}_{date_str}.csv")
         
         if self.results:
             with open(filename, 'w', newline='', encoding='utf-8') as f:

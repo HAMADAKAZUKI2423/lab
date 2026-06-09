@@ -201,14 +201,14 @@ def finish_eye_defocus_matching(app):
         if hasattr(app, 'detailed_defocus_results') and app.detailed_defocus_results:
             p_id = app.participant_id.get() if hasattr(app, 'participant_id') else "Unknown"
             now = datetime.datetime.now()
-            date_str = now.strftime("%Y%m%d")
+            date_str = now.strftime("%Y%m%d_%H%M%S")
             
             result_dir = getattr(app, 'result_dir', os.path.join(lab_root, "results", "tables", "pre-experiment-matching"))
             save_folder = os.path.join(result_dir, f"{p_id}_{date_str}")
             if not os.path.exists(save_folder):
                 os.makedirs(save_folder)
                 
-            filename = os.path.join(save_folder, f"defocus_matching_{p_id}_{now.strftime('%Y%m%d_%H%M%S')}.csv")
+            filename = os.path.join(save_folder, f"defocus_matching_{p_id}_{date_str}.csv")
             with open(filename, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=["ID", "Eye", "Pattern", "Spatial_Freq(cpd)", "Matched_PD(mm)"])
                 writer.writeheader()
@@ -465,9 +465,6 @@ def update_defocus_view_gabor(app):
     img_fg = apply_torch_fft_blur(img_fg, D, pd_mm, pixels_per_deg_fg)
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT)
 
-    # 背景用 (Sharp)
-    img_bg = img_bg.resize((bg_size, bg_size // 2), Image.LANCZOS)
-
     dy_fg = fg_size // 4
     dy_bg = -bg_size // 4
 
@@ -593,8 +590,6 @@ def update_defocus_view_image(app):
     img_fg = img_fg.resize((fg_size, fg_size // 2), Image.LANCZOS)
     img_fg = apply_torch_fft_blur(img_fg, D, PUPIL_DIAMETER_MM, pixels_per_deg_fg)
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT)
-
-    img_bg = img_bg.resize((bg_size, bg_size // 2), Image.LANCZOS)
 
     dy_fg = fg_size // 4
     dy_bg = -bg_size // 4
