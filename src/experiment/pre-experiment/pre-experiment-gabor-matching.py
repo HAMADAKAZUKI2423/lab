@@ -887,11 +887,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.ctrl_frame.destroy()
         
         # 試行リストを生成
-<<<<<<< HEAD
-        ref_contrasts = [0.2, 0.4]
-=======
         ref_contrasts = [0.1, 0.2, 0.3]
->>>>>>> origin/experiment/gabor/matching/lum_change
         orientations = [0]
         
         self.trial_list = []
