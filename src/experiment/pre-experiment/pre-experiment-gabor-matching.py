@@ -70,7 +70,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         # matching固有の変数
         self.distance1 = 50  # Foreground distance (cm)
-        self.distance2 = 150  # Background distance (cm)
+        self.distance2 = 100  # Background distance (cm)
         self.spatial_freq = SPATIAL_FREQ
         self.pupil_diameter_val = tk.DoubleVar(value=4.0)
         
@@ -281,7 +281,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
     def save_preview_images(self):
         """デフォーカスの効き方などの確認用画像を保存する"""
         now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d")
+        date_str = now.strftime("%Y%m%d_%H%M%S")
         p_id = self.participant_id.get()
         save_dir = os.path.join(FIGURE_DIR, f"{p_id}_{date_str}", "stimuli")
         if not os.path.exists(save_dir):
@@ -299,10 +299,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
         noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
         
-        L_fg = 35.0
+        L_fg = 15.0
         L_bg = 15.0
         C_bg = 1.0
-        L_ref = 50.0
+        L_ref = 30.0
         
         # Reference Gabor patches
         for ref_c in [0.2, 0.4]:
@@ -492,27 +492,65 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         defocus_matching.setup_defocus_matching_ui(self)
     
     def setup_experiment_blocks(self):
-        """実験ブロック構成を設定"""
+        """実験ブロック構成を設定
+
+        - 各眼性（binocular / monocular）を1つのブロックとする
+        - 各ブロック内の条件順をシャッフルする
+        - どちらのブロックが先かもランダム化する
+        """
         dom_eye = self.participant_dominance.get()
         if dom_eye not in self.calib_results:
             dom_eye = "Right"
-        
+
         self.offset_x.set(self.calib_results[dom_eye]["offset_x"])
         self.offset_y.set(self.calib_results[dom_eye]["offset_y"])
         self.current_pd_mean = self.calib_results[dom_eye]["pd_mean"]
-        
+
         self.save_preview_images()
-        
+
+
+        # キャリブレーション画面の更新（マーカー描画）
+        self.canvas1.delete("calib")
+        self.canvas2.delete("calib")
+
+        fg_marker_size = stimuli_utils.get_size_for_visual_angle(self.distance1, VISUAL_ANGLE_DEG)
+        bg_marker_h = stimuli_utils.get_size_for_visual_angle(self.distance2, VISUAL_ANGLE_DEG)
+        bg_marker_w = stimuli_utils.get_size_for_visual_angle(self.distance2, VISUAL_ANGLE_DEG * 2)
+
+        # Window 1
+        stimuli_utils.draw_image_corner_brackets(
+            self.canvas1, bg_marker_w, bg_marker_h, 
+            self.offset_x.get(), self.offset_y.get(), 
+            color=WIN1_MARKER_COLOR, line_width=stimuli_utils.MARKER_LINE_WIDTH * 1.5
+        )
+        stimuli_utils.draw_image_corner_brackets(
+            self.canvas1, bg_marker_h, bg_marker_h, 
+            self.offset_x.get(), self.offset_y.get(), 
+            color=WIN1_MARKER_COLOR, line_width=stimuli_utils.MARKER_LINE_WIDTH * 1.5
+        )
+
+        # Window 2
+        stimuli_utils.draw_image_corner_brackets(
+            self.canvas2, fg_marker_size, fg_marker_size, 
+            0, 0, color=WIN2_MARKER_COLOR, line_width=stimuli_utils.MARKER_LINE_WIDTH
+        )
+        stimuli_utils.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
+
         conditions = ["Single plane", "Single plane + defocus simulation", "Dual plane", "Dual plane flat"]
-        ocularities = ["monocular", "binocular"]
-        self.blocks = []
-        
-        for cond in conditions:
-            for oc in ocularities:
-                self.blocks.append({"condition": cond, "ocularity": oc})
-        
-        random.shuffle(self.blocks)
-        
+
+        # ブロックごとに条件を作成してシャッフル
+        bino_block = [{"condition": c, "ocularity": "binocular"} for c in conditions]
+        mono_block = [{"condition": c, "ocularity": "monocular"} for c in conditions]
+
+        random.shuffle(bino_block)
+        random.shuffle(mono_block)
+
+        # どちらのブロックを先にするかランダムに決定して結合
+        if random.choice([True, False]):
+            self.blocks = bino_block + mono_block
+        else:
+            self.blocks = mono_block + bino_block
+
         self.current_block_index = 0
         self.current_trial_in_experiment = 0
         self.start_block()
@@ -520,7 +558,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
     def save_preview_images(self):
         """プレビュー画像を保存"""
         now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d")
+        date_str = now.strftime("%Y%m%d_%H%M%S")
         p_id = self.participant_id.get()
         save_dir = os.path.join(FIGURE_DIR, f"{p_id}_{date_str}", "stimulis")
         
@@ -541,10 +579,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, 
                                                      self.spatial_freq)
         
-        L_fg = 35.0
+        L_fg = 15.0
         L_bg = 15.0
         C_bg = 1.0
-        L_ref = 50.0
+        L_ref = 30.0
         
         for ref_c in [0.2, 0.4]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
@@ -769,10 +807,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         cx1, cy1 = self.width//2 + self.offset_x.get(), self.height//2 + self.offset_y.get()
         cx2, cy2 = self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2
-        
-        L_fg = 35.0
+    
+        L_fg = 15.0
         L_bg = 15.0
-        L_ref = 50.0
+        L_ref = 30.0
         
         # Generate PhotoImage objects for reference/test/background using helper
         photos = stimuli_utils.generate_matching_photos(
@@ -849,8 +887,8 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.ctrl_frame.destroy()
         
         # 試行リストを生成
-        ref_contrasts = [0.2, 0.4]
-        orientations = [0, 90]
+        ref_contrasts = [0.1, 0.2, 0.3]
+        orientations = [0]
         
         self.trial_list = []
         for ref_c in ref_contrasts:
@@ -876,14 +914,14 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         p_id = self.participant_id.get()
         now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d")
+        date_str = now.strftime("%Y%m%d_%H%M%S")
         save_folder = os.path.join(RESULT_DIR, f"{p_id}_{date_str}")
         
         if not os.path.exists(save_folder):
             os.makedirs(save_folder)
         
         filename = os.path.join(save_folder, 
-                               f"result_{p_id}_{now.strftime('%Y%m%d_%H%M%S')}.csv")
+                               f"result_{p_id}_{date_str}.csv")
         
         if self.results:
             with open(filename, 'w', newline='', encoding='utf-8') as f:

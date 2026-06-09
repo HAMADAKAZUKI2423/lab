@@ -314,7 +314,7 @@ def draw_center_cross(canvas, offset_x=0, offset_y=0, color='white', gap=0):
     pts_down = [cx, cy + gap, cx - d3, cy + d2 + gap, cx, cy + d1 + gap, cx + d3, cy + d2 + gap]
 
     for pts in [pts_left, pts_right, pts_up, pts_down]:
-        canvas.create_polygon(pts, fill=color, outline="black", width=2, tags="calib")
+        canvas.create_polygon(pts, fill=color, outline="red", width=2, tags="calib")
 
 
 # ==========================================

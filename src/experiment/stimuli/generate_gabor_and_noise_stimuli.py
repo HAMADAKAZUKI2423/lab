@@ -15,7 +15,7 @@ import datetime
 # ==========================================
 # 実験環境の物理パラメータ
 FG_DISTANCES_CM = [50] # 前景用の距離リスト (cm)
-BG_DISTANCES_CM = [150] # 背景用の距離リスト (cm)
+BG_DISTANCES_CM = [100] # 背景用の距離リスト (cm)
 SCREEN_WIDTH_CM = 59.67    # 画面の横幅実寸 (cm) ※ベゼルを含まない表示領域
 SCREEN_RES_X_PX = 2560    # 画面の横解像度 (px)
 STIM_WIDTH_DEG = 7.9     # 刺激の幅 (度)
