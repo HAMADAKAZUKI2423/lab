@@ -325,13 +325,13 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         L_ref = self.L_ref
         
         # Reference Gabor patches
-        for ref_c in [0.2, 0.4]:
+        for ref_c in [0.1, 0.2]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
             pil_ref = stimuli_utils.lum_to_pil(lum_ref_fg, self.fg_lums, self.fg_pixels)
             pil_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
             
         # Single plane stimulus
-        c_test = 0.4
+        c_test = 0.2
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         pil_test_fg = stimuli_utils.lum_to_pil(lum_test_fg, self.fg_lums, self.fg_pixels)
         pil_test_fg.save(os.path.join(save_dir, "single_plane_foreground.png"))
@@ -604,14 +604,14 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         C_bg = 1.0
         L_ref = self.L_ref
         
-        for ref_c in [0.2, 0.4]:
+        for ref_c in [0.1, 0.2]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
             pix_ref_fg = np.interp(lum_ref_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
             Image.fromarray(pix_ref_fg, mode='L').save(
                 os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png")
             )
         
-        c_test = 0.4
+        c_test = 0.2
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
         Image.fromarray(pix_test_fg, mode='L').save(
@@ -911,7 +911,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.ctrl_frame.destroy()
         
         # 試行リストを生成
-        ref_contrasts = [0.1, 0.2, 0.3]
+        ref_contrasts = [0.1, 0.2]
         orientations = [0]
         
         self.trial_list = []
