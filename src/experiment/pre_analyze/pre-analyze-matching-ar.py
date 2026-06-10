@@ -90,98 +90,20 @@ ocularity_order = ["monocular", "binocular"]
 unique_ref_contrasts = sorted(final_df['Ref_Contrast'].dropna().unique(), reverse=True)
 unique_orientations = sorted(final_df['Orientation'].dropna().unique())
 
-# --- 追加: エンハンスコントラスト計算用関数（既存のものを再利用） ---
+# Load shared models and utilities from the prepared models file
 _blur_attenuation_cache = {}
+import importlib.util
+models_file = os.path.join(script_dir, "pre-analyze-matching-models.py")
+spec = importlib.util.spec_from_file_location("preanalyze_models", models_file)
+preanalyze_models = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(preanalyze_models)
 
-def calculate_blur_attenuation_cached(pd_mm, d_fg=50.0, d_bg=150.0, f_center_cpd=4.0):
-    pd_mm_round = round(pd_mm, 2)
-    if pd_mm_round in _blur_attenuation_cache:
-        return _blur_attenuation_cache[pd_mm_round]
-        
-    if pd_mm_round <= 0:
-        return 1.0
-        
-    # パラメータ設定
-    PIXELS_PER_CM = 1 / 0.02331
-    ppd_fg = PIXELS_PER_CM * d_fg * math.tan(math.radians(1.0))
-    width_deg = 7.9
-    height_deg = 3.95
-    width_fg = int(width_deg * ppd_fg)
-    height_fg = int(height_deg * ppd_fg)
-    
-    # 基準ノイズ画像の生成
-    np.random.seed(42)
-    white_noise = np.random.normal(0, 1, (height_fg, width_fg))
-    ft_noise = np.fft.fftshift(np.fft.fft2(white_noise))
-    
-    fx = np.fft.fftshift(np.fft.fftfreq(width_fg, d=1/ppd_fg))
-    fy = np.fft.fftshift(np.fft.fftfreq(height_fg, d=1/ppd_fg))
-    FX, FY = np.meshgrid(fx, fy)
-    R = np.sqrt(FX**2 + FY**2)
-    
-    bandwidth_octave = 1.0
-    f_min = f_center_cpd / (2 ** (bandwidth_octave / 2))
-    f_max = f_center_cpd * (2 ** (bandwidth_octave / 2))
-    mask = (R >= f_min) & (R <= f_max)
-    
-    ft_filtered = ft_noise * mask
-    noise_filtered = np.real(np.fft.ifft2(np.fft.ifftshift(ft_filtered)))
-    
-    max_val = np.max(np.abs(noise_filtered))
-    if max_val > 0:
-        noise_filtered = noise_filtered / max_val
-        
-    L_bg_temp = 15.0
-    C_bg_orig = 1.0
-    lum_noise = L_bg_temp * (1.0 + C_bg_orig * noise_filtered)
-    
-    rms_orig = np.std(lum_noise)
-    
-    # ブラーの適用
-    D = abs(1/(d_fg/100.0) - 1/(d_bg/100.0))
-    rad2deg = 180.0 / math.pi
-    mm = 1e-3
-    bd_deg = rad2deg * D * pd_mm_round * mm
-    DEFOCUS_BLUR_SCALE_FACTOR = 0.55
-    sigma = DEFOCUS_BLUR_SCALE_FACTOR * bd_deg / 2.0
-    
-    if sigma <= 0:
-        _blur_attenuation_cache[pd_mm_round] = 1.0
-        return 1.0
-        
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    img_tensor = torch.from_numpy(lum_noise.astype(np.float32)).to(device)
-    h, w = img_tensor.shape[-2:]
-    
-    x_deg = torch.linspace(-w/2/ppd_fg, w/2/ppd_fg, w).to(device)
-    y_deg = torch.linspace(-h/2/ppd_fg, h/2/ppd_fg, h).to(device)
-    Y_deg, X_deg = torch.meshgrid(y_deg, x_deg, indexing='ij')
-    
-    psf = torch.exp(-((torch.sqrt(X_deg**2 + Y_deg**2)) ** 2) / (2 * sigma ** 2))
-    psf = psf / torch.sum(psf)
-    
-    def FT2(tensor):
-        tensor_shift = torch.fft.ifftshift(tensor, dim=(-2,-1))
-        tensor_ft_shift = torch.fft.fft2(tensor_shift, norm='ortho')
-        return torch.fft.fftshift(tensor_ft_shift, dim=(-2,-1))
-
-    def iFT2(tensor):
-        tensor_shift = torch.fft.ifftshift(tensor, dim=(-2,-1))
-        tensor_ift_shift = torch.fft.ifft2(tensor_shift, norm='ortho')
-        return torch.fft.fftshift(tensor_ift_shift, dim=(-2,-1))
-
-    img_ft = FT2(img_tensor)
-    psf_ft = FT2(psf)
-    blur_tensor = torch.abs(iFT2(img_ft * psf_ft))
-    
-    blur_tensor = blur_tensor * torch.sum(img_tensor) / (torch.sum(blur_tensor) + 1e-8)
-    lum_blur = blur_tensor.cpu().numpy()
-    
-    rms_blur = np.std(lum_blur)
-    
-    val = float(rms_blur / rms_orig) if rms_orig > 0 else 1.0
-    _blur_attenuation_cache[pd_mm_round] = val
-    return val
+# Reuse blur calculation and model classes from the external module
+calculate_blur_attenuation_cached = preanalyze_models.calculate_blur_attenuation_cached
+ModelA = preanalyze_models.ModelA
+ModelB = preanalyze_models.ModelB
+ModelC1 = preanalyze_models.ModelC1
+ModelC2 = preanalyze_models.ModelC2
 
 def get_effective_c_bg(row):
     if row['Condition'] == 'Single plane + defocus simulation':
@@ -197,62 +119,14 @@ print("\n--- Calculating effective background contrast and Enhanced Contrast ---
 final_df['Effective_C_bg'] = final_df.apply(get_effective_c_bg, axis=1)
 final_df['Matched_Contrast_Enhanced'] = (final_df['Matched_Contrast'] * L_fg + final_df['Effective_C_bg'] * L_bg) / (L_fg + L_bg)
 
-# === モデル定義（簡易版をスクリプト内に追加） ===
-class ContrastMatchingModelBase(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.raw_sigma = nn.Parameter(torch.tensor(0.1))
-        self.raw_beta = nn.Parameter(torch.tensor(1.0))
-        self.raw_gamma = nn.Parameter(torch.tensor(2.0))
-
-    @property
-    def sigma(self): return F.softplus(self.raw_sigma)
-    @property
-    def beta(self): return F.softplus(self.raw_beta)
-    @property
-    def gamma(self): return F.softplus(self.raw_gamma)
-
-class ModelA(ContrastMatchingModelBase):
-    def forward(self, S, M, **kwargs):
-        num = torch.pow(S + 1e-8, self.gamma)
-        den = torch.pow(self.sigma, self.gamma) + self.beta * torch.pow(M + 1e-8, self.gamma)
-        return num / den
-
-class ModelB(ContrastMatchingModelBase):
-    def forward(self, S, M, blur_attenuation=1.0, **kwargs):
-        f_M = M * blur_attenuation
-        num = torch.pow(S + 1e-8, self.gamma)
-        den = torch.pow(self.sigma, self.gamma) + self.beta * torch.pow(f_M + 1e-8, self.gamma)
-        return num / den
-
-class ModelC1(ContrastMatchingModelBase):
-    def __init__(self):
-        super().__init__()
-        self.raw_alpha = nn.Parameter(torch.tensor(1.0))
-    @property
-    def alpha(self): return F.softplus(self.raw_alpha)
-    def forward(self, S, M, blur_attenuation=1.0, delta_D=0.0, **kwargs):
-        f_M = M * blur_attenuation
-        g_D = torch.exp(- (delta_D ** 2) / (self.alpha + 1e-8))
-        num = torch.pow(S + 1e-8, self.gamma)
-        den = torch.pow(self.sigma, self.gamma) + self.beta * torch.pow(f_M * g_D + 1e-8, self.gamma)
-        return num / den
-
-class ModelC2(ContrastMatchingModelBase):
-    def forward(self, S, M, blur_attenuation=1.0, L_fg=35.0, L_bg=15.0, **kwargs):
-        S_prime = S * (L_fg / (L_fg + L_bg))
-        f_M = M * blur_attenuation
-        num = torch.pow(S_prime + 1e-8, self.gamma)
-        den = torch.pow(self.sigma, self.gamma) + self.beta * torch.pow(f_M + 1e-8, self.gamma)
-        return num / den
-
-# === ModelA を Single plane のデータのみで学習して予測列を追加 ===
+# Train ModelA on Single plane and compute predictions using external model classes
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 train_df = final_df[final_df['Condition'] == 'Single plane']
+models = {}
 if not train_df.empty:
-    S_train = torch.tensor(train_df['Ref_Contrast'].values, dtype=torch.float32).to(device)
-    M_train = torch.tensor(train_df['Matched_Contrast'].values, dtype=torch.float32).to(device)
-    C_train = torch.tensor(train_df['Matched_Contrast_AR'].values, dtype=torch.float32).to(device)
+    \\S_train = torch.tensor(train_df['Ref_Contrast'].values, dtype=torch.float32).to(device)
+    \\M_train = torch.tensor(train_df['Matched_Contrast'].values, dtype=torch.float32).to(device)
+    \\C_train = torch.tensor(train_df['Matched_Contrast_AR'].values, dtype=torch.float32).to(device)
 
     modelA = ModelA().to(device)
     opt = optim.Adam(modelA.parameters(), lr=0.01)
@@ -455,25 +329,6 @@ for ref_c in unique_ref_contrasts:
                             ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
                                     bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
                     patch_idx += 1
-        # もしモデル予測が計算済みなら、各モデルの平均予測値をバー上にプロット
-        if 'Pred_ModelA' in final_df.columns:
-            marker_info = [('Pred_ModelA','o','black'), ('Pred_ModelB','s','blue'), ('Pred_ModelC1','D','green'), ('Pred_ModelC2','x','purple')]
-            patch_idx = 0
-            for oc in ocularity_order:
-                for cond in condition_order:
-                    if patch_idx < len(ax.patches):
-                        p = ax.patches[patch_idx]
-                        subset = plot_df[(plot_df['Ocularity'] == oc) & (plot_df['Condition'] == cond)]
-                        if not subset.empty:
-                            x_center = p.get_x() + p.get_width() / 2
-                            width = p.get_width()
-                            for i, (col, marker, color) in enumerate(marker_info):
-                                if col in subset.columns:
-                                    y_val = subset[col].mean()
-                                    # 横方向に少しずらす
-                                    offset = (i - 1.5) * (width * 0.12)
-                                    ax.scatter(x_center + offset, y_val, marker=marker, color=color, zorder=10)
-                    patch_idx += 1
     
         ax.set_title(f'Matched Enhanced Contrast by Condition and Ocularity (Ref Contrast: {ref_c}, Ori: {ori}°)', fontsize=14)
         ax.set_ylabel('Matched Contrast (Enhanced)', fontsize=12)
@@ -540,41 +395,6 @@ for ref_c in unique_ref_contrasts:
                             ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
                                     bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
                     patch_idx += 1
-        # もしモデルが学習済みなら、Dual plane flatの右側に各モデルの予測値を1本ずつバーとしてプロット
-        if models:
-            pds = []
-            for _, row in final_df.iterrows():
-                pd_r = row.get('PD_Right', 0)
-                pd_l = row.get('PD_Left', 0)
-                if pd.notna(pd_r) and pd_r > 0: pds.append(pd_r)
-                if pd.notna(pd_l) and pd_l > 0: pds.append(pd_l)
-            avg_pd = sum(pds) / len(pds) if pds else 4.0
-            avg_blur = calculate_blur_attenuation_cached(avg_pd)
-
-            S_tensor = torch.tensor(float(ref_c), dtype=torch.float32).to(device)
-            M_tensor = torch.tensor(1.0, dtype=torch.float32).to(device)
-
-            with torch.no_grad():
-                pred_A = models['ModelA'](S_tensor, M_tensor).cpu().item()
-                pred_B = models['ModelB'](S_tensor, M_tensor, blur_attenuation=torch.tensor(avg_blur)).cpu().item()
-                pred_C1 = models['ModelC1'](S_tensor, M_tensor, blur_attenuation=torch.tensor(avg_blur), delta_D=torch.tensor(avg_pd, dtype=torch.float32)).cpu().item()
-                pred_C2 = models['ModelC2'](S_tensor, M_tensor, blur_attenuation=torch.tensor(avg_blur), L_fg=L_fg, L_bg=L_bg).cpu().item()
-
-            model_preds = [pred_A, pred_B, pred_C1, pred_C2]
-            model_labels = ['Model A', 'Model B', 'Model C1', 'Model C2']
-            model_colors = ['#A0A0A0', '#B0B0B0', '#C0C0C0', '#D0D0D0'] # バーの色
-            
-            base_x = len(condition_order)
-            bar_width = 0.6
-            
-            for i, (pred_val, label, color) in enumerate(zip(model_preds, model_labels, model_colors)):
-                x_pos = base_x + i
-                ax.bar(x_pos, pred_val, width=bar_width, color=color, alpha=0.8, edgecolor='black', zorder=3)
-                ax.text(x_pos, 0.1, f"pred\n={pred_val:.2f}", ha='center', va='bottom', color='black', fontsize=10,
-                        bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
-            
-            # x軸の範囲を更新
-            ax.set_xlim(-0.5, base_x + len(model_labels) - 0.5)
 
         ax.set_title(f'Matched Contrast by Condition and Ocularity (Ref Contrast: {ref_c}, Ori: {ori}°)', fontsize=14)
         ax.set_ylabel('Matched Contrast (Raw)', fontsize=12)
