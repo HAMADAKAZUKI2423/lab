@@ -543,10 +543,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         L_fg = 35.0
         L_bg = 15.0
-        C_bg = 1.0
+        C_bg = 0.0
         L_ref = 50.0
         
-        for ref_c in [0.2, 0.4]:
+        for ref_c in [0.0, 0.2, 0.4]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
             pix_ref_fg = np.interp(lum_ref_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
             img_ref = Image.fromarray(pix_ref_fg, mode='L')
@@ -554,7 +554,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
                 img_ref = stimuli_utils.apply_color_matrix_preserve_luminance(img_ref, self.color_matrix)
             img_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
         
-        c_test = 0.4
+        c_test = 0.0
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
         img_test_fg = Image.fromarray(pix_test_fg, mode='L')
