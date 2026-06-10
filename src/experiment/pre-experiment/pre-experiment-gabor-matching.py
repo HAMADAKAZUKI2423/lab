@@ -566,8 +566,6 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         # Background should be mapped using background calibration
         pix_noise = np.interp(lum_noise, self.bg_lums, self.bg_pixels).astype(np.uint8)
         img_noise = Image.fromarray(pix_noise, mode='L')
-        if getattr(self, 'color_matrix', None) is not None:
-            img_noise = stimuli_utils.apply_color_matrix_preserve_luminance(img_noise, self.color_matrix)
         img_noise.save(os.path.join(save_dir, "single_plane_background.png"))
 
         # Also save dual-plane specific foreground/background using respective calibrations
@@ -577,8 +575,6 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         # Background for dual plane (use background calibration mapping)
         pix_noise_bg = np.interp(lum_noise, self.bg_lums, self.bg_pixels).astype(np.uint8)
         img_noise_bg = Image.fromarray(pix_noise_bg, mode='L')
-        if getattr(self, 'color_matrix', None) is not None:
-            img_noise_bg = stimuli_utils.apply_color_matrix_preserve_luminance(img_noise_bg, self.color_matrix)
         img_noise_bg.save(os.path.join(save_dir, "dual_plane_background.png"))
         
         lum_total = lum_noise + lum_test_fg
@@ -593,8 +589,6 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         lum_noise_defocus = stimuli_utils.apply_torch_fft_blur_luminance(lum_noise, D, pd_mm, ppd_fg)
         pix_noise_defocus = np.interp(lum_noise_defocus, self.bg_lums, self.bg_pixels).astype(np.uint8)
         img_noise_defocus = Image.fromarray(pix_noise_defocus, mode='L')
-        if getattr(self, 'color_matrix', None) is not None:
-            img_noise_defocus = stimuli_utils.apply_color_matrix_preserve_luminance(img_noise_defocus, self.color_matrix)
         img_noise_defocus.save(os.path.join(save_dir, "single_plane_defocus_background.png"))
 
         # Dual-plane defocus background (mapped with background calibration)
