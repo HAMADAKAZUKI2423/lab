@@ -124,9 +124,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 train_df = final_df[final_df['Condition'] == 'Single plane']
 models = {}
 if not train_df.empty:
-    \\S_train = torch.tensor(train_df['Ref_Contrast'].values, dtype=torch.float32).to(device)
-    \\M_train = torch.tensor(train_df['Matched_Contrast'].values, dtype=torch.float32).to(device)
-    \\C_train = torch.tensor(train_df['Matched_Contrast_AR'].values, dtype=torch.float32).to(device)
+    S_train = torch.tensor(train_df['Matched_Contrast_AR'].values, dtype=torch.float32).to(device)
+    M_train = torch.ones(len(train_df), dtype=torch.float32).to(device)
+    C_train = torch.tensor(train_df['Ref_Contrast'].values, dtype=torch.float32).to(device)
 
     modelA = ModelA().to(device)
     opt = optim.Adam(modelA.parameters(), lr=0.01)
@@ -155,19 +155,38 @@ if not train_df.empty:
     # データフレーム全体に対して予測を計算
     preds_A, preds_B, preds_C1, preds_C2 = [], [], [], []
     for _, row in final_df.iterrows():
-        S = torch.tensor(float(row['Ref_Contrast']), dtype=torch.float32).to(device)
-        M = torch.tensor(float(row['Matched_Contrast']), dtype=torch.float32).to(device)
-        blur = torch.tensor(float(row.get('Effective_C_bg', 1.0)), dtype=torch.float32).to(device)
+        C_val = torch.tensor(float(row['Ref_Contrast']), dtype=torch.float32).to(device)
+        M_val = torch.tensor(1.0, dtype=torch.float32).to(device)
+        blur_val = torch.tensor(float(row.get('Effective_C_bg', 1.0)), dtype=torch.float32).to(device)
         pd_r = row.get('PD_Right', 0)
         pd_l = row.get('PD_Left', 0)
         pds = [p for p in (pd_r, pd_l) if pd.notna(p) and p > 0]
         pd_mean = sum(pds) / len(pds) if pds else 0.0
+        delta_D_val = torch.tensor(pd_mean, dtype=torch.float32).to(device)
 
         with torch.no_grad():
-            pa = models['ModelA'](S, M).cpu().item()
-            pb = models['ModelB'](S, M, blur_attenuation=blur).cpu().item()
-            pc1 = models['ModelC1'](S, M, blur_attenuation=blur, delta_D=torch.tensor(pd_mean, dtype=torch.float32)).cpu().item()
-            pc2 = models['ModelC2'](S, M, blur_attenuation=blur, L_fg=L_fg, L_bg=L_bg).cpu().item()
+            gamma_A = models['ModelA'].gamma
+            sigma_A = models['ModelA'].sigma
+            beta_A = models['ModelA'].beta
+            pa = torch.pow(C_val * (torch.pow(sigma_A, gamma_A) + beta_A * torch.pow(M_val, gamma_A)), 1.0 / gamma_A).item()
+
+            gamma_B = models['ModelB'].gamma
+            sigma_B = models['ModelB'].sigma
+            beta_B = models['ModelB'].beta
+            pb = torch.pow(C_val * (torch.pow(sigma_B, gamma_B) + beta_B * torch.pow(M_val * blur_val, gamma_B)), 1.0 / gamma_B).item()
+
+            gamma_C1 = models['ModelC1'].gamma
+            sigma_C1 = models['ModelC1'].sigma
+            beta_C1 = models['ModelC1'].beta
+            alpha_C1 = models['ModelC1'].alpha
+            g_D = torch.exp(-(delta_D_val ** 2) / (alpha_C1 + 1e-8))
+            pc1 = torch.pow(C_val * (torch.pow(sigma_C1, gamma_C1) + beta_C1 * torch.pow(M_val * blur_val * g_D, gamma_C1)), 1.0 / gamma_C1).item()
+
+            gamma_C2 = models['ModelC2'].gamma
+            sigma_C2 = models['ModelC2'].sigma
+            beta_C2 = models['ModelC2'].beta
+            S_prime_pow = C_val * (torch.pow(sigma_C2, gamma_C2) + beta_C2 * torch.pow(M_val * blur_val, gamma_C2))
+            pc2 = (torch.pow(S_prime_pow, 1.0 / gamma_C2) * ((L_fg + L_bg) / L_fg)).item()
 
         preds_A.append(pa)
         preds_B.append(pb)
@@ -478,14 +497,34 @@ for ref_c in unique_ref_contrasts:
             avg_pd = sum(pds) / len(pds) if pds else 4.0
             avg_blur = calculate_blur_attenuation_cached(avg_pd)
 
-            S_tensor = torch.tensor(float(ref_c), dtype=torch.float32).to(device)
-            M_tensor = torch.tensor(1.0, dtype=torch.float32).to(device)
+            C_val = torch.tensor(float(ref_c), dtype=torch.float32).to(device)
+            M_val = torch.tensor(1.0, dtype=torch.float32).to(device)
+            blur_val = torch.tensor(avg_blur, dtype=torch.float32).to(device)
+            delta_D_val = torch.tensor(avg_pd, dtype=torch.float32).to(device)
 
             with torch.no_grad():
-                pred_A = models['ModelA'](S_tensor, M_tensor).cpu().item()
-                pred_B = models['ModelB'](S_tensor, M_tensor, blur_attenuation=torch.tensor(avg_blur)).cpu().item()
-                pred_C1 = models['ModelC1'](S_tensor, M_tensor, blur_attenuation=torch.tensor(avg_blur), delta_D=torch.tensor(avg_pd, dtype=torch.float32)).cpu().item()
-                pred_C2 = models['ModelC2'](S_tensor, M_tensor, blur_attenuation=torch.tensor(avg_blur), L_fg=L_fg, L_bg=L_bg).cpu().item()
+                gamma_A = models['ModelA'].gamma
+                sigma_A = models['ModelA'].sigma
+                beta_A = models['ModelA'].beta
+                pred_A = torch.pow(C_val * (torch.pow(sigma_A, gamma_A) + beta_A * torch.pow(M_val, gamma_A)), 1.0 / gamma_A).item()
+
+                gamma_B = models['ModelB'].gamma
+                sigma_B = models['ModelB'].sigma
+                beta_B = models['ModelB'].beta
+                pred_B = torch.pow(C_val * (torch.pow(sigma_B, gamma_B) + beta_B * torch.pow(M_val * blur_val, gamma_B)), 1.0 / gamma_B).item()
+
+                gamma_C1 = models['ModelC1'].gamma
+                sigma_C1 = models['ModelC1'].sigma
+                beta_C1 = models['ModelC1'].beta
+                alpha_C1 = models['ModelC1'].alpha
+                g_D = torch.exp(-(delta_D_val ** 2) / (alpha_C1 + 1e-8))
+                pred_C1 = torch.pow(C_val * (torch.pow(sigma_C1, gamma_C1) + beta_C1 * torch.pow(M_val * blur_val * g_D, gamma_C1)), 1.0 / gamma_C1).item()
+
+                gamma_C2 = models['ModelC2'].gamma
+                sigma_C2 = models['ModelC2'].sigma
+                beta_C2 = models['ModelC2'].beta
+                S_prime_pow = C_val * (torch.pow(sigma_C2, gamma_C2) + beta_C2 * torch.pow(M_val * blur_val, gamma_C2))
+                pred_C2 = (torch.pow(S_prime_pow, 1.0 / gamma_C2) * ((L_fg + L_bg) / L_fg)).item()
 
             model_preds = [pred_A, pred_B, pred_C1, pred_C2]
             model_labels = ['Model A', 'Model B', 'Model C1', 'Model C2']
