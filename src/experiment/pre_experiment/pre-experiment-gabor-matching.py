@@ -16,6 +16,7 @@ import math
 import numpy as np
 import glob
 from PIL import Image, ImageTk
+import json
 
 # 基盤クラスと共通ユーティリティをインポート
 from experiment_base_ui import ExperimentBaseUI
@@ -46,6 +47,17 @@ for dir_path in [RESULT_DIR, FIGURE_DIR, PARTICIPANT_DATA_DIR]:
 BG_COLOR = 'black'
 WIN1_MARKER_COLOR = 'red'
 WIN2_MARKER_COLOR = 'white'
+
+# Load experiment config (falls back to defaults)
+import sys
+sys.path.insert(0, os.path.join(lab_root, 'src', 'experiment'))
+try:
+    import experiment_config
+    CFG = experiment_config.get_config()
+except Exception:
+    CFG = {}
+
+BG_COLOR = CFG.get('BG_COLOR', BG_COLOR)
 
 
 class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
@@ -101,6 +113,14 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.fg_pixels = np.array([0, 255])
             self.bg_lums = np.array([0.0, 100.0])
             self.bg_pixels = np.array([0, 255])
+
+        # Apply config overrides
+        self.config = CFG or {}
+        self.L_fg = float(self.config.get('L_fg', 15.0))
+        self.L_bg = float(self.config.get('L_bg', 15.0))
+        self.L_ref = float(self.config.get('L_ref', 30.0))
+        self.distance1 = int(self.config.get('DISTANCE_FG', self.distance1))
+        self.distance2 = int(self.config.get('DISTANCE_BG', self.distance2))
         
         # Window1とcanvasのセットアップ
         screen_w = self.root.winfo_screenwidth()
@@ -299,19 +319,19 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
         noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
         
-        L_fg = 15.0
-        L_bg = 15.0
+        L_fg = self.L_fg
+        L_bg = self.L_bg
         C_bg = 1.0
-        L_ref = 30.0
+        L_ref = self.L_ref
         
         # Reference Gabor patches
-        for ref_c in [0.2, 0.4]:
+        for ref_c in [0.1, 0.2]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
             pil_ref = stimuli_utils.lum_to_pil(lum_ref_fg, self.fg_lums, self.fg_pixels)
             pil_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
             
         # Single plane stimulus
-        c_test = 0.4
+        c_test = 0.2
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         pil_test_fg = stimuli_utils.lum_to_pil(lum_test_fg, self.fg_lums, self.fg_pixels)
         pil_test_fg.save(os.path.join(save_dir, "single_plane_foreground.png"))
@@ -579,19 +599,19 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, 
                                                      self.spatial_freq)
         
-        L_fg = 15.0
-        L_bg = 15.0
+        L_fg = self.L_fg
+        L_bg = self.L_bg
         C_bg = 1.0
-        L_ref = 30.0
+        L_ref = self.L_ref
         
-        for ref_c in [0.2, 0.4]:
+        for ref_c in [0.1, 0.2]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
             pix_ref_fg = np.interp(lum_ref_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
             Image.fromarray(pix_ref_fg, mode='L').save(
                 os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png")
             )
         
-        c_test = 0.4
+        c_test = 0.2
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
         Image.fromarray(pix_test_fg, mode='L').save(
@@ -709,7 +729,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.gabor_base = stimuli_utils.create_cosine_windowed_grating_base(width_fg, height_fg, ppd_fg, 
                                                                             self.spatial_freq, orientation=ori)
         
-        L_bg = 15.0
+        L_bg = self.L_bg
         
         if cond == "Dual plane flat":
             # コントラスト0の場合、重いFFTノイズ生成処理をスキップ
@@ -808,9 +828,9 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         cx1, cy1 = self.width//2 + self.offset_x.get(), self.height//2 + self.offset_y.get()
         cx2, cy2 = self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2
     
-        L_fg = 15.0
-        L_bg = 15.0
-        L_ref = 30.0
+        L_fg = self.L_fg
+        L_bg = self.L_bg
+        L_ref = self.L_ref
         
         # Generate PhotoImage objects for reference/test/background using helper
         photos = stimuli_utils.generate_matching_photos(
@@ -859,6 +879,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             "Orientation": trial["orientation"],
             "Ref_Contrast": trial["ref_contrast"],
             "Matched_Contrast": round(c_test, 4),
+            "L_fg": self.L_fg,
+            "L_bg": self.L_bg,
+            "L_ref": self.L_ref,
+            "Config_JSON": json.dumps(self.config if getattr(self, 'config', None) is not None else {}),
             "PD_Right": right_res["pd_mean"],
             "OffsetX_Right": right_res["offset_x"],
             "OffsetY_Right": right_res["offset_y"],
@@ -887,7 +911,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.ctrl_frame.destroy()
         
         # 試行リストを生成
-        ref_contrasts = [0.1, 0.2, 0.3]
+        ref_contrasts = [0.1, 0.2]
         orientations = [0]
         
         self.trial_list = []
@@ -928,6 +952,13 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
                 writer = csv.DictWriter(f, fieldnames=self.results[0].keys())
                 writer.writeheader()
                 writer.writerows(self.results)
+            # Save the config used for this experiment run into the results folder
+            try:
+                cfg_to_save = getattr(self, 'config', None) or {}
+                with open(os.path.join(save_folder, 'used_experiment_config.json'), 'w', encoding='utf-8') as cf:
+                    json.dump(cfg_to_save, cf, indent=2)
+            except Exception:
+                pass
         
         tk.messagebox.showinfo("Completed", 
                               f"Experiment finished.\nData saved to: {filename}")
