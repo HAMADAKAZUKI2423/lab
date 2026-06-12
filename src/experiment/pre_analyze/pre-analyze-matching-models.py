@@ -4,7 +4,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from ..pre_experiment import defocus_matching
+import importlib.util
+import os
+
+defocus_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'pre_experiment', 'defocus_matching.py')
+spec_defocus = importlib.util.spec_from_file_location('defocus_matching', defocus_path)
+defocus_matching = importlib.util.module_from_spec(spec_defocus)
+spec_defocus.loader.exec_module(defocus_matching)
+
+stimulus_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'pre_experiment', 'stimuli_utils.py')
+spec_stimulus = importlib.util.spec_from_file_location('stimuli_utils', stimulus_path)
+stimuli_utils = importlib.util.module_from_spec(spec_stimulus)
+spec_stimulus.loader.exec_module(stimuli_utils)
+
 
 # ==========================================
 # 1. デフォーカスによる背景コントラスト減衰率の計算関数

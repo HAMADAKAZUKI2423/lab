@@ -8,9 +8,19 @@ import math
 import csv
 import datetime
 from PIL import Image, ImageTk, ImageFilter
-import stimuli_utils
+import importlib.util
 import numpy as np
 import torch
+
+try:
+    import stimuli_utils
+except ModuleNotFoundError:
+    # ファイルパスから直接ロード（spec.exec_module 経由の実行に対応）
+    this_dir = os.path.dirname(os.path.abspath(__file__))
+    stimulus_path = os.path.join(this_dir, 'stimuli_utils.py')
+    spec_stim = importlib.util.spec_from_file_location('stimuli_utils', stimulus_path)
+    stimuli_utils = importlib.util.module_from_spec(spec_stim)
+    spec_stim.loader.exec_module(stimuli_utils)
 
 # --- デフォーカスマッチング設定 ---
 DEFOCUS_BLUR_SCALE_FACTOR = 0.55

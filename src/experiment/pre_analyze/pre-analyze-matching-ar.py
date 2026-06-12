@@ -424,14 +424,8 @@ for ref_c in unique_ref_contrasts:
         ax.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
         
-        if models:
-            new_xticks = list(range(len(condition_order))) + [base_x + i for i in range(len(model_labels))]
-            new_xticklabels = condition_order + model_labels
-            ax.set_xticks(new_xticks)
-            ax.set_xticklabels(new_xticklabels, rotation=15, ha='right')
-        else:
-            labels = ax.get_xticklabels()
-            ax.set_xticklabels(labels)
+        labels = ax.get_xticklabels()
+        ax.set_xticklabels(labels)
         
         handles, labels = ax.get_legend_handles_labels()
         ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0, 0.25), loc='upper left', borderaxespad=0.5)
