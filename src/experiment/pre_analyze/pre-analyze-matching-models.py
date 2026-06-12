@@ -102,14 +102,13 @@ class ContrastMatchingModelBase(nn.Module):
         # F.softplusを通して正の値に保つため、rawパラメータとして定義
         self.raw_sigma = nn.Parameter(torch.tensor(0.1))
         self.raw_beta = nn.Parameter(torch.tensor(1.0))
-        self.raw_gamma = nn.Parameter(torch.tensor(2.0)) # 初期値は2.0(一般的なトランスデューサーの非線形性)など
 
     @property
-    def sigma(self): return F.softplus(self.raw_sigma)
+    def sigma(self): return F.softplus(self.raw_sigma) + 1e-6  # 必ず正 (> 0) を保証
     @property
-    def beta(self): return F.softplus(self.raw_beta)
+    def beta(self): return F.relu(self.raw_beta)  # 0以上 (>= 0) を保証
     @property
-    def gamma(self): return F.softplus(self.raw_gamma)
+    def gamma(self): return torch.tensor(2.2, device=self.raw_sigma.device)
 
 class ModelA(ContrastMatchingModelBase):
     """ C = S^gamma / (sigma^gamma + beta * M^gamma) """

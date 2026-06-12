@@ -142,11 +142,15 @@ ModelC2 = preanalyze_models.ModelC2
 
 def get_effective_c_bg(row):
     if row['Condition'] == 'Single plane + defocus simulation':
-        pd_r = row.get('PD_Right', 0)
-        pd_l = row.get('PD_Left', 0)
-        pds = [p for p in (pd_r, pd_l) if pd.notna(p) and p > 0]
-        pd_mean = sum(pds) / len(pds) if pds else 4.0
-        return calculate_blur_attenuation_cached(pd_mean)
+        dom = row.get('Dominance', 'Right')
+        if dom == 'Right':
+            pd_val = row.get('PD_Right', 0)
+        else:
+            pd_val = row.get('PD_Left', 0)
+            
+        if pd.isna(pd_val) or pd_val <= 0:
+            pd_val = 4.0
+        return calculate_blur_attenuation_cached(pd_val)
     return 1.0
 
 # --- Enhanced contrast values ---
@@ -173,6 +177,11 @@ if not train_df.empty:
         loss = loss_fn(pred, C_train)
         loss.backward()
         opt.step()
+        
+        # 回帰タスクのため、Accuracyの代わりにMAE(平均絶対誤差)を計算して表示します
+        with torch.no_grad():
+            mae = torch.mean(torch.abs(pred - C_train)).item()
+        print(f"Epoch {ep+1}/{epochs} | Loss (MSE): {loss.item():.6f} | MAE: {mae:.6f}")
 
     # 学習済みパラメータを他モデルに流用
     models = {
@@ -185,7 +194,6 @@ if not train_df.empty:
         if name != 'ModelA':
             m.raw_sigma.data = modelA.raw_sigma.data.clone()
             m.raw_beta.data = modelA.raw_beta.data.clone()
-            m.raw_gamma.data = modelA.raw_gamma.data.clone()
 
     # データフレーム全体に対して予測を計算
     preds_A, preds_B, preds_C1, preds_C2 = [], [], [], []
@@ -193,11 +201,16 @@ if not train_df.empty:
         C_val = torch.tensor(float(row['Ref_Contrast']), dtype=torch.float32).to(device)
         M_val = torch.tensor(1.0, dtype=torch.float32).to(device)
         blur_val = torch.tensor(float(row.get('Effective_C_bg', 1.0)), dtype=torch.float32).to(device)
-        pd_r = row.get('PD_Right', 0)
-        pd_l = row.get('PD_Left', 0)
-        pds = [p for p in (pd_r, pd_l) if pd.notna(p) and p > 0]
-        pd_mean = sum(pds) / len(pds) if pds else 0.0
-        delta_D_val = torch.tensor(pd_mean, dtype=torch.float32).to(device)
+        
+        dom = row.get('Dominance', 'Right')
+        if dom == 'Right':
+            pd_val = row.get('PD_Right', 0)
+        else:
+            pd_val = row.get('PD_Left', 0)
+            
+        if pd.isna(pd_val) or pd_val <= 0:
+            pd_val = 0.0
+        delta_D_val = torch.tensor(pd_val, dtype=torch.float32).to(device)
 
         with torch.no_grad():
             gamma_A = models['ModelA'].gamma
@@ -234,77 +247,6 @@ if not train_df.empty:
     final_df['Pred_ModelC2'] = preds_C2
 else:
     print('Warning: No Single plane data found for training ModelA. Skipping model predictions.')
-for ref_c in unique_ref_contrasts:
-    for ori in unique_orientations:
-        plot_df = final_df[(final_df['Ref_Contrast'] == ref_c) & (final_df['Orientation'] == ori)]
-        if plot_df.empty:
-            continue
-            
-        fig, ax = plt.subplots(figsize=(10, 6))
-        
-        # 棒グラフと95%信頼区間のエラーバーを描画
-        sns.barplot(
-            data=plot_df, 
-            x='Condition', 
-            y='Matched_Contrast_AR', 
-            hue='Ocularity',
-            order=condition_order,
-            hue_order=ocularity_order,
-            errorbar=('ci', 95), 
-            capsize=0.1, 
-            err_kws={'linewidth': 1.5},
-            ax=ax
-        )
-        
-        # Ref_Contrastの値の高さに横方向の点線を引く (リファレンスは単体表示のため値がそのまま見た目のコントラスト)
-        ax.axhline(y=ref_c, color='red', linestyle='--', linewidth=2, label=f'Ref Contrast ({ref_c})')
-        
-        # 各バーの足元（内側）に平均(m)と分散/標準偏差(d)を記入
-        patch_idx = 0
-        for oc in ocularity_order:
-            for cond in condition_order:
-                if patch_idx < len(ax.patches):
-                    p = ax.patches[patch_idx]
-                    height = p.get_height()
-                    if pd.notna(height) and height > 0:
-                        subset = plot_df[(plot_df['Ocularity'] == oc) & (plot_df['Condition'] == cond)]
-                        if not subset.empty:
-                            m = subset['Matched_Contrast_AR'].mean()
-                            d = subset['Matched_Contrast_AR'].std() 
-                            
-                            x = p.get_x() + p.get_width() / 2
-                            y = 0.1  # バーの足元付近
-                            
-                            ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
-                                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
-                    patch_idx += 1
-    
-        # グラフの見た目調整
-        ax.set_title(f'Matched AR Contrast by Condition and Ocularity (Ref Contrast: {ref_c}, Ori: {ori}°)', fontsize=14)
-        ax.set_ylabel('Matched Contrast (AR Extended)', fontsize=12)
-        ax.set_xlabel('Condition', fontsize=12)
-        ax.set_yscale('log') # 縦軸をログスケールに設定
-        
-        ax.set_ylim(0.05, 1.0) 
-        ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
-        
-        # x軸のラベルをそのまま表示（回転なし）
-        labels = ax.get_xticklabels()
-        ax.set_xticklabels(labels)
-        
-        # 凡例の設定
-        handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0, 0.25), loc='upper left', borderaxespad=0.5)
-        
-        plt.tight_layout()
-        
-        # 画像として保存 (ファイル名に _ar を追加)
-        filename = f'matched_ar_contrast_ref_{ref_c}_ori_{int(ori)}.png'
-        save_path = os.path.join(OUTPUT_DIR, filename)
-        plt.savefig(save_path, dpi=300)
-        print(f"グラフ保存: {filename}")
-        plt.close(fig)
 
 # --- 追加: エンハンスコントラストの計算とグラフ出力 ---
 _blur_attenuation_cache = {}
@@ -401,11 +343,15 @@ def calculate_blur_attenuation_cached(pd_mm, d_fg=50.0, d_bg=150.0, f_center_cpd
 
 def get_effective_c_bg(row):
     if row['Condition'] == 'Single plane + defocus simulation':
-        pd_r = row.get('PD_Right', 0)
-        pd_l = row.get('PD_Left', 0)
-        pds = [p for p in (pd_r, pd_l) if pd.notna(p) and p > 0]
-        pd_mean = sum(pds) / len(pds) if pds else 4.0
-        return calculate_blur_attenuation_cached(pd_mean)
+        dom = row.get('Dominance', 'Right')
+        if dom == 'Right':
+            pd_val = row.get('PD_Right', 0)
+        else:
+            pd_val = row.get('PD_Left', 0)
+            
+        if pd.isna(pd_val) or pd_val <= 0:
+            pd_val = 4.0
+        return calculate_blur_attenuation_cached(pd_val)
     return 1.0
 
 print("\n--- Calculating effective background contrast and Enhanced Contrast ---")
@@ -515,7 +461,7 @@ for ref_c in unique_ref_contrasts:
                             d = subset['Matched_Contrast'].std() 
                             
                             x = p.get_x() + p.get_width() / 2
-                            y = 0.1  # バーの足元付近
+                            y = 0.05  # バーの足元付近
                             
                             ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
                                     bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
@@ -581,7 +527,7 @@ for ref_c in unique_ref_contrasts:
                             d = subset['Matched_Contrast_AR'].std() 
                             
                             x = p.get_x() + p.get_width() / 2
-                            y = 0.1  # バーの足元付近
+                            y = 0.05  # バーの足元付近
                             
                             ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
                                     bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
@@ -590,10 +536,13 @@ for ref_c in unique_ref_contrasts:
         if models:
             pds = []
             for _, row in final_df.iterrows():
-                pd_r = row.get('PD_Right', 0)
-                pd_l = row.get('PD_Left', 0)
-                if pd.notna(pd_r) and pd_r > 0: pds.append(pd_r)
-                if pd.notna(pd_l) and pd_l > 0: pds.append(pd_l)
+                dom = row.get('Dominance', 'Right')
+                if dom == 'Right':
+                    pd_val = row.get('PD_Right', 0)
+                else:
+                    pd_val = row.get('PD_Left', 0)
+                if pd.notna(pd_val) and pd_val > 0:
+                    pds.append(pd_val)
             avg_pd = sum(pds) / len(pds) if pds else 4.0
             avg_blur = calculate_blur_attenuation_cached(avg_pd)
 
@@ -647,8 +596,8 @@ for ref_c in unique_ref_contrasts:
         ax.set_xlabel('Condition', fontsize=12)
         ax.set_yscale('log')
         
-        ax.set_ylim(0.1, 1.0) 
-        ax.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+        ax.set_ylim(0.05, 1.0) 
+        ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
         ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
         
         if models:
