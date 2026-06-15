@@ -296,19 +296,19 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
         noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
         
-        L_fg = 35.0
+        L_fg = 15.0
         L_bg = 15.0
         C_bg = 1.0
-        L_ref = 50.0
+        L_ref = 30.0
         
         # Reference Gabor patches
-        for ref_c in [0.2, 0.4]:
+        for ref_c in [0.0,0.2, 0.4]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
             pil_ref = stimuli_utils.lum_to_pil(lum_ref_fg, self.fg_lums, self.fg_pixels)
             pil_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
             
         # Single plane stimulus
-        c_test = 0.4
+        c_test = 0.0
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         pil_test_fg = stimuli_utils.lum_to_pil(lum_test_fg, self.fg_lums, self.fg_pixels)
         pil_test_fg.save(os.path.join(save_dir, "single_plane_foreground.png"))
@@ -541,10 +541,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, 
                                                      self.spatial_freq)
         
-        L_fg = 35.0
+        L_fg = 15.0
         L_bg = 15.0
         C_bg = 0.0
-        L_ref = 50.0
+        L_ref = 30.0
         
         for ref_c in [0.0, 0.2, 0.4]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
@@ -791,9 +791,9 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         cx1, cy1 = self.width//2 + self.offset_x.get(), self.height//2 + self.offset_y.get()
         cx2, cy2 = self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2
         
-        L_fg = 35.0
+        L_fg = 15.0
         L_bg = 15.0
-        L_ref = 50.0
+        L_ref = 30.0
         
         # Generate PhotoImage objects for reference/test/background using helper
         photos = stimuli_utils.generate_matching_photos(
@@ -871,8 +871,8 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.ctrl_frame.destroy()
         
         # 試行リストを生成
-        ref_contrasts = [0.2, 0.4]
-        orientations = [0, 90]
+        ref_contrasts = [0.0, 0.2, 0.4]
+        orientations = [0]
         
         self.trial_list = []
         for ref_c in ref_contrasts:
