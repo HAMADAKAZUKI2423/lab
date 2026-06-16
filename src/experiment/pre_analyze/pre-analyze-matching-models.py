@@ -28,67 +28,89 @@ def calculate_blur_attenuation_cached(pd_mm, d_fg=50.0, d_bg=150.0, f_center_cpd
     """
     瞳孔径(pd_mm)とデフォーカス量に基づいて、背景ノイズのコントラスト減衰率(0.0~1.0)を計算します。
     """
+    # --- 使用するパターンとコントラスト計算方法を選択 ---
+    # use_michelson = True  # ミケルソンコントラスト（Gabor）を使用する場合
+    use_michelson = True # RMSコントラスト（ノイズ）を使用する場合 (デフォルト)
+
     pd_mm_round = round(pd_mm, 2)
-    cache_key = (pd_mm_round, d_fg, d_bg)
+    # 計算方法をキャッシュキーに含める
+    cache_key = (pd_mm_round, d_fg, d_bg, use_michelson)
     if cache_key in _blur_attenuation_cache:
         return _blur_attenuation_cache[cache_key]
-        
+
     if pd_mm_round <= 0:
         return 1.0
-        
+
     PIXELS_PER_CM = 1 / 0.02331
     ppd_fg = PIXELS_PER_CM * d_fg * math.tan(math.radians(1.0))
     width_deg, height_deg = 7.9, 3.95
     width_fg, height_fg = int(width_deg * ppd_fg), int(height_deg * ppd_fg)
-    
-    np.random.seed(42)
-    white_noise = np.random.normal(0, 1, (height_fg, width_fg))
-    ft_noise = np.fft.fftshift(np.fft.fft2(white_noise))
-    
-    fx = np.fft.fftshift(np.fft.fftfreq(width_fg, d=1/ppd_fg))
-    fy = np.fft.fftshift(np.fft.fftfreq(height_fg, d=1/ppd_fg))
-    FX, FY = np.meshgrid(fx, fy)
-    R = np.sqrt(FX**2 + FY**2)
-    
-    bandwidth_octave = 1.0
-    f_min = f_center_cpd / (2 ** (bandwidth_octave / 2))
-    f_max = f_center_cpd * (2 ** (bandwidth_octave / 2))
-    mask = (R >= f_min) & (R <= f_max)
-    
-    ft_filtered = ft_noise * mask
-    noise_filtered = np.real(np.fft.ifft2(np.fft.ifftshift(ft_filtered)))
-    
-    # 正規化して画像化 -> defocus_matching.apply_torch_fft_blur を使って簡潔に処理
-    max_val = np.max(np.abs(noise_filtered))
-    if max_val > 0:
-        noise_filtered = noise_filtered / max_val
+
+    if use_michelson:
+        # Gaborパターンを生成
+        base_pattern = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, f_center_cpd, orientation=0)
+    else:
+        # ノイズ画像の生成と周波数ドメインでのバンドパスフィルタリング
+        np.random.seed(42)
+        white_noise = np.random.normal(0, 1, (height_fg, width_fg))
+        ft_noise = np.fft.fftshift(np.fft.fft2(white_noise))
+
+        fx = np.fft.fftshift(np.fft.fftfreq(width_fg, d=1/ppd_fg))
+        fy = np.fft.fftshift(np.fft.fftfreq(height_fg, d=1/ppd_fg))
+        FX, FY = np.meshgrid(fx, fy)
+        R = np.sqrt(FX**2 + FY**2)
+
+        bandwidth_octave = 1.0
+        f_min = f_center_cpd / (2 ** (bandwidth_octave / 2))
+        f_max = f_center_cpd * (2 ** (bandwidth_octave / 2))
+        mask = (R >= f_min) & (R <= f_max)
+
+        ft_filtered = ft_noise * mask
+        noise_filtered = np.real(np.fft.ifft2(np.fft.ifftshift(ft_filtered)))
+
+        # 正規化
+        max_val = np.max(np.abs(noise_filtered))
+        base_pattern = noise_filtered / max_val if max_val > 0 else noise_filtered
 
     L_bg_temp, C_bg_orig = 15.0, 1.0
-    lum_noise = L_bg_temp * (1.0 + C_bg_orig * noise_filtered)
+    lum_orig = L_bg_temp * (1.0 + C_bg_orig * base_pattern)
 
-    # スケーリングして uint8 画像に変換（線形スケーリングなら比率は保存される）
-    ln_min, ln_max = lum_noise.min(), lum_noise.max()
+    # スケーリングして uint8 画像に変換
+    ln_min, ln_max = lum_orig.min(), lum_orig.max()
     if ln_max - ln_min == 0:
         _blur_attenuation_cache[cache_key] = 1.0
         return 1.0
 
-    lum_scaled = ((lum_noise - ln_min) / (ln_max - ln_min) * 255.0).astype(np.uint8)
+    lum_scaled_uint8 = ((lum_orig - ln_min) / (ln_max - ln_min) * 255.0).astype(np.uint8)
     from PIL import Image
-    img_pil = Image.fromarray(lum_scaled, mode='L')
+    img_pil = Image.fromarray(lum_scaled_uint8, mode='L')
 
     # D をディオプトリ差として計算
     d_fg_m = d_fg / 100.0
     d_bg_m = d_bg / 100.0
     D = 0.0 if d_fg_m <= 0 or d_bg_m <= 0 else abs(1.0/d_fg_m - 1.0/d_bg_m)
 
-    # defocus_matching の関数を利用してブラーを適用
     blur_img_pil = defocus_matching.apply_torch_fft_blur(img_pil, D, pd_mm_round, ppd_fg)
-    blur_np = np.array(blur_img_pil).astype(np.float32)
+    blur_scaled_float = np.array(blur_img_pil).astype(np.float32)
 
-    rms_orig = np.std(lum_scaled.astype(np.float32))
-    rms_blur = np.std(blur_np)
+    if use_michelson:
+        # ミケルソンコントラストで減衰率を計算
+        # ブラー適用後の画像を元の輝度スケールに戻す
+        lum_blur = blur_scaled_float / 255.0 * (ln_max - ln_min) + ln_min
 
-    val = float(rms_blur / (rms_orig + 1e-12)) if rms_orig > 0 else 1.0
+        def calculate_michelson(arr):
+            l_max, l_min = np.max(arr), np.min(arr)
+            return (l_max - l_min) / (l_max + l_min) if (l_max + l_min) > 1e-9 else 0.0
+
+        contrast_orig = calculate_michelson(lum_orig)
+        contrast_blur = calculate_michelson(lum_blur)
+        val = float(contrast_blur / (contrast_orig + 1e-12)) if contrast_orig > 0 else 1.0
+    else:
+        # RMSコントラストで減衰率を計算
+        rms_orig = np.std(lum_scaled_uint8.astype(np.float32))
+        rms_blur = np.std(blur_scaled_float)
+        val = float(rms_blur / (rms_orig + 1e-12)) if rms_orig > 0 else 1.0
+
     _blur_attenuation_cache[cache_key] = val
     return val
 
