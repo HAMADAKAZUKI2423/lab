@@ -126,31 +126,26 @@ class ModelB(ContrastMatchingModelBase):
         return num / den
 
 class ModelC1(ContrastMatchingModelBase):
-    """ C = S^gamma / (sigma^gamma + beta * (f(M) * g(delta_D))^gamma) """
-    def __init__(self):
-        super().__init__()
-        self.raw_alpha = nn.Parameter(torch.tensor(1.0)) # ガウス関数の分散パラメータ
-        
-    @property
-    def alpha(self): return F.softplus(self.raw_alpha)
+    """ C1: B の g(delta_D) を定数 0.2 で代用
+        C = S^gamma / (sigma^gamma + beta * (f(M) * 0.2)^gamma) """
+    G_CONST = 0.2  # g(delta_D) の代用定数（背景割引）
 
-    def forward(self, S, M, blur_attenuation, delta_D, **kwargs):
+    def forward(self, S, M, blur_attenuation, **kwargs):
         f_M = M * blur_attenuation
-        g_D = torch.exp(- (delta_D ** 2) / (self.alpha + 1e-8))
-        
         num = torch.pow(S + 1e-8, self.gamma)
-        den = torch.pow(self.sigma, self.gamma) + self.beta * torch.pow(f_M * g_D + 1e-8, self.gamma)
+        den = torch.pow(self.sigma, self.gamma) + self.beta * torch.pow(f_M * self.G_CONST + 1e-8, self.gamma)
         return num / den
 
 class ModelC2(ContrastMatchingModelBase):
-    """ C = S'^gamma / (sigma^gamma + beta * f(M)^gamma) """
-    def forward(self, S, M, blur_attenuation, L_fg, L_bg, **kwargs):
-        S_prime = S * (L_fg / (L_fg + L_bg))
-        f_M = M * blur_attenuation
-        
-        num = torch.pow(S_prime + 1e-8, self.gamma)
-        den = torch.pow(self.sigma, self.gamma) + self.beta * torch.pow(f_M + 1e-8, self.gamma)
-        return num / den
+    """ C2: 左右眼それぞれで B を計算し平均（disparity / 左右blur差の影響を反映）
+        C = mean_eyes( S^gamma / (sigma^gamma + beta * f(M)^gamma) ) """
+    def forward(self, S, M, blur_attenuation_left, blur_attenuation_right, **kwargs):
+        num = torch.pow(S + 1e-8, self.gamma)
+        f_M_L = M * blur_attenuation_left
+        f_M_R = M * blur_attenuation_right
+        den_L = torch.pow(self.sigma, self.gamma) + self.beta * torch.pow(f_M_L + 1e-8, self.gamma)
+        den_R = torch.pow(self.sigma, self.gamma) + self.beta * torch.pow(f_M_R + 1e-8, self.gamma)
+        return 0.5 * (num / den_L + num / den_R)
 
 
 # ==========================================

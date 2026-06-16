@@ -153,6 +153,20 @@ def get_effective_c_bg(row):
         return calculate_blur_attenuation_cached(pd_val)
     return 1.0
 
+
+def get_effective_c_bg_eye(row, eye):
+    """指定眼(eye='Left'/'Right')のPDから背景blur減衰率を返す。
+       defocus simulation条件以外は1.0。"""
+    if row['Condition'] != 'Single plane + defocus simulation':
+        return 1.0
+    if eye == 'Left':
+        pd_val = row.get('PD_Left', 0)
+    else:
+        pd_val = row.get('PD_Right', 0)
+    if pd.isna(pd_val) or pd_val <= 0:
+        pd_val = 4.0
+    return calculate_blur_attenuation_cached(pd_val)
+
 # --- Enhanced contrast values ---
 print("\n--- Calculating effective background contrast and Enhanced Contrast ---")
 final_df['Effective_C_bg'] = final_df.apply(get_effective_c_bg, axis=1)
@@ -200,14 +214,19 @@ if not train_df.empty:
     for _, row in final_df.iterrows():
         C_val = torch.tensor(float(row['Ref_Contrast']), dtype=torch.float32).to(device)
         M_val = torch.tensor(1.0, dtype=torch.float32).to(device)
+
+        # dominant-eye ベースの既存の Effective_C_bg は ModelB/ModelC1 の blur に使う
         blur_val = torch.tensor(float(row.get('Effective_C_bg', 1.0)), dtype=torch.float32).to(device)
-        
+
+        # 左右眼それぞれの blur を取得（defocus 条件以外は 1.0）
+        blur_left = torch.tensor(float(get_effective_c_bg_eye(row, 'Left')), dtype=torch.float32).to(device)
+        blur_right = torch.tensor(float(get_effective_c_bg_eye(row, 'Right')), dtype=torch.float32).to(device)
+
         dom = row.get('Dominance', 'Right')
         if dom == 'Right':
             pd_val = row.get('PD_Right', 0)
         else:
             pd_val = row.get('PD_Left', 0)
-            
         if pd.isna(pd_val) or pd_val <= 0:
             pd_val = 0.0
         delta_D_val = torch.tensor(pd_val, dtype=torch.float32).to(device)
@@ -223,18 +242,19 @@ if not train_df.empty:
             beta_B = models['ModelB'].beta
             pb = torch.pow(C_val * (torch.pow(sigma_B, gamma_B) + beta_B * torch.pow(M_val * blur_val, gamma_B)), 1.0 / gamma_B).item()
 
+            # C1: g(delta_D) を定数 0.2 に置換
             gamma_C1 = models['ModelC1'].gamma
             sigma_C1 = models['ModelC1'].sigma
             beta_C1 = models['ModelC1'].beta
-            alpha_C1 = models['ModelC1'].alpha
-            g_D = torch.exp(-(delta_D_val ** 2) / (alpha_C1 + 1e-8))
-            pc1 = torch.pow(C_val * (torch.pow(sigma_C1, gamma_C1) + beta_C1 * torch.pow(M_val * blur_val * g_D, gamma_C1)), 1.0 / gamma_C1).item()
+            pc1 = torch.pow(C_val * (torch.pow(sigma_C1, gamma_C1) + beta_C1 * torch.pow(M_val * blur_val * 0.2, gamma_C1)), 1.0 / gamma_C1).item()
 
+            # C2: 左右の blur を使って各眼で B を計算し、その平均を予測値とする
             gamma_C2 = models['ModelC2'].gamma
             sigma_C2 = models['ModelC2'].sigma
             beta_C2 = models['ModelC2'].beta
-            S_prime_pow = C_val * (torch.pow(sigma_C2, gamma_C2) + beta_C2 * torch.pow(M_val * blur_val, gamma_C2))
-            pc2 = (torch.pow(S_prime_pow, 1.0 / gamma_C2) * ((L_fg + L_bg) / L_fg)).item()
+            b_left = torch.pow(C_val * (torch.pow(sigma_C2, gamma_C2) + beta_C2 * torch.pow(M_val * blur_left, gamma_C2)), 1.0 / gamma_C2)
+            b_right = torch.pow(C_val * (torch.pow(sigma_C2, gamma_C2) + beta_C2 * torch.pow(M_val * blur_right, gamma_C2)), 1.0 / gamma_C2)
+            pc2 = (0.5 * (b_left + b_right)).item()
 
         preds_A.append(pa)
         preds_B.append(pb)
@@ -534,22 +554,16 @@ for ref_c in unique_ref_contrasts:
                     patch_idx += 1
         # もしモデルが学習済みなら、Dual plane flatの右側に各モデルの予測値を1本ずつバーとしてプロット
         if models:
-            pds = []
-            for _, row in final_df.iterrows():
-                dom = row.get('Dominance', 'Right')
-                if dom == 'Right':
-                    pd_val = row.get('PD_Right', 0)
-                else:
-                    pd_val = row.get('PD_Left', 0)
-                if pd.notna(pd_val) and pd_val > 0:
-                    pds.append(pd_val)
-            avg_pd = sum(pds) / len(pds) if pds else 4.0
-            avg_blur = calculate_blur_attenuation_cached(avg_pd)
+            pds_left = [r for r in final_df['PD_Left'].tolist() if pd.notna(r) and r > 0]
+            pds_right = [r for r in final_df['PD_Right'].tolist() if pd.notna(r) and r > 0]
+            avg_pd_left = sum(pds_left) / len(pds_left) if pds_left else 4.0
+            avg_pd_right = sum(pds_right) / len(pds_right) if pds_right else 4.0
+            avg_blur_left = calculate_blur_attenuation_cached(avg_pd_left)
+            avg_blur_right = calculate_blur_attenuation_cached(avg_pd_right)
 
             C_val = torch.tensor(float(ref_c), dtype=torch.float32).to(device)
             M_val = torch.tensor(1.0, dtype=torch.float32).to(device)
-            blur_val = torch.tensor(avg_blur, dtype=torch.float32).to(device)
-            delta_D_val = torch.tensor(avg_pd, dtype=torch.float32).to(device)
+            blur_val = torch.tensor(0.5 * (avg_blur_left + avg_blur_right), dtype=torch.float32).to(device)
 
             with torch.no_grad():
                 gamma_A = models['ModelA'].gamma
@@ -562,18 +576,21 @@ for ref_c in unique_ref_contrasts:
                 beta_B = models['ModelB'].beta
                 pred_B = torch.pow(C_val * (torch.pow(sigma_B, gamma_B) + beta_B * torch.pow(M_val * blur_val, gamma_B)), 1.0 / gamma_B).item()
 
+                # C1: g を定数0.2
                 gamma_C1 = models['ModelC1'].gamma
                 sigma_C1 = models['ModelC1'].sigma
                 beta_C1 = models['ModelC1'].beta
-                alpha_C1 = models['ModelC1'].alpha
-                g_D = torch.exp(-(delta_D_val ** 2) / (alpha_C1 + 1e-8))
-                pred_C1 = torch.pow(C_val * (torch.pow(sigma_C1, gamma_C1) + beta_C1 * torch.pow(M_val * blur_val * g_D, gamma_C1)), 1.0 / gamma_C1).item()
+                pred_C1 = torch.pow(C_val * (torch.pow(sigma_C1, gamma_C1) + beta_C1 * torch.pow(M_val * blur_val * 0.2, gamma_C1)), 1.0 / gamma_C1).item()
 
+                # C2: 左右Bの平均
                 gamma_C2 = models['ModelC2'].gamma
                 sigma_C2 = models['ModelC2'].sigma
                 beta_C2 = models['ModelC2'].beta
-                S_prime_pow = C_val * (torch.pow(sigma_C2, gamma_C2) + beta_C2 * torch.pow(M_val * blur_val, gamma_C2))
-                pred_C2 = (torch.pow(S_prime_pow, 1.0 / gamma_C2) * ((L_fg + L_bg) / L_fg)).item()
+                bl = torch.tensor(avg_blur_left, dtype=torch.float32).to(device)
+                br = torch.tensor(avg_blur_right, dtype=torch.float32).to(device)
+                b_left = torch.pow(C_val * (torch.pow(sigma_C2, gamma_C2) + beta_C2 * torch.pow(M_val * bl, gamma_C2)), 1.0 / gamma_C2)
+                b_right = torch.pow(C_val * (torch.pow(sigma_C2, gamma_C2) + beta_C2 * torch.pow(M_val * br, gamma_C2)), 1.0 / gamma_C2)
+                pred_C2 = (0.5 * (b_left + b_right)).item()
 
             model_preds = [pred_A, pred_B, pred_C1, pred_C2]
             model_labels = ['Model A', 'Model B', 'Model C1', 'Model C2']
@@ -585,7 +602,7 @@ for ref_c in unique_ref_contrasts:
             for i, (pred_val, label, color) in enumerate(zip(model_preds, model_labels, model_colors)):
                 x_pos = base_x + i
                 ax.bar(x_pos, pred_val, width=bar_width, color=color, alpha=0.8, edgecolor='black', zorder=3)
-                ax.text(x_pos, 0.1, f"pred\n={pred_val:.2f}", ha='center', va='bottom', color='black', fontsize=10,
+                ax.text(x_pos, 0.05, f"pred\n={pred_val:.2f}", ha='center', va='bottom', color='black', fontsize=10,
                         bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
             
             # x軸の範囲を更新
@@ -610,7 +627,7 @@ for ref_c in unique_ref_contrasts:
             ax.set_xticklabels(labels)
         
         handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0, 0.25), loc='upper left', borderaxespad=0.5)
+        ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0.78, 1.0), loc='upper left', borderaxespad=0.5)
         
         plt.tight_layout()
         
