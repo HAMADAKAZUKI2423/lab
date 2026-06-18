@@ -14,20 +14,44 @@ COLOR_MATRIX = np.array([
     [-0.0107871 , -0.04633671,  0.55739266]
 ], dtype=np.float32)
 
+# sRGB/Rec.709 Luminance weights
+LUMINANCE_WEIGHTS = np.array([0.2126, 0.7152, 0.0722], dtype=np.float32)
+
 def apply_fixed_color_matrix(bgr_uint8_image):
     """
-    BGR uint8 画像に固定行列 COLOR_MATRIX による色補正を適用する（輝度保持なし）。
+    BGR uint8 画像に固定行列 COLOR_MATRIX による色補正を適用し、輝度を保持する。
     - 入力: cv2 形式の BGR uint8 画像 (H, W, 3)
     - 出力: 色補正後の BGR uint8 画像 (H, W, 3)
     """
     # 1. BGR(uint8) -> RGB(float, 0.0-1.0)
-    rgb = cv2.cvtColor(bgr_uint8_image, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
-    # 2. 行列適用: out_i = Σ_j COLOR_MATRIX[i, j] * rgb_j （輝度保持の正規化はしない）
-    corrected = np.einsum('ij,hwj->hwi', COLOR_MATRIX, rgb)
-    # 3. 範囲外を [0.0, 1.0] にクリップ
-    corrected = np.clip(corrected, 0.0, 1.0)
-    # 4. uint8 に戻し、cv2 保存用に RGB -> BGR へ変換
-    corrected_uint8 = np.round(corrected * 255.0).astype(np.uint8)
+    rgb_float = cv2.cvtColor(bgr_uint8_image, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+
+    # 2. 元の輝度を計算。入力はグレーなので R=G=B。輝度はチャンネル値そのもの。
+    # shape: (H, W)
+    original_luminance = rgb_float[..., 0]
+
+    # 3. 行列適用: out_i = Σ_j COLOR_MATRIX[i, j] * rgb_j
+    corrected_rgb = np.einsum('ij,hwj->hwi', COLOR_MATRIX, rgb_float)
+
+    # 4. 補正後の輝度を計算
+    # corrected_luminance shape: (H, W)
+    corrected_luminance = np.einsum('j,hwj->hw', LUMINANCE_WEIGHTS, corrected_rgb)
+
+    # ゼロ除算を避ける
+    corrected_luminance[corrected_luminance < 1e-8] = 1e-8
+
+    # 5. 輝度を保持するためのスケーリング係数を計算
+    # scale shape: (H, W)
+    scale = original_luminance / corrected_luminance
+
+    # 6. スケーリングを適用
+    luminance_preserved_rgb = corrected_rgb * scale[..., np.newaxis]
+
+    # 7. 範囲外を [0.0, 1.0] にクリップ
+    clipped_rgb = np.clip(luminance_preserved_rgb, 0.0, 1.0)
+
+    # 8. uint8 に戻し、cv2 保存用に RGB -> BGR へ変換
+    corrected_uint8 = np.round(clipped_rgb * 255.0).astype(np.uint8)
     return cv2.cvtColor(corrected_uint8, cv2.COLOR_RGB2BGR)
 
 def generate_calibrated_gray_patches(cd_m2_levels, max_cd_m2, min_cd_m2, offset=0.0, gamma=2.2, size=(400, 300), create_images=True, base_output_dir=None):
