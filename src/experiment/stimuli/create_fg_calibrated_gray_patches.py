@@ -170,9 +170,9 @@ if __name__ == "__main__":
 
     start_time = datetime.datetime.now()
     # --- 基本設定 ---
-    MAX_LUMINANCE = 100.0
+    MAX_LUMINANCE = 78.0
     MIN_LUMINANCE = 0.0
-    TARGET_LUMINANCE_LEVELS = [100, 90, 80, 70, 60, 50, 40, 30, 20, 10, 7, 5, 2, 0]
+    TARGET_LUMINANCE_LEVELS = [70, 60, 50, 40, 30, 20, 15, 10, 7, 5, 2, 0]
     IMAGE_SIZE = (400, 300)
     GAMMA = 2.2
     
