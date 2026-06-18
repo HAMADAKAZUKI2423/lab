@@ -161,7 +161,7 @@ for ref_c in unique_ref_contrasts:
                             d = subset['Matched_Contrast_AR'].std() 
                             
                             x = p.get_x() + p.get_width() / 2
-                            y = 0.1  # バーの足元付近
+                            y = 0.05  # バーの足元付近
                             
                             ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
                                     bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
@@ -173,9 +173,9 @@ for ref_c in unique_ref_contrasts:
         ax.set_xlabel('Condition', fontsize=12)
         ax.set_yscale('log') # 縦軸をログスケールに設定
         
-        ax.set_ylim(0.1, 1.0) 
-        ax.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        ax.set_ylim(0.05, 1.0) 
+        ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
         
         # x軸のラベルをそのまま表示（回転なし）
         labels = ax.get_xticklabels()
@@ -183,7 +183,7 @@ for ref_c in unique_ref_contrasts:
         
         # 凡例の設定
         handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0, 0.25), loc='upper left', borderaxespad=0.5)
+        ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0.78, 1.0), loc='upper left', borderaxespad=0.5)
         
         plt.tight_layout()
         
@@ -337,7 +337,7 @@ for ref_c in unique_ref_contrasts:
                             d = subset['Matched_Contrast_Enhanced'].std() 
                             
                             x = p.get_x() + p.get_width() / 2
-                            y = 0.15  # バーの足元付近
+                            y = 0.05  # バーの足元付近
                             
                             ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
                                     bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
@@ -348,15 +348,15 @@ for ref_c in unique_ref_contrasts:
         ax.set_xlabel('Condition', fontsize=12)
         ax.set_yscale('log')
         
-        ax.set_ylim(0.1, 1.0) 
-        ax.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        ax.set_ylim(0.05, 1.0) 
+        ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
         
         labels = ax.get_xticklabels()
         ax.set_xticklabels(labels)
         
         handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0, 0.25), loc='upper left', borderaxespad=0.5)
+        ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0.78, 1.0), loc='upper left', borderaxespad=0.5)
         
         plt.tight_layout()
         
@@ -403,7 +403,7 @@ for ref_c in unique_ref_contrasts:
                             d = subset['Matched_Contrast'].std() 
                             
                             x = p.get_x() + p.get_width() / 2
-                            y = 0.1  # バーの足元付近
+                            y = 0.05  # バーの足元付近
                             
                             ax.text(x, y, f"m={m:.2f}\nd={d:.2f}", ha='center', va='bottom', color='black', fontsize=10,
                                     bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', pad=1))
@@ -414,15 +414,15 @@ for ref_c in unique_ref_contrasts:
         ax.set_xlabel('Condition', fontsize=12)
         ax.set_yscale('log')
         
-        ax.set_ylim(0.1, 1.0) 
-        ax.set_yticks([0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
-        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.1f'))
+        ax.set_ylim(0.05, 1.0) 
+        ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0])
+        ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%.2f'))
         
         labels = ax.get_xticklabels()
         ax.set_xticklabels(labels)
         
         handles, labels = ax.get_legend_handles_labels()
-        ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0, 0.25), loc='upper left', borderaxespad=0.5)
+        ax.legend(handles=handles, labels=labels, bbox_to_anchor=(0.78, 1.0), loc='upper left', borderaxespad=0.5)
         
         plt.tight_layout()
         
