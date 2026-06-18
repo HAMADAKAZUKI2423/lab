@@ -607,7 +607,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
                 img_ref = stimuli_utils.apply_color_matrix_preserve_luminance(img_ref, self.color_matrix)
             img_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
         
-        c_test = 0.4
+        c_test = 0.0
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
         img_test_fg = Image.fromarray(pix_test_fg, mode='L')
@@ -884,9 +884,9 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         cx1, cy1 = self.width//2 + self.offset_x.get(), self.height//2 + self.offset_y.get()
         cx2, cy2 = self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2
         
-        L_fg = 35.0
+        L_fg = 15.0
         L_bg = 15.0
-        L_ref = 50.0
+        L_ref = 30.0
         
         # Generate PhotoImage objects for reference/test/background using helper
         photos = stimuli_utils.generate_matching_photos(
@@ -968,8 +968,8 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.ctrl_frame.destroy()
         
         # 試行リストを生成
-        ref_contrasts = [0.2, 0.4]
-        orientations = [0, 90]
+        ref_contrasts = [0.0, 0.2, 0.4]
+        orientations = [0]
         
         self.trial_list = []
         for ref_c in ref_contrasts:
