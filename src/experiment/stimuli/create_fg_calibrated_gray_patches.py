@@ -7,6 +7,29 @@ import datetime
 import argparse
  
 
+# 関連スクリプト1と同一の固定色補正行列（OST-AR表示用）
+COLOR_MATRIX = np.array([
+    [ 0.33169778,  0.01128241,  0.0258315 ],
+    [-0.00844114,  0.41731136,  0.01354067],
+    [-0.0107871 , -0.04633671,  0.55739266]
+], dtype=np.float32)
+
+def apply_fixed_color_matrix(bgr_uint8_image):
+    """
+    BGR uint8 画像に固定行列 COLOR_MATRIX による色補正を適用する（輝度保持なし）。
+    - 入力: cv2 形式の BGR uint8 画像 (H, W, 3)
+    - 出力: 色補正後の BGR uint8 画像 (H, W, 3)
+    """
+    # 1. BGR(uint8) -> RGB(float, 0.0-1.0)
+    rgb = cv2.cvtColor(bgr_uint8_image, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+    # 2. 行列適用: out_i = Σ_j COLOR_MATRIX[i, j] * rgb_j （輝度保持の正規化はしない）
+    corrected = np.einsum('ij,hwj->hwi', COLOR_MATRIX, rgb)
+    # 3. 範囲外を [0.0, 1.0] にクリップ
+    corrected = np.clip(corrected, 0.0, 1.0)
+    # 4. uint8 に戻し、cv2 保存用に RGB -> BGR へ変換
+    corrected_uint8 = np.round(corrected * 255.0).astype(np.uint8)
+    return cv2.cvtColor(corrected_uint8, cv2.COLOR_RGB2BGR)
+
 def generate_calibrated_gray_patches(cd_m2_levels, max_cd_m2, min_cd_m2, offset=0.0, gamma=2.2, size=(400, 300), create_images=True, base_output_dir=None):
     """
     指定された物理輝度(cd/m^2)に対応するグレーパッチ画像を生成し、対応するピクセル値のリストを返す。
@@ -64,15 +87,17 @@ def generate_calibrated_gray_patches(cd_m2_levels, max_cd_m2, min_cd_m2, offset=
         pixel_values.append(gray_value)
  
         if create_images:
-            # 4. 画像データで塗りつぶしと保存
-            # OpenCVはBGR順だが、グレーなので (gray, gray, gray) でOK
+            # 4. 画像データで塗りつぶし
             final_image = np.full((HEIGHT, WIDTH, 3), gray_value, dtype=np.uint8)
+
+            # 4.5 固定行列による色補正を適用（輝度保持なし）★追加
+            final_image = apply_fixed_color_matrix(final_image)
  
-            # ファイル名に輝度値を含める
+            # 5. ファイル名に輝度値を含めて保存
             filename = os.path.join(output_dir, f'gray_{y_cd_m2}cdm2.png')
             cv2.imwrite(filename, final_image)
 
-            B, G, R = final_image[0, 0] # OpenCVのimread/imwriteはBGR順
+            B, G, R = final_image[0, 0] # 色補正後のBGR順の実際の色
             print(f"Y={y_cd_m2} cd/m^2 -> RGB({R},{G},{B}) -> '{filename}' を生成しました。")
  
     if create_images:
