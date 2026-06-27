@@ -342,14 +342,14 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         # Reference Gabor patches
         for ref_c in [0.0,0.2, 0.4]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
-            pil_ref = stimuli_utils.lum_to_pil(lum_ref_fg, self.fg_lums, self.fg_pixels)
-            pil_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
+            img_ref = stimuli_utils.lum_to_pil_window2(lum_ref_fg, self.bg_lums, self.bg_pixels, getattr(self, 'color_matrix_xyz', None))
+            img_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
             
         # Single plane stimulus
         c_test = 0.0
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
-        pil_test_fg = stimuli_utils.lum_to_pil(lum_test_fg, self.fg_lums, self.fg_pixels)
-        pil_test_fg.save(os.path.join(save_dir, "single_plane_foreground.png"))
+        img_test_fg = stimuli_utils.lum_to_pil_window2(lum_test_fg, self.bg_lums, self.bg_pixels, getattr(self, 'color_matrix_xyz', None))
+        img_test_fg.save(os.path.join(save_dir, "single_plane_foreground.png"))
 
         lum_noise = L_bg * (1.0 + C_bg * noise_base)
         pil_noise = stimuli_utils.lum_to_pil(lum_noise, self.fg_lums, self.fg_pixels)
@@ -528,7 +528,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
 
     def setup_experiment_blocks(self):
         """実験ブロック構成を設定"""
-        self.color_matrix = COLOR_MATRIX
+        self.color_matrix_xyz = COLOR_MATRIX_XYZ
         self.avg_color_match_results = []
 
         dom_eye = self.participant_dominance.get()
@@ -666,10 +666,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         img_noise_defocus.save(os.path.join(save_dir, "dual_plane_defocus_background.png"))
         
         lum_total_defocus = lum_noise_defocus + lum_test_fg
-        pix_total_defocus = np.interp(lum_total_defocus, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        img_total_defocus = Image.fromarray(pix_total_defocus, mode='L')
-        if getattr(self, 'color_matrix', None) is not None:
-            img_total_defocus = stimuli_utils.apply_color_matrix_preserve_luminance(img_total_defocus, self.color_matrix)
+        img_total_defocus = stimuli_utils.lum_to_pil_window2(lum_total_defocus, self.bg_lums, self.bg_pixels, getattr(self, 'color_matrix_xyz', None))
         img_total_defocus.save(os.path.join(save_dir, "single_plane_defocus_combined.png"))
         
         # --- Dual plane previews ---
@@ -682,11 +679,11 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         start_x = (width_bg_expanded - width_fg) // 2
         end_x = start_x + width_fg
         lum_noise_crop = lum_noise_expanded[:, start_x:end_x]
-        pix_noise_crop = np.interp(lum_noise_crop, self.fg_lums, self.fg_pixels).astype(np.uint8)
+        pix_noise_crop = np.interp(lum_noise_crop, self.bg_lums, self.bg_pixels).astype(np.uint8)
         Image.fromarray(pix_noise_crop, mode='L').save(os.path.join(save_dir, "dual_plane_background.png"))
 
         # foreground (same size as foreground window)
-        pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
+        pix_test_fg = np.interp(lum_test_fg, self.bg_lums, self.bg_pixels).astype(np.uint8)
         Image.fromarray(pix_test_fg, mode='L').save(os.path.join(save_dir, "dual_plane_foreground.png"))
 
         # combined (overlay fg on center of expanded background -> crop to fg size)
@@ -695,13 +692,13 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         fg_x0 = (width_bg_expanded - width_fg) // 2
         lum_combined_expanded[:, fg_x0:fg_x0+width_fg] = lum_combined_expanded[:, fg_x0:fg_x0+width_fg] + lum_test_fg
         lum_combined_crop = lum_combined_expanded[:, start_x:end_x]
-        pix_combined_crop = np.interp(lum_combined_crop, self.fg_lums, self.fg_pixels).astype(np.uint8)
+        pix_combined_crop = np.interp(lum_combined_crop, self.bg_lums, self.bg_pixels).astype(np.uint8)
         Image.fromarray(pix_combined_crop, mode='L').save(os.path.join(save_dir, "dual_plane_combined.png"))
 
         # --- Dual plane flat previews ---
         # Background is flat (no noise)
         lum_flat_bg = np.full((height_fg, width_fg), L_bg, dtype=np.float32)
-        pix_flat_bg = np.interp(lum_flat_bg, self.fg_lums, self.fg_pixels).astype(np.uint8)
+        pix_flat_bg = np.interp(lum_flat_bg, self.bg_lums, self.bg_pixels).astype(np.uint8)
         Image.fromarray(pix_flat_bg, mode='L').save(os.path.join(save_dir, "dual_plane_flat_background.png"))
 
         # foreground (same as before)
@@ -709,7 +706,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
 
         # combined flat
         lum_flat_combined = lum_flat_bg + lum_test_fg
-        pix_flat_combined = np.interp(lum_flat_combined, self.fg_lums, self.fg_pixels).astype(np.uint8)
+        pix_flat_combined = np.interp(lum_flat_combined, self.bg_lums, self.bg_pixels).astype(np.uint8)
         Image.fromarray(pix_flat_combined, mode='L').save(os.path.join(save_dir, "dual_plane_flat_combined.png"))
     
     def start_block(self):
@@ -911,7 +908,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.gabor_base, self.cached_lum_noise,
             self.fg_lums, self.fg_pixels, self.bg_lums, self.bg_pixels,
             L_fg=L_fg, L_bg=L_bg, L_ref=L_ref, c_test=c_test, ref_c=ref_c, cond=cond,
-            color_matrix=getattr(self, 'color_matrix', None)
+            color_matrix_xyz=getattr(self, 'color_matrix_xyz', None)
         )
 
         self.photo_ref_fg = photos.get('photo_ref_fg')

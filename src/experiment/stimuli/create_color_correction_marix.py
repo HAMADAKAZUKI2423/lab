@@ -78,7 +78,7 @@ print("\n[検算] R @ C と T の差(最大):", np.max(np.abs(R @ C - T)))
 
 
 # =============================================================
-# 追加処理: テスト色 (R, G, B + ランダム7色) に C を掛けて補正し保存
+# 追加処理: テスト色 (R, G, B + グレースケール画像) に C を掛けて補正し保存
 # =============================================================
 import os
 import matplotlib.pyplot as plt
@@ -101,10 +101,13 @@ base_srgb = np.array([
     [1.0, 0.0, 0.0],   # R
     [0.0, 1.0, 0.0],   # G
     [0.0, 0.0, 1.0],   # B
-])                                       # shape (3, 3)
+    [1.0, 1.0, 1.0],   # White (255)
+    [127/255.0, 127/255.0, 127/255.0], # Gray (127)
+    [0.0, 0.0, 0.0],   # Black (0)
+])
 
 # --- sRGB -> 線形 にしてから行列を適用 (T, R, C は線形XYZ空間の行列) ---
-base_lin = srgb_to_linear(base_srgb)
+base_lin = srgb_to_linear(base_srgb) # (6, 3)
 t_lin = (T @ base_lin.T).T               # T を通した線形RGB (透過)
 r_lin = (R @ base_lin.T).T               # R を通した線形RGB (反射)
 c_lin = (C @ base_lin.T).T               # C を通した線形RGB (R^-1 T)
@@ -117,7 +120,7 @@ c_colors = linear_to_srgb(c_lin)
 
 # --- 1色ずつ個別の画像として保存 (元 -> T -> R -> C の順) ---
 os.makedirs(SAVE_DIR, exist_ok=True)
-labels = ["R", "G", "B"]
+labels = ["R", "G", "B", "White", "Gray", "Black"]
 PATCH_SIZE = 256   # 出力画像の1辺 (px)
 
 # 保存する順番: 元のRGB -> Tを通したRGB -> Rを通したRGB -> Cを通したRGB
@@ -144,3 +147,108 @@ print("base_colors:\n", base_colors)
 print("t_colors:\n", t_colors)
 print("r_colors:\n", r_colors)
 print("c_colors:\n", c_colors)
+print("最大誤差:", np.max(np.abs(R @ C @ base_lin.T - T @ base_lin.T)))
+
+# =============================================================
+# 追加処理: 2つの Yxy を Lab 空間で比較・評価 (ΔE)
+#   - 行列計算は XYZ(線形)、評価のみ Lab で行う
+# =============================================================
+# Lab には基準白色点が必要。計測した白(背景白など)の Yxy を入れてください。
+# ここで基準にした白に対する“相対的な見え”として L*a*b* が決まります。
+WHITE_REF_Yxy = np.array([213.3, 0.3084, 0.3220])  # 基準白 (Y, x, y) ※色度は D65 の例
+
+# 比較したい 2 色 (Y, x, y) を入力 (例: 実測 TV と シミュレーション TV)
+SAMPLE_1_Yxy = np.array([45.9, 0.2802, 0.2912])  # 例: 実測
+SAMPLE_2_Yxy = np.array([45.8, 0.2934, 0.2860])  # 例: シミュレーション
+
+
+def XYZ_to_Lab(XYZ, white_XYZ):
+    """XYZ -> CIELAB (基準白 white_XYZ で正規化)"""
+    xr, yr, zr = np.asarray(XYZ, dtype=float) / np.asarray(white_XYZ, dtype=float)
+    eps = 216.0 / 24389.0      # (6/29)^3
+    kappa = 24389.0 / 27.0     # (29/3)^3
+
+    def f(t):
+        return np.cbrt(t) if t > eps else (kappa * t + 16.0) / 116.0
+
+    fx, fy, fz = f(xr), f(yr), f(zr)
+    L = 116.0 * fy - 16.0
+    a = 500.0 * (fx - fy)
+    b = 200.0 * (fy - fz)
+    return np.array([L, a, b])
+
+
+def deltaE76(lab1, lab2):
+    """CIE76 ΔE*ab (Lab のユークリッド距離)"""
+    return float(np.sqrt(np.sum((np.asarray(lab1) - np.asarray(lab2)) ** 2)))
+
+
+def deltaE2000(lab1, lab2, kL=1.0, kC=1.0, kH=1.0):
+    """CIEDE2000 色差 (知覚均等性を考慮した色差)"""
+    L1, a1, b1 = lab1
+    L2, a2, b2 = lab2
+    avg_L = (L1 + L2) / 2.0
+    C1 = np.hypot(a1, b1)
+    C2 = np.hypot(a2, b2)
+    avg_C = (C1 + C2) / 2.0
+    G = 0.5 * (1 - np.sqrt(avg_C ** 7 / (avg_C ** 7 + 25.0 ** 7)))
+    a1p = (1 + G) * a1
+    a2p = (1 + G) * a2
+    C1p = np.hypot(a1p, b1)
+    C2p = np.hypot(a2p, b2)
+    avg_Cp = (C1p + C2p) / 2.0
+    h1p = np.degrees(np.arctan2(b1, a1p)) % 360
+    h2p = np.degrees(np.arctan2(b2, a2p)) % 360
+    if C1p * C2p == 0:
+        dhp = 0.0
+    elif abs(h2p - h1p) <= 180:
+        dhp = h2p - h1p
+    elif h2p - h1p > 180:
+        dhp = h2p - h1p - 360
+    else:
+        dhp = h2p - h1p + 360
+    dLp = L2 - L1
+    dCp = C2p - C1p
+    dHp = 2 * np.sqrt(C1p * C2p) * np.sin(np.radians(dhp) / 2.0)
+    if C1p * C2p == 0:
+        avg_hp = h1p + h2p
+    elif abs(h1p - h2p) <= 180:
+        avg_hp = (h1p + h2p) / 2.0
+    elif h1p + h2p < 360:
+        avg_hp = (h1p + h2p + 360) / 2.0
+    else:
+        avg_hp = (h1p + h2p - 360) / 2.0
+    T_ = (1 - 0.17 * np.cos(np.radians(avg_hp - 30))
+          + 0.24 * np.cos(np.radians(2 * avg_hp))
+          + 0.32 * np.cos(np.radians(3 * avg_hp + 6))
+          - 0.20 * np.cos(np.radians(4 * avg_hp - 63)))
+    d_ro = 30 * np.exp(-((avg_hp - 275) / 25.0) ** 2)
+    Rc = 2 * np.sqrt(avg_Cp ** 7 / (avg_Cp ** 7 + 25.0 ** 7))
+    Sl = 1 + (0.015 * (avg_L - 50) ** 2) / np.sqrt(20 + (avg_L - 50) ** 2)
+    Sc = 1 + 0.045 * avg_Cp
+    Sh = 1 + 0.015 * avg_Cp * T_
+    Rt = -np.sin(np.radians(2 * d_ro)) * Rc
+    dE = np.sqrt(
+        (dLp / (kL * Sl)) ** 2
+        + (dCp / (kC * Sc)) ** 2
+        + (dHp / (kH * Sh)) ** 2
+        + Rt * (dCp / (kC * Sc)) * (dHp / (kH * Sh))
+    )
+    return float(dE)
+
+
+# --- Yxy -> XYZ -> Lab に変換して評価 (Yxy_to_XYZ は上で定義済み) ---
+white_XYZ = Yxy_to_XYZ(WHITE_REF_Yxy)
+xyz1 = Yxy_to_XYZ(SAMPLE_1_Yxy)
+xyz2 = Yxy_to_XYZ(SAMPLE_2_Yxy)
+lab1 = XYZ_to_Lab(xyz1, white_XYZ)
+lab2 = XYZ_to_Lab(xyz2, white_XYZ)
+
+print("\n==== Lab 空間での評価 ====")
+print("基準白 (Y,x,y):", WHITE_REF_Yxy, "-> XYZ:", white_XYZ)
+print("Sample1 (Y,x,y):", SAMPLE_1_Yxy, "-> XYZ:", xyz1, "-> Lab:", lab1)
+print("Sample2 (Y,x,y):", SAMPLE_2_Yxy, "-> XYZ:", xyz2, "-> Lab:", lab2)
+print("ΔL*={:.3f}  Δa*={:.3f}  Δb*={:.3f}".format(*(lab2 - lab1)))
+print("ΔE76  (CIE76)    :", round(deltaE76(lab1, lab2), 3))
+print("ΔE00  (CIEDE2000):", round(deltaE2000(lab1, lab2), 3))
+# 目安: ΔE00 < 1 はほぼ知覚不能, 1-2 はよく見れば分かる, >3-5 で明確に分かる
