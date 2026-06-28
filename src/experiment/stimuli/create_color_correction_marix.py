@@ -1,30 +1,46 @@
 import numpy as np
 import os
 import matplotlib.pyplot as plt
+import numpy as np
 
 # =============================================================
-# After方針: C = (R·Df)^(-1)(T·Db) = Df^(-1) R^(-1) T Db
-#   計測は純色フルスケール駆動 -> 入力原色 O = 単位行列 I
-#   生背景BG・生前景FG は不要。BGT(透過) と FGR(反射) のみ使用。
-# 入力: 各行が R,G,B / 各列が Y(輝度),x,y の 3x3 行列
+# 最小二乗版: T', R' を「純色 + 白 + CMY + グレー」から推定
+#   モデル: XYZ = M @ rgb_lin   (M = T'(透過) または R'(反射), 3x3)
+#   劣加法(混色で輝度過大)を平均的に吸収させるのが狙い。
+#   ※ 純色のみだと白/混色は span 内で情報ゼロ。混色を足して初めて効く。
 # =============================================================
-BGT = np.array([   # 背景の透過 (= T·Db·O)
-    [8.00,  0.6327, 0.3286],   # R
-    [34.36, 0.3097, 0.6264],   # G
-    [3.60,  0.1543, 0.0457],   # B
-])
-FGR = np.array([   # 前景の反射 (= R·Df·O)
-    [19.90, 0.6448, 0.3320],   # R
-    [71.80, 0.3191, 0.6231],   # G
-    [6.97,  0.1525, 0.0527],   # B
-])
 
-# 入力原色 O: 純色RGBをそのまま基底として使う -> 単位行列
-O = np.eye(3)
+# ---- 入力パッチ: name, sRGB(0-1), BGT実測(Y,x,y), FGR実測(Y,x,y) ----
+#  純色3つは元データ。White/CMY/Gray の実測値を埋めて使う。
+PATCHES = [
+    # name      sRGB(R,G,B)             BGT (Y, x, y)          FGR (Y, x, y)
+    ("R",     (1.0, 0.0, 0.0),        (8.00,  0.6327, 0.3286), (19.90, 0.6448, 0.3320)),
+    ("G",     (0.0, 1.0, 0.0),        (34.36, 0.3097, 0.6264), (71.80, 0.3191, 0.6231)),
+    ("B",     (0.0, 0.0, 1.0),        (3.60,  0.1543, 0.0457), (6.97,  0.1525, 0.0527)),
+    # --- ここから追加測定（実測値を入れる）---
+    ("W",     (1.0, 1.0, 1.0),        (46.7, 0.2803, 0.2921),      (101.4, 0.3130, 0.3222)),
+    ("semiR",     (0.5, 0.0, 0.0),        (2.1, 0.5723, 0.3091),      (4.8, 0.6284, 0.3214)),
+    ("semiG",     (0.0, 0.5, 0.0),        (8.3, 0.3003, 0.6163),      (17.2, 0.3181, 0.6094)),
+    ("semiB",     (0.0, 0.0, 0.5),        (1.1, 0.1541, 0.0521),      (1.9, 0.1540, 0.0567)),
+    ("Gray",  (0.5, 0.5, 0.5),        (12.0, 0.2795, 0.2852),      (25.3, 0.3084, 0.3169)),
+]
 
+# ---- パッチごとの重み（輝度が最重要なら効かせたいパッチを大きく）----
+# 例: 混色・白を重めにして劣加法をしっかり吸わせる
+WEIGHTS = {
+    "R": 1.0, "G": 1.0, "B": 1.0, "W": 1.0, "semiR": 1.0, "semiG": 1.0, "semiB": 1.0, "Gray": 1.0,
+}
+
+# ---- sRGB -> 線形RGB ----
+def srgb_to_linear(c):
+    c = np.asarray(c, dtype=float)
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.0)
+
+def linear_to_srgb(c):
+    c = np.clip(np.asarray(c, dtype=float), 0.0, 1.0)
+    return np.where(c <= 0.0031308, 12.92 * c, 1.055 * (c ** (1 / 2.0)) - 0.055)
 
 def Yxy_to_XYZ(row):
-    """1行 (Y, x, y) を (X, Y, Z) に変換"""
     Y, x, y = row
     if y == 0:
         return np.array([0.0, 0.0, 0.0])
@@ -32,30 +48,44 @@ def Yxy_to_XYZ(row):
     Z = ((1.0 - x - y) / y) * Y
     return np.array([X, Y, Z])
 
+def collect(channel):
+    """channel='BGT' or 'FGR' の有効パッチを (rgb_lin, XYZ, w, names) で返す"""
+    idx = 2 if channel == "BGT" else 3
+    rgb_lin, XYZ, w, names = [], [], [], []
+    for p in PATCHES:
+        meas = p[idx]
+        if meas is None or any(v is None for v in meas):
+            continue  # 未測定はスキップ
+        rgb_lin.append(srgb_to_linear(p[1]))
+        XYZ.append(Yxy_to_XYZ(meas))
+        w.append(WEIGHTS.get(p[0], 1.0))
+        names.append(p[0])
+    return np.array(rgb_lin), np.array(XYZ), np.array(w), names
 
-def to_XYZ_columns(M_Yxy):
-    """行=R,G,B / 列=Y,x,y を受け取り、列=原色(R,G,B)/行=X,Y,Z にして返す"""
-    rows_xyz = np.array([Yxy_to_XYZ(M_Yxy[i]) for i in range(3)])
-    return rows_xyz.T
+def fit_matrix(rgb_lin, XYZ, weights=None):
+    """
+    XYZ = M @ rgb_lin を最小二乗で解く (M: 3x3)
+    行形式: rgb_lin(N,3) @ M.T = XYZ(N,3)
+    """
+    A, Bm = rgb_lin, XYZ
+    if weights is not None:
+        s = np.sqrt(weights).reshape(-1, 1)
+        A, Bm = A * s, Bm * s
+    Mt, *_ = np.linalg.lstsq(A, Bm, rcond=None)  # A @ Mt = Bm -> Mt = M.T
+    return Mt.T
 
+# ===================== 推定 =====================
+rgb_T, XYZ_T, w_T, names_T = collect("BGT")
+rgb_R, XYZ_R, w_R, names_R = collect("FGR")
 
-BGT_xyz = to_XYZ_columns(BGT)
-FGR_xyz = to_XYZ_columns(FGR)
-
-# T' = T·Db = BGT_xyz @ inv(O),  R' = R·Df = FGR_xyz @ inv(O)
-T_prime = BGT_xyz @ np.linalg.inv(O)
-R_prime = FGR_xyz @ np.linalg.inv(O)
-
-# C = R'^(-1) T' = (R·Df)^(-1)(T·Db) = Df^(-1) R^(-1) T Db
-C = np.linalg.inv(R_prime) @ T_prime
+T_prime = fit_matrix(rgb_T, XYZ_T, w_T)   # T·Db
+R_prime = fit_matrix(rgb_R, XYZ_R, w_R)   # R·Df
+C = np.linalg.inv(R_prime) @ T_prime      # = (R·Df)^(-1)(T·Db)
 
 np.set_printoptions(precision=6, suppress=True)
-print("BGT_xyz:\n", BGT_xyz)
-print("FGR_xyz:\n", FGR_xyz)
-print("T_prime (=T·Db):\n", T_prime)
-print("R_prime (=R·Df):\n", R_prime)
-print("C = inv(R_prime) @ T_prime:\n", C)
-print("[検算] max|R'C - T'| =", np.max(np.abs(R_prime @ C - T_prime)))
+print("T_prime:\n", T_prime)
+print("R_prime:\n", R_prime)
+print("C = inv(R') @ T':\n", C)
 
 # =============================================================
 # 追加処理(After): C補正画像の生成と「見え」の照合
@@ -63,13 +93,6 @@ print("[検算] max|R'C - T'| =", np.max(np.abs(R_prime @ C - T_prime)))
 # =============================================================
 
 # --- sRGB <-> 線形RGB 変換 (IEC 61966-2-1) ---
-def srgb_to_linear(c):
-    c = np.asarray(c, dtype=float)
-    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
-
-def linear_to_srgb(c):
-    c = np.clip(np.asarray(c, dtype=float), 0.0, 1.0)
-    return np.where(c <= 0.0031308, 12.92 * c, 1.055 * (c ** (1 / 2.4)) - 0.055)  # -0.055 を復活
 
 # --- XYZ(D65) -> linear sRGB 標準行列 ---
 M_XYZ2RGB = np.array([
@@ -88,11 +111,11 @@ base_srgb = np.array([
     [1.0, 1.0, 1.0],            # White
     [127/255.0, 127/255.0, 127/255.0],  # Gray
     [0.0, 0.0, 0.0],            # Black
-    [1.0, 1.0, 0.0],            # Yellow
-    [1.0, 0.0, 1.0],            # Magenta
-    [0.0, 1.0, 1.0],            # Cyan
+    [0.5, 0.0, 0.0],            # R/2
+    [0.0, 0.5, 0.0],            # G/2
+    [0.0, 0.0, 0.5],            # B/2
 ])
-labels = ["R", "G", "B", "White", "Gray", "Black", "Yellow", "Magenta", "Cyan"]
+labels = ["R", "G", "B", "White", "Gray", "Black", "semiR", "semiG", "semiB"]
 
 # --- sRGB -> 線形 ---
 base_lin = srgb_to_linear(base_srgb)         # (9,3) 線形RGB
@@ -133,111 +156,16 @@ for idx, label in enumerate(labels):
 print(f"\n[保存] {len(saved_paths)} 枚 -> {SAVE_DIR}")
 print("c_colors (補正後前景 sRGB):\n", c_colors)
 
-# --- 検証 ---
-print("最大誤差(XYZ):", np.max(np.abs(refl_xyz - trans_xyz)))
-# 各色の trans_xyz vs refl_xyz を deltaE2000 で評価すれば
-# グレーの紫転びが解消したかを数値で確認できる。
+# ===================== 当てはめ残差の評価 =====================
+# ※ 最小二乗では厳密解でないので、max|R'C-T'| ではなく
+#   「モデル予測 vs 実測」の残差を見る（特に輝度Y）。
+def report(channel, M, rgb_lin, XYZ_meas, names):
+    print(f"\n==== {channel} 残差 (モデル予測 vs 実測) ====")
+    print(f"{'patch':>6} {'Y_meas':>8} {'Y_pred':>8} {'ΔY':>7}")
+    for n, rgb, xyz in zip(names, rgb_lin, XYZ_meas):
+        pred = M @ rgb
+        dY = pred[1] - xyz[1]
+        print(f"{n:>6} {xyz[1]:8.2f} {pred[1]:8.2f} {dY:+7.2f}")
 
-# =============================================================
-# 追加処理: 2つの Yxy を Lab 空間で比較・評価 (ΔE)
-#   - 行列計算は XYZ(線形)、評価のみ Lab で行う
-# =============================================================
-# Lab には基準白色点が必要。計測した白(背景白など)の Yxy を入れてください。
-# ここで基準にした白に対する“相対的な見え”として L*a*b* が決まります。
-WHITE_REF_Yxy = np.array([213.3, 0.3084, 0.3220])  # 基準白 (Y, x, y) ※色度は D65 の例
-
-# 比較したい 2 色 (Y, x, y) を入力 (例: 実測 TV と シミュレーション TV)
-SAMPLE_1_Yxy = np.array([39.73, 0.6427, 0.3282])  # 例: 実測
-SAMPLE_2_Yxy = np.array([30.5, 0.657, 0.3206])  # 例: シミュレーション
-
-
-def XYZ_to_Lab(XYZ, white_XYZ):
-    """XYZ -> CIELAB (基準白 white_XYZ で正規化)"""
-    xr, yr, zr = np.asarray(XYZ, dtype=float) / np.asarray(white_XYZ, dtype=float)
-    eps = 216.0 / 24389.0      # (6/29)^3
-    kappa = 24389.0 / 27.0     # (29/3)^3
-
-    def f(t):
-        return np.cbrt(t) if t > eps else (kappa * t + 16.0) / 116.0
-
-    fx, fy, fz = f(xr), f(yr), f(zr)
-    L = 116.0 * fy - 16.0
-    a = 500.0 * (fx - fy)
-    b = 200.0 * (fy - fz)
-    return np.array([L, a, b])
-
-
-def deltaE76(lab1, lab2):
-    """CIE76 ΔE*ab (Lab のユークリッド距離)"""
-    return float(np.sqrt(np.sum((np.asarray(lab1) - np.asarray(lab2)) ** 2)))
-
-
-def deltaE2000(lab1, lab2, kL=1.0, kC=1.0, kH=1.0):
-    """CIEDE2000 色差 (知覚均等性を考慮した色差)"""
-    L1, a1, b1 = lab1
-    L2, a2, b2 = lab2
-    avg_L = (L1 + L2) / 2.0
-    C1 = np.hypot(a1, b1)
-    C2 = np.hypot(a2, b2)
-    avg_C = (C1 + C2) / 2.0
-    G = 0.5 * (1 - np.sqrt(avg_C ** 7 / (avg_C ** 7 + 25.0 ** 7)))
-    a1p = (1 + G) * a1
-    a2p = (1 + G) * a2
-    C1p = np.hypot(a1p, b1)
-    C2p = np.hypot(a2p, b2)
-    avg_Cp = (C1p + C2p) / 2.0
-    h1p = np.degrees(np.arctan2(b1, a1p)) % 360
-    h2p = np.degrees(np.arctan2(b2, a2p)) % 360
-    if C1p * C2p == 0:
-        dhp = 0.0
-    elif abs(h2p - h1p) <= 180:
-        dhp = h2p - h1p
-    elif h2p - h1p > 180:
-        dhp = h2p - h1p - 360
-    else:
-        dhp = h2p - h1p + 360
-    dLp = L2 - L1
-    dCp = C2p - C1p
-    dHp = 2 * np.sqrt(C1p * C2p) * np.sin(np.radians(dhp) / 2.0)
-    if C1p * C2p == 0:
-        avg_hp = h1p + h2p
-    elif abs(h1p - h2p) <= 180:
-        avg_hp = (h1p + h2p) / 2.0
-    elif h1p + h2p < 360:
-        avg_hp = (h1p + h2p + 360) / 2.0
-    else:
-        avg_hp = (h1p + h2p - 360) / 2.0
-    T_ = (1 - 0.17 * np.cos(np.radians(avg_hp - 30))
-          + 0.24 * np.cos(np.radians(2 * avg_hp))
-          + 0.32 * np.cos(np.radians(3 * avg_hp + 6))
-          - 0.20 * np.cos(np.radians(4 * avg_hp - 63)))
-    d_ro = 30 * np.exp(-((avg_hp - 275) / 25.0) ** 2)
-    Rc = 2 * np.sqrt(avg_Cp ** 7 / (avg_Cp ** 7 + 25.0 ** 7))
-    Sl = 1 + (0.015 * (avg_L - 50) ** 2) / np.sqrt(20 + (avg_L - 50) ** 2)
-    Sc = 1 + 0.045 * avg_Cp
-    Sh = 1 + 0.015 * avg_Cp * T_
-    Rt = -np.sin(np.radians(2 * d_ro)) * Rc
-    dE = np.sqrt(
-        (dLp / (kL * Sl)) ** 2
-        + (dCp / (kC * Sc)) ** 2
-        + (dHp / (kH * Sh)) ** 2
-        + Rt * (dCp / (kC * Sc)) * (dHp / (kH * Sh))
-    )
-    return float(dE)
-
-
-# --- Yxy -> XYZ -> Lab に変換して評価 (Yxy_to_XYZ は上で定義済み) ---
-white_XYZ = Yxy_to_XYZ(WHITE_REF_Yxy)
-xyz1 = Yxy_to_XYZ(SAMPLE_1_Yxy)
-xyz2 = Yxy_to_XYZ(SAMPLE_2_Yxy)
-lab1 = XYZ_to_Lab(xyz1, white_XYZ)
-lab2 = XYZ_to_Lab(xyz2, white_XYZ)
-
-print("\n==== Lab 空間での評価 ====")
-print("基準白 (Y,x,y):", WHITE_REF_Yxy, "-> XYZ:", white_XYZ)
-print("Sample1 (Y,x,y):", SAMPLE_1_Yxy, "-> XYZ:", xyz1, "-> Lab:", lab1)
-print("Sample2 (Y,x,y):", SAMPLE_2_Yxy, "-> XYZ:", xyz2, "-> Lab:", lab2)
-print("ΔL*={:.3f}  Δa*={:.3f}  Δb*={:.3f}".format(*(lab2 - lab1)))
-print("ΔE76  (CIE76)    :", round(deltaE76(lab1, lab2), 3))
-print("ΔE00  (CIEDE2000):", round(deltaE2000(lab1, lab2), 3))
-# 目安: ΔE00 < 1 はほぼ知覚不能, 1-2 はよく見れば分かる, >3-5 で明確に分かる
+report("BGT(T')", T_prime, rgb_T, XYZ_T, names_T)
+report("FGR(R')", R_prime, rgb_R, XYZ_R, names_R)
