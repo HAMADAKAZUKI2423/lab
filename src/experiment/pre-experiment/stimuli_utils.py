@@ -18,6 +18,20 @@ CROSS_SIZE = 30        # 中央の十字マーカーのサイズ (px)
 MARKER_LINE_WIDTH = 5  # マーカーの線の太さ
 PIXELS_PER_CM = 1/0.02331  # モニタのPPC
 
+# sRGB(D65) <-> XYZ 標準変換行列
+M_RGB2XYZ = np.array([
+    [0.41239080, 0.35758434, 0.18048079],
+    [0.21263901, 0.71516868, 0.07219232],
+    [0.01933082, 0.11919478, 0.95053215],
+], dtype=np.float64)
+
+M_XYZ2RGB = np.array([
+    [ 3.24096994, -1.53738318, -0.49861076],
+    [-0.96924364,  1.87596750,  0.04155506],
+    [ 0.05563008, -0.20397696,  1.05697151],
+], dtype=np.float64)
+
+
 
 # ==========================================
 # 画像生成関数
@@ -215,6 +229,27 @@ def create_cosine_windowed_grating_base(width_px, height_px, ppd, cpd, orientati
     envelope = create_cosine_windowed_disk(width_px, height_px, ppd, disk_diameter_deg, fade_width_deg)
     
     return grating * envelope
+
+def srgb_to_linear(c):
+    """
+    sRGB EOTF (gamma correction)
+    """
+    c = np.asarray(c, dtype=np.float64)
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.4)
+
+def linear_to_srgb(c):
+    """
+    sRGB OETF (inverse gamma correction)
+    """
+    c = np.asarray(c, dtype=np.float64)
+    c = np.clip(c, 0.0, 1.0)
+    return np.where(c <= 0.0031308, c * 12.92, 1.055 * (c ** (1.0 / 2.4)) - 0.055)
+
+
+
+
+
+
 
 
 # ==========================================
@@ -527,6 +562,54 @@ def apply_torch_fft_blur_luminance(lum_np, D, pd_mm, pixels_per_deg):
     return blur_tensor.cpu().numpy()
 
 
+def lum_to_photo_window2(lum_np, lums, pixels, color_matrix_xyz):
+    """
+    Window2用。
+
+    lums, pixels には必ず Window1 と同じ bg_lums, bg_pixels を渡すこと。
+
+    処理:
+    1. lum_np を bg_lums/bg_pixels で pixel 値化する
+    2. その pixel 値をグレースケール sRGB とみなす
+    3. R=G=B として RGB 化する
+    4. sRGB -> linear RGB
+    5. linear RGB -> XYZ
+    6. XYZ空間で color_matrix_xyz を適用
+    7. XYZ -> linear RGB
+    8. linear RGB -> sRGB
+    9. RGB画像として PhotoImage を返す
+
+    色補正後の輝度保持・再スケーリングは行わない。
+    """
+    # 1) window1と同じ校正で輝度->画素値(グレースケール 0-255)
+    pix = np.interp(lum_np, lums, pixels)
+    g = np.clip(pix, 0, 255).astype(np.float64) / 255.0      # sRGB[0,1], R=G=B
+    
+    if color_matrix_xyz is None:
+        gray = np.clip(g * 255.0, 0, 255).astype(np.uint8)
+        return ImageTk.PhotoImage(Image.fromarray(gray, mode='L'))
+
+    # 2) 線形化 (H,W)
+    lin = srgb_to_linear(g)
+    
+    # 3) R=G=B でスタック (H,W,3)
+    lin_rgb = np.stack([lin, lin, lin], axis=-1)
+    
+    # 4) 線形RGB -> XYZ
+    xyz = lin_rgb @ M_RGB2XYZ.T
+    
+    # 5) XYZ空間で固定色補正
+    xyz_corr = xyz @ color_matrix_xyz.T
+    
+    # 6) XYZ -> 線形RGB
+    lin_rgb_corr = xyz_corr @ M_XYZ2RGB.T
+    
+    # 7) 非線形化(sRGB) -> 0-255
+    srgb_corr = linear_to_srgb(lin_rgb_corr)
+    out = np.clip(srgb_corr * 255.0, 0, 255).astype(np.uint8)  # (H,W,3)
+    
+    return ImageTk.PhotoImage(Image.fromarray(out, mode='RGB'))
+
 def calculate_defocus_blur_parameters(D, pd_mm, pixels_per_deg):
     """
     デフォーカスブラーのパラメータを計算
@@ -689,38 +772,84 @@ def scale_image_to_target_luminance(img, target_lum, lums=None, pixels=None, lum
 
 def lum_to_pil(lum_np, lums, pixels):
     """
-    輝度配列を PIL.Image に変換して返す（保存や加工に使用）
+    輝度配列を PIL.Image (Lモード) に変換して返す（保存や加工に使用）
     """
     pix = np.interp(lum_np, lums, pixels).astype(np.uint8)
     return Image.fromarray(pix, mode='L')
 
 
+def lum_to_pil_window2(lum_np, lums, pixels, color_matrix_xyz):
+    """
+    Window2プレビュー保存用。
+    lum_to_photo_window2() と同じ処理を行うが、
+    ImageTk.PhotoImage ではなく PIL.Image を返す。
+    """
+    pix = np.interp(lum_np, lums, pixels)
+    g = np.clip(pix, 0, 255).astype(np.float64) / 255.0
+
+    if color_matrix_xyz is None:
+        gray = np.clip(g * 255.0, 0, 255).astype(np.uint8)
+        return Image.fromarray(gray, mode='L')
+
+    lin = srgb_to_linear(g)
+    lin_rgb = np.stack([lin, lin, lin], axis=-1)
+
+    xyz = lin_rgb @ M_RGB2XYZ.T
+    xyz_corr = xyz @ color_matrix_xyz.T
+    lin_rgb_corr = xyz_corr @ M_XYZ2RGB.T
+
+    srgb_corr = linear_to_srgb(lin_rgb_corr)
+    out = np.clip(srgb_corr * 255.0, 0, 255).astype(np.uint8)
+
+    return Image.fromarray(out, mode='RGB')
+
+
 def generate_matching_photos(gabor_base, cached_lum_noise, fg_lums, fg_pixels, bg_lums, bg_pixels,
                              L_fg=35.0, L_bg=15.0, L_ref=50.0, c_test=0.4, ref_c=0.2, cond='Single plane',
-                             color_matrix=None):
+                             color_matrix_xyz=None):
     """
     gabor_base とノイズ基盤から、表示に使う PhotoImage を生成するヘルパ。
-    返り値は辞書で、キーに必要な PhotoImage を格納する。
-    この関数は表示のための変換ロジックを一箇所にまとめる。
+
+    重要仕様:
+    - Window1 は bg_lums / bg_pixels で pixel 値化し、色補正なし。
+    - Window2 も補正前 pixel 値は bg_lums / bg_pixels で作る。
+    - Window2 のみ、補正前のグレースケール pixel を RGB 化し、
+      sRGB -> linear RGB -> XYZ -> color_matrix_xyz -> linear RGB -> sRGB
+      の順で色補正する。
+    - Window2 では fg_lums / fg_pixels を使わない。
+    - Window2 では apply_color_matrix_preserve_luminance() や
+      scale_image_to_target_luminance() を使わない。
     """
     out = {}
 
-    # 参照 (reference) は Window 2 に表示されるため補正対象
+    # fg_lums, fg_pixels are kept only for API compatibility.
+    # Do not use them for Window2 image generation.
+
+    # ----------------------------
+    # Window2 上側: 参照刺激
+    # ----------------------------
     lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
-    out['photo_ref_fg'] = lum_to_photo(lum_ref_fg, fg_lums, fg_pixels, color_matrix)
+    out['photo_ref_fg'] = lum_to_photo_window2(lum_ref_fg, bg_lums, bg_pixels, color_matrix_xyz)
 
+    # ----------------------------
+    # Dual plane / Dual plane flat
+    # ----------------------------
     if cond in ["Dual plane", "Dual plane flat"]:
+        # Window2 下側: 前景テスト刺激
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
-        out['photo_test_fg'] = lum_to_photo(lum_test_fg, fg_lums, fg_pixels, color_matrix)
+        out['photo_test_fg'] = lum_to_photo_window2(lum_test_fg, bg_lums, bg_pixels, color_matrix_xyz)
 
+        # Window1: 背景刺激。補正なし。
         lum_noise_bg = cached_lum_noise
-        # Window 1 用は補正なし
         out['photo_noise_bg'] = lum_to_photo(lum_noise_bg, bg_lums, bg_pixels, None)
+
+    # ----------------------------
+    # Single plane / Single plane + defocus simulation
+    # ----------------------------
     else:
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         lum_noise = cached_lum_noise
-        lum_test_total = lum_noise + lum_test_fg
-        # Window 2 用なので補正あり
-        out['photo_test'] = lum_to_photo(lum_test_total, fg_lums, fg_pixels, color_matrix)
+        lum_test_total = lum_noise + lum_test_fg # Single plane系では、Window2 に背景 + 前景の合成刺激を表示する
+        out['photo_test'] = lum_to_photo_window2(lum_test_total, bg_lums, bg_pixels, color_matrix_xyz)
 
     return out
