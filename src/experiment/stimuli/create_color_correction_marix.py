@@ -19,6 +19,119 @@ FGR = np.array([   # 前景の反射 (= R·Df·O)
     [6.97,  0.1525, 0.0527],   # B
 ])
 
+# =============================================================
+# After2: チャネル別EOTF g を実測ランプから構築 (g(1)=1 正規化)
+#   - R,G,B 各チャネルの階調ランプ(255~0)の Yxy を記録
+#   - 各チャネルの輝度Yをフルスケールで割って g を正規化 (g(0)=0, g(1)=1)
+#   - 背景パス=透過(T·Db)用 g_b, 前景パス=反射(R·Df)用 g_f を別々に作る
+#   - 補正: v_fg = g_f^{-1}( C · g_b(v) )   ※C は従来どおり R''^{-1} T''
+# 記録フォーマット: (画素値0-255, Y, x, y)。未計測は None。
+#   ※255行はフルスケール原色(BGT/FGR)と一致するはず。0行は Y=0。
+#   ※xy は「階調を通して一定か」のチェック用。Y のみが g に効く。
+# =============================================================
+RAMP_BG = {  # 背景パス (T·Db) の階調ランプ
+    "R": [
+        (255, 8.00, 0.6327, 0.3286),
+        (224, None, None, None),
+        (192, None, None, None),
+        (160, None, None, None),
+        (128, None, None, None),
+        (96,  None, None, None),
+        (64,  None, None, None),
+        (32,  None, None, None),
+        (0,   0.0,  None, None),
+    ],
+    "G": [
+        (255, 34.36, 0.3097, 0.6264),
+        (224, None, None, None),
+        (192, None, None, None),
+        (160, None, None, None),
+        (128, None, None, None),
+        (96,  None, None, None),
+        (64,  None, None, None),
+        (32,  None, None, None),
+        (0,   0.0,  None, None),
+    ],
+    "B": [
+        (255, 3.60, 0.1543, 0.0457),
+        (224, None, None, None),
+        (192, None, None, None),
+        (160, None, None, None),
+        (128, None, None, None),
+        (96,  None, None, None),
+        (64,  None, None, None),
+        (32,  None, None, None),
+        (0,   0.0,  None, None),
+    ],
+}
+RAMP_FG = {  # 前景パス (R·Df) の階調ランプ
+    "R": [
+        (255, 19.90, 0.6448, 0.3320),
+        (224, None, None, None),
+        (192, None, None, None),
+        (160, None, None, None),
+        (128, None, None, None),
+        (96,  None, None, None),
+        (64,  None, None, None),
+        (32,  None, None, None),
+        (0,   0.0,  None, None),
+    ],
+    "G": [
+        (255, 71.80, 0.3191, 0.6231),
+        (224, None, None, None),
+        (192, None, None, None),
+        (160, None, None, None),
+        (128, None, None, None),
+        (96,  None, None, None),
+        (64,  None, None, None),
+        (32,  None, None, None),
+        (0,   0.0,  None, None),
+    ],
+    "B": [
+        (255, 6.97, 0.1525, 0.0527),
+        (224, None, None, None),
+        (192, None, None, None),
+        (160, None, None, None),
+        (128, None, None, None),
+        (96,  None, None, None),
+        (64,  None, None, None),
+        (32,  None, None, None),
+        (0,   0.0,  None, None),
+    ],
+}
+CHANNELS = ("R", "G", "B")
+
+def build_eotf(ramp_channel):
+    """1チャネルのランプ [(v255,Y,x,y),...] から正規化EOTF を作る。
+       画素値(0-1) <-> 正規化線形(0-1)。Y をフルスケールで割って g(1)=1。
+       未計測(None)はスキップ。点が2つ(0と255)だけなら線形になる。"""
+    pts = [(p[0] / 255.0, p[1]) for p in ramp_channel if p[1] is not None]
+    pts.sort(key=lambda t: t[0])
+    xs = np.array([p[0] for p in pts], dtype=float)
+    ys = np.array([p[1] for p in pts], dtype=float)
+    y_full = ys[np.argmax(xs)]          # フルスケールの輝度
+    yn = ys / y_full                    # g(1)=1 へ正規化
+    def g(v):                           # 画素値 -> 正規化線形
+        return np.interp(np.asarray(v, dtype=float), xs, yn)
+    def g_inv(y):                       # 正規化線形 -> 画素値
+        return np.interp(np.asarray(y, dtype=float), yn, xs)
+    return g, g_inv
+
+# 各チャネルのEOTFを構築 (前景・背景で別々)
+_gb = {c: build_eotf(RAMP_BG[c]) for c in CHANNELS}
+_gf = {c: build_eotf(RAMP_FG[c]) for c in CHANNELS}
+
+def _apply(funcs, arr, idx):
+    arr = np.asarray(arr, dtype=float)
+    out = np.empty_like(arr)
+    for i, c in enumerate(CHANNELS):
+        out[..., i] = funcs[c][idx](arr[..., i])
+    return out
+
+g_b     = lambda v: _apply(_gb, v, 0)   # 背景画素値 -> 正規化線形
+g_f     = lambda v: _apply(_gf, v, 0)   # 前景画素値 -> 正規化線形
+g_f_inv = lambda l: _apply(_gf, l, 1)   # 正規化線形 -> 前景画素値
+
 # 入力原色 O: 純色RGBをそのまま基底として使う -> 単位行列
 O = np.eye(3)
 
@@ -79,6 +192,31 @@ M_XYZ2RGB = np.array([
 ])
 
 SAVE_DIR = r"C:\Users\Hamada.MSI\Desktop\Hamada\lab\archive"
+os.makedirs(SAVE_DIR, exist_ok=True)
+
+# =============================================================
+# 【最初に実行】階調ランプ計測用画像の生成・保存
+#   R/G/B 各チャネル × 各階調レベル(RAMP_BGと同じ) の単色ベタ画像を出力。
+#   これを背景・前景にそれぞれ表示して輝度色彩計で Yxy を計測し、
+#   RAMP_BG / RAMP_FG の None を埋める。
+#   ファイル名: ramp_<channel>_<level3桁>.png  (level は 0-255 の画素値)
+#   ※画素値をそのまま出したいのでカラーマネジメント/ガンマ補正OFFのビューアで表示すること。
+# =============================================================
+RAMP_DIR = os.path.join(SAVE_DIR, "ramp_patches")
+os.makedirs(RAMP_DIR, exist_ok=True)
+RAMP_LEVELS = [p[0] for p in RAMP_BG["R"]]   # レベルは RAMP 定義と一致させる
+_ch_index = {"R": 0, "G": 1, "B": 2}
+PATCH_RAMP = 512
+ramp_paths = []
+for _ch in CHANNELS:
+    for _lv in RAMP_LEVELS:
+        _rgb = np.zeros(3, dtype=float)
+        _rgb[_ch_index[_ch]] = _lv / 255.0     # 該当チャネルにのみ画素値 _lv
+        _patch = np.tile(_rgb, (PATCH_RAMP, PATCH_RAMP, 1))
+        _path = os.path.join(RAMP_DIR, f"ramp_{_ch}_{_lv:03d}.png")
+        plt.imsave(_path, np.clip(_patch, 0.0, 1.0))
+        ramp_paths.append(_path)
+print(f"[ランプ画像] {len(ramp_paths)} 枚 -> {RAMP_DIR}")
 
 # --- テスト色 (各行が1色 / 列=R,G,B / 0-1) ---
 base_srgb = np.array([
@@ -94,12 +232,13 @@ base_srgb = np.array([
 ])
 labels = ["R", "G", "B", "White", "Gray", "Black", "Yellow", "Magenta", "Cyan"]
 
-# --- sRGB -> 線形 ---
-base_lin = srgb_to_linear(base_srgb)         # (9,3) 線形RGB
+# --- 実測EOTF g_b で線形化 (After2: 旧 srgb_to_linear を置換) ---
+# base_srgb は「背景に出す画素値(0-1)」とみなす
+base_lin = g_b(base_srgb)                    # 背景画素値 -> 正規化線形 (g_b)
 
 # --- 補正後の前景駆動値 (RGB->RGB)【主成果物】---
-c_lin = (C @ base_lin.T).T                   # 前景に送る線形RGB
-c_colors = linear_to_srgb(c_lin)             # 保存用 sRGB
+c_lin = (C @ base_lin.T).T                   # C = R''^{-1} T'' (従来と同一)
+c_colors = g_f_inv(c_lin)                    # 正規化線形 -> 前景画素値 (g_f^{-1}, 旧 linear_to_srgb)
 
 # --- 「見え」(XYZ) の計算 ---
 trans_xyz = (T_prime @ base_lin.T).T        # 透過背景の見え (ターゲット)
@@ -135,109 +274,3 @@ print("c_colors (補正後前景 sRGB):\n", c_colors)
 
 # --- 検証 ---
 print("最大誤差(XYZ):", np.max(np.abs(refl_xyz - trans_xyz)))
-# 各色の trans_xyz vs refl_xyz を deltaE2000 で評価すれば
-# グレーの紫転びが解消したかを数値で確認できる。
-
-# =============================================================
-# 追加処理: 2つの Yxy を Lab 空間で比較・評価 (ΔE)
-#   - 行列計算は XYZ(線形)、評価のみ Lab で行う
-# =============================================================
-# Lab には基準白色点が必要。計測した白(背景白など)の Yxy を入れてください。
-# ここで基準にした白に対する“相対的な見え”として L*a*b* が決まります。
-WHITE_REF_Yxy = np.array([213.3, 0.3084, 0.3220])  # 基準白 (Y, x, y) ※色度は D65 の例
-
-# 比較したい 2 色 (Y, x, y) を入力 (例: 実測 TV と シミュレーション TV)
-SAMPLE_1_Yxy = np.array([39.73, 0.6427, 0.3282])  # 例: 実測
-SAMPLE_2_Yxy = np.array([30.5, 0.657, 0.3206])  # 例: シミュレーション
-
-
-def XYZ_to_Lab(XYZ, white_XYZ):
-    """XYZ -> CIELAB (基準白 white_XYZ で正規化)"""
-    xr, yr, zr = np.asarray(XYZ, dtype=float) / np.asarray(white_XYZ, dtype=float)
-    eps = 216.0 / 24389.0      # (6/29)^3
-    kappa = 24389.0 / 27.0     # (29/3)^3
-
-    def f(t):
-        return np.cbrt(t) if t > eps else (kappa * t + 16.0) / 116.0
-
-    fx, fy, fz = f(xr), f(yr), f(zr)
-    L = 116.0 * fy - 16.0
-    a = 500.0 * (fx - fy)
-    b = 200.0 * (fy - fz)
-    return np.array([L, a, b])
-
-
-def deltaE76(lab1, lab2):
-    """CIE76 ΔE*ab (Lab のユークリッド距離)"""
-    return float(np.sqrt(np.sum((np.asarray(lab1) - np.asarray(lab2)) ** 2)))
-
-
-def deltaE2000(lab1, lab2, kL=1.0, kC=1.0, kH=1.0):
-    """CIEDE2000 色差 (知覚均等性を考慮した色差)"""
-    L1, a1, b1 = lab1
-    L2, a2, b2 = lab2
-    avg_L = (L1 + L2) / 2.0
-    C1 = np.hypot(a1, b1)
-    C2 = np.hypot(a2, b2)
-    avg_C = (C1 + C2) / 2.0
-    G = 0.5 * (1 - np.sqrt(avg_C ** 7 / (avg_C ** 7 + 25.0 ** 7)))
-    a1p = (1 + G) * a1
-    a2p = (1 + G) * a2
-    C1p = np.hypot(a1p, b1)
-    C2p = np.hypot(a2p, b2)
-    avg_Cp = (C1p + C2p) / 2.0
-    h1p = np.degrees(np.arctan2(b1, a1p)) % 360
-    h2p = np.degrees(np.arctan2(b2, a2p)) % 360
-    if C1p * C2p == 0:
-        dhp = 0.0
-    elif abs(h2p - h1p) <= 180:
-        dhp = h2p - h1p
-    elif h2p - h1p > 180:
-        dhp = h2p - h1p - 360
-    else:
-        dhp = h2p - h1p + 360
-    dLp = L2 - L1
-    dCp = C2p - C1p
-    dHp = 2 * np.sqrt(C1p * C2p) * np.sin(np.radians(dhp) / 2.0)
-    if C1p * C2p == 0:
-        avg_hp = h1p + h2p
-    elif abs(h1p - h2p) <= 180:
-        avg_hp = (h1p + h2p) / 2.0
-    elif h1p + h2p < 360:
-        avg_hp = (h1p + h2p + 360) / 2.0
-    else:
-        avg_hp = (h1p + h2p - 360) / 2.0
-    T_ = (1 - 0.17 * np.cos(np.radians(avg_hp - 30))
-          + 0.24 * np.cos(np.radians(2 * avg_hp))
-          + 0.32 * np.cos(np.radians(3 * avg_hp + 6))
-          - 0.20 * np.cos(np.radians(4 * avg_hp - 63)))
-    d_ro = 30 * np.exp(-((avg_hp - 275) / 25.0) ** 2)
-    Rc = 2 * np.sqrt(avg_Cp ** 7 / (avg_Cp ** 7 + 25.0 ** 7))
-    Sl = 1 + (0.015 * (avg_L - 50) ** 2) / np.sqrt(20 + (avg_L - 50) ** 2)
-    Sc = 1 + 0.045 * avg_Cp
-    Sh = 1 + 0.015 * avg_Cp * T_
-    Rt = -np.sin(np.radians(2 * d_ro)) * Rc
-    dE = np.sqrt(
-        (dLp / (kL * Sl)) ** 2
-        + (dCp / (kC * Sc)) ** 2
-        + (dHp / (kH * Sh)) ** 2
-        + Rt * (dCp / (kC * Sc)) * (dHp / (kH * Sh))
-    )
-    return float(dE)
-
-
-# --- Yxy -> XYZ -> Lab に変換して評価 (Yxy_to_XYZ は上で定義済み) ---
-white_XYZ = Yxy_to_XYZ(WHITE_REF_Yxy)
-xyz1 = Yxy_to_XYZ(SAMPLE_1_Yxy)
-xyz2 = Yxy_to_XYZ(SAMPLE_2_Yxy)
-lab1 = XYZ_to_Lab(xyz1, white_XYZ)
-lab2 = XYZ_to_Lab(xyz2, white_XYZ)
-
-print("\n==== Lab 空間での評価 ====")
-print("基準白 (Y,x,y):", WHITE_REF_Yxy, "-> XYZ:", white_XYZ)
-print("Sample1 (Y,x,y):", SAMPLE_1_Yxy, "-> XYZ:", xyz1, "-> Lab:", lab1)
-print("Sample2 (Y,x,y):", SAMPLE_2_Yxy, "-> XYZ:", xyz2, "-> Lab:", lab2)
-print("ΔL*={:.3f}  Δa*={:.3f}  Δb*={:.3f}".format(*(lab2 - lab1)))
-print("ΔE76  (CIE76)    :", round(deltaE76(lab1, lab2), 3))
-print("ΔE00  (CIEDE2000):", round(deltaE2000(lab1, lab2), 3))
-# 目安: ΔE00 < 1 はほぼ知覚不能, 1-2 はよく見れば分かる, >3-5 で明確に分かる
