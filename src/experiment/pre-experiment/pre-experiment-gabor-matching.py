@@ -25,30 +25,13 @@ import stimuli_utils
 import defocus_matching
 
 
-# --- 色補正をXYZ空間で行うための行列定義 ---
-# sRGB(D65) -> XYZ 標準変換行列
-M_RGB2XYZ = np.array([
-    [0.41239080, 0.35758434, 0.18048079],
-    [0.21263901, 0.71516868, 0.07219232],
-    [0.01933082, 0.11919478, 0.95053215],
+# 前景(Window2)に適用する色補正行列 C（線形RGB空間で適用）
+# 関連スクリプト1で求めた行列を、C = inv(R') @ T' と同様に線形RGB空間で使う
+COLOR_MATRIX = np.array([
+    [ 0.385676, -0.029594,  0.007298],
+    [ 0.002786,  0.485416, -0.011852],
+    [ 0.005025,  0.003184,  0.601995],
 ], dtype=np.float64)
-
-# XYZ -> sRGB(D65)（上記の逆行列）
-M_XYZ2RGB = np.array([
-    [ 3.24096994, -1.53738318, -0.49861076],
-    [-0.96924364,  1.87596750,  0.04155506],
-    [ 0.05563008, -0.20397696,  1.05697151],
-], dtype=np.float64)
-
-# XYZ空間で適用する新しい色補正行列（指定値）
-COLOR_MATRIX_XYZ = np.array([
-    [ 0.271001,  0.024724,  0.039808],
-    [-0.035639,  0.342426,  0.010839],
-    [ 0.005044, -0.009369,  0.462117],
-], dtype=np.float64)
-
-# RGB -> XYZ -> 補正 -> RGB を1つの行列に合成（既存のRGB空間乗算と等価）
-COLOR_MATRIX = (M_XYZ2RGB @ COLOR_MATRIX_XYZ @ M_RGB2XYZ).astype(np.float32)
 
 
 # ==========================================
@@ -120,7 +103,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         # matching固有の変数
         self.distance1 = 50  # Foreground distance (cm)
-        self.distance2 = 100  # Background distance (cm)
+        self.distance2 = 150  # Background distance (cm)
         self.spatial_freq = SPATIAL_FREQ
         self.pupil_diameter_val = tk.DoubleVar(value=4.0)
         
@@ -142,16 +125,16 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         fg_calib_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "fg_calibration_log")
         bg_calib_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "bg_calibration_log")
         
-        self.fg_lums, self.fg_pixels = stimuli_utils.load_calibration_data(fg_calib_dir)
+        # 前景補正は背景校正(bg)から得た画素値に C を掛けて行うため、fg校正は使用しない。
+        # self.fg_lums, self.fg_pixels = stimuli_utils.load_calibration_data(fg_calib_dir)
         self.bg_lums, self.bg_pixels = stimuli_utils.load_calibration_data(bg_calib_dir)
         self.color_matrix = COLOR_MATRIX
         
-        if self.fg_lums is None or self.bg_lums is None:
+        if self.bg_lums is None:
             print("Warning: Calibration data not found. Linear mapping will be used.")
-            self.fg_lums = np.array([0.0, 100.0])
-            self.fg_pixels = np.array([0, 255])
             self.bg_lums = np.array([0.0, 100.0])
             self.bg_pixels = np.array([0, 255])
+        self.fg_lums, self.fg_pixels = self.bg_lums, self.bg_pixels
 
         # Apply config overrides
         self.config = CFG or {}
@@ -540,7 +523,6 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
 
     def setup_experiment_blocks(self):
         """実験ブロック構成を設定"""
-        self.color_matrix_xyz = COLOR_MATRIX_XYZ
         self.avg_color_match_results = []
 
         dom_eye = self.participant_dominance.get()
@@ -599,127 +581,6 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.current_block_index = 0
         self.current_trial_in_experiment = 0
         self.start_block()
-    
-    def save_preview_images(self):
-        """プレビュー画像を保存"""
-        now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d_%H%M%S")
-        p_id = self.participant_id.get()
-        save_dir = os.path.join(FIGURE_DIR, f"{p_id}_{date_str}", "stimulis")
-        
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        
-        d_fg = self.distance1
-        ppd_fg = stimuli_utils.get_size_for_visual_angle(d_fg, 1.0)
-        
-        width_deg = 7.9
-        height_deg = 3.95
-        width_fg = int(width_deg * ppd_fg)
-        height_fg = int(height_deg * ppd_fg)
-        
-        ori = 0
-        gabor_base = stimuli_utils.create_cosine_windowed_grating_base(width_fg, height_fg, ppd_fg, 
-                                                                       self.spatial_freq, orientation=ori)
-        noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, 
-                                                     self.spatial_freq)
-        
-        L_fg = 15.0
-        L_bg = 15.0
-        C_bg = 0.0
-        L_ref = 30.0
-        
-        for ref_c in [0.0, 0.2, 0.4]:
-            lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
-            pix_ref_fg = np.interp(lum_ref_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
-            img_ref = Image.fromarray(pix_ref_fg, mode='L')
-            if getattr(self, 'color_matrix', None) is not None:
-                img_ref = stimuli_utils.apply_color_matrix_preserve_luminance(img_ref, self.color_matrix)
-            img_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
-        
-        c_test = 0.0
-        lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
-        pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        img_test_fg = Image.fromarray(pix_test_fg, mode='L')
-        if getattr(self, 'color_matrix', None) is not None:
-            img_test_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_test_fg, self.color_matrix)
-        img_test_fg.save(os.path.join(save_dir, "single_plane_foreground.png"))
-        
-        lum_noise = L_bg * (1.0 + C_bg * noise_base)
-        # Background should be mapped using background calibration
-        pix_noise = np.interp(lum_noise, self.bg_lums, self.bg_pixels).astype(np.uint8)
-        img_noise = Image.fromarray(pix_noise, mode='L')
-        img_noise.save(os.path.join(save_dir, "single_plane_background.png"))
-
-        # Also save dual-plane specific foreground/background using respective calibrations
-        # Foreground (uses foreground calibration)
-        img_test_fg.save(os.path.join(save_dir, "dual_plane_foreground.png"))
-
-        # Background for dual plane (use background calibration mapping)
-        pix_noise_bg = np.interp(lum_noise, self.bg_lums, self.bg_pixels).astype(np.uint8)
-        img_noise_bg = Image.fromarray(pix_noise_bg, mode='L')
-        img_noise_bg.save(os.path.join(save_dir, "dual_plane_background.png"))
-        
-        lum_total = lum_noise + lum_test_fg
-        pix_total = np.interp(lum_total, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        img_total = Image.fromarray(pix_total, mode='L')
-        if getattr(self, 'color_matrix', None) is not None:
-            img_total = stimuli_utils.apply_color_matrix_preserve_luminance(img_total, self.color_matrix)
-        img_total.save(os.path.join(save_dir, "single_plane_combined.png"))
-        
-        D = abs(1/(self.distance1/100.0) - 1/(self.distance2/100.0))
-        pd_mm = self.current_pd_mean if self.current_pd_mean > 0 else 4.0
-        lum_noise_defocus = stimuli_utils.apply_torch_fft_blur_luminance(lum_noise, D, pd_mm, ppd_fg)
-        pix_noise_defocus = np.interp(lum_noise_defocus, self.bg_lums, self.bg_pixels).astype(np.uint8)
-        img_noise_defocus = Image.fromarray(pix_noise_defocus, mode='L')
-        img_noise_defocus.save(os.path.join(save_dir, "single_plane_defocus_background.png"))
-
-        # Dual-plane defocus background (mapped with background calibration)
-        img_noise_defocus.save(os.path.join(save_dir, "dual_plane_defocus_background.png"))
-        
-        lum_total_defocus = lum_noise_defocus + lum_test_fg
-        img_total_defocus = stimuli_utils.lum_to_pil_window2(lum_total_defocus, self.bg_lums, self.bg_pixels, getattr(self, 'color_matrix_xyz', None))
-        img_total_defocus.save(os.path.join(save_dir, "single_plane_defocus_combined.png"))
-        
-        # --- Dual plane previews ---
-        # Dual plane: expanded background noise with foreground overlaid (center crop)
-        width_bg_expanded = int(width_fg * 2.5)
-        noise_base_expanded = stimuli_utils.create_noise_base(width_bg_expanded, height_fg, ppd_fg, self.spatial_freq)
-        lum_noise_expanded = L_bg * (1.0 + noise_base_expanded)
-
-        # save an example background crop (center) for dual plane
-        start_x = (width_bg_expanded - width_fg) // 2
-        end_x = start_x + width_fg
-        lum_noise_crop = lum_noise_expanded[:, start_x:end_x]
-        pix_noise_crop = np.interp(lum_noise_crop, self.bg_lums, self.bg_pixels).astype(np.uint8)
-        Image.fromarray(pix_noise_crop, mode='L').save(os.path.join(save_dir, "dual_plane_background.png"))
-
-        # foreground (same size as foreground window)
-        pix_test_fg = np.interp(lum_test_fg, self.bg_lums, self.bg_pixels).astype(np.uint8)
-        Image.fromarray(pix_test_fg, mode='L').save(os.path.join(save_dir, "dual_plane_foreground.png"))
-
-        # combined (overlay fg on center of expanded background -> crop to fg size)
-        lum_combined_expanded = lum_noise_expanded.copy()
-        # place foreground at center
-        fg_x0 = (width_bg_expanded - width_fg) // 2
-        lum_combined_expanded[:, fg_x0:fg_x0+width_fg] = lum_combined_expanded[:, fg_x0:fg_x0+width_fg] + lum_test_fg
-        lum_combined_crop = lum_combined_expanded[:, start_x:end_x]
-        pix_combined_crop = np.interp(lum_combined_crop, self.bg_lums, self.bg_pixels).astype(np.uint8)
-        Image.fromarray(pix_combined_crop, mode='L').save(os.path.join(save_dir, "dual_plane_combined.png"))
-
-        # --- Dual plane flat previews ---
-        # Background is flat (no noise)
-        lum_flat_bg = np.full((height_fg, width_fg), L_bg, dtype=np.float32)
-        pix_flat_bg = np.interp(lum_flat_bg, self.bg_lums, self.bg_pixels).astype(np.uint8)
-        Image.fromarray(pix_flat_bg, mode='L').save(os.path.join(save_dir, "dual_plane_flat_background.png"))
-
-        # foreground (same as before)
-        Image.fromarray(pix_test_fg, mode='L').save(os.path.join(save_dir, "dual_plane_flat_foreground.png"))
-
-        # combined flat
-        lum_flat_combined = lum_flat_bg + lum_test_fg
-        pix_flat_combined = np.interp(lum_flat_combined, self.bg_lums, self.bg_pixels).astype(np.uint8)
-        Image.fromarray(pix_flat_combined, mode='L').save(os.path.join(save_dir, "dual_plane_flat_combined.png"))
     
     def start_block(self):
         """ブロック開始"""
@@ -950,7 +811,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.gabor_base, self.cached_lum_noise,
             self.fg_lums, self.fg_pixels, self.bg_lums, self.bg_pixels,
             L_fg=L_fg, L_bg=L_bg, L_ref=L_ref, c_test=c_test, ref_c=ref_c, cond=cond,
-            color_matrix_xyz=getattr(self, 'color_matrix_xyz', None)
+            color_matrix=getattr(self, 'color_matrix', None)
         )
 
         self.photo_ref_fg = photos.get('photo_ref_fg')
