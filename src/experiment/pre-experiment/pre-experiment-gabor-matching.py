@@ -58,6 +58,11 @@ VISUAL_ANGLE_DEG = 7.9
 NUM_REPETITIONS = 5
 SPATIAL_FREQ = 4  # Spatial frequency in cpd
 PUPIL_DIAMETER_MM = 4.0
+# Dual plane / Dual plane flat の binocular 条件における背景・ref の左右非対称化倍率
+# 各画像の「もとの横幅」に対する倍率。長い側 + 短い側 = 2.0（合計2倍）
+ASYM_WIDTH_FACTOR_LARGE = 1.3
+ASYM_WIDTH_FACTOR_SMALL = 0.7
+
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
@@ -802,29 +807,52 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         L_bg = self.L_bg
         
+        # === 追加: binocular の Dual plane / Dual plane flat における背景の左右非対称化 ===
+        ocularity = self.current_block_cond["ocularity"]
+        dom_eye = self.participant_dominance.get()
+        apply_asym = (cond in ["Dual plane", "Dual plane flat"]) and (ocularity == "binocular")
+        
+        if apply_asym:
+            # 優位眼に応じて、提示中央から見た「背景」の左右倍率を決定
+            if dom_eye == "Right":
+                bg_left_factor = ASYM_WIDTH_FACTOR_SMALL   # 0.7
+                bg_right_factor = ASYM_WIDTH_FACTOR_LARGE  # 1.3
+            else:  # "Left"
+                bg_left_factor = ASYM_WIDTH_FACTOR_LARGE   # 1.3
+                bg_right_factor = ASYM_WIDTH_FACTOR_SMALL  # 0.7
+            # 背景の総幅 = (左 + 右) × width_bg = 2.0 × width_bg
+            width_bg_expanded = int(width_bg * (bg_left_factor + bg_right_factor))
+            # 提示中央(cx1)に対する背景の描画オフセット（右が大きいほど +x 側へ）
+            self.bg_center_offset_x = int(width_bg * (bg_right_factor - bg_left_factor) / 2.0)
+            # ref は背景と左右逆 → ref倍率は背景倍率を左右入れ替えたもの（update_stimuliで使用）
+            self.ref_left_factor = bg_right_factor
+            self.ref_right_factor = bg_left_factor
+        else:
+            # monocular / Single plane 系：背景の横幅拡張は行わない（等倍）。中央配置・補正なし。
+            width_bg_expanded = width_bg
+            self.bg_center_offset_x = 0
+            self.ref_left_factor = None
+            self.ref_right_factor = None
+        # ============================================================================
+        
         if cond == "Dual plane flat":
             # コントラスト0の場合、重いFFTノイズ生成処理をスキップ
-            width_bg_expanded = int(width_bg * 2.5)
-            self.noise_base = None
             lum_noise_temp = np.full((height_bg, width_bg_expanded), L_bg, dtype=np.float32)
         else:
             if cond == "Dual plane":
-                width_bg_expanded = int(width_bg * 2.5)
                 self.noise_base = stimuli_utils.create_noise_base(width_bg_expanded, height_bg, ppd_bg, self.spatial_freq)
             else:
                 self.noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
             
             lum_noise_temp = L_bg * (1.0 + self.noise_base)
         
-        cond = self.current_block_cond["condition"]
         if cond == "Single plane + defocus simulation":
             D = abs(1/(self.distance1/100.0) - 1/(self.distance2/100.0))
             self.cached_lum_noise = stimuli_utils.apply_torch_fft_blur_luminance(
                 lum_noise_temp, D, self.current_pd_mean, ppd_fg
             )
         else:
-            self.cached_lum_noise = lum_noise_temp
-        
+            self.cached_lum_noise = lum_noise_temp  
         self.setup_contrast_matching_ui()
     
     def setup_contrast_matching_ui(self):
@@ -915,9 +943,31 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         if cond in ["Dual plane", "Dual plane flat"]:
             self.photo_test_fg = photos.get('photo_test_fg')
             self.photo_noise_bg = photos.get('photo_noise_bg')
-
-            self.canvas2.create_image(cx2, cy2 - gap_y_fg, image=self.photo_ref_fg, anchor='center', tags="stim")
-            self.canvas1.create_image(cx1, cy1 + gap_y_bg, image=self.photo_noise_bg, anchor='center', tags="stim")
+            
+            # --- ref画像の非対称化（binocular時のみ） ---
+            if self.ref_left_factor is not None:
+                width_fg_local = self.gabor_base.shape[1]
+                ref_pad_left = int(width_fg_local * (self.ref_left_factor - 0.5))
+                ref_pad_right = int(width_fg_local * (self.ref_right_factor - 0.5))
+                lum_ref_fg = L_ref * (1.0 + ref_c * self.gabor_base)
+                lum_ref_fg = np.pad(
+                    lum_ref_fg,
+                    ((0, 0), (ref_pad_left, ref_pad_right)),
+                    mode='constant',
+                    constant_values=L_ref,
+                )
+                self.photo_ref_fg = stimuli_utils.lum_to_photo(
+                    lum_ref_fg, self.fg_lums, self.fg_pixels, getattr(self, 'color_matrix', None)
+                )
+                ref_offset_x = int(width_fg_local * (self.ref_right_factor - self.ref_left_factor) / 2.0)
+            else:
+                # monocular時はオフセットなし
+                ref_offset_x = 0
+            # -----------------------------------------
+            
+            bg_offset_x = getattr(self, 'bg_center_offset_x', 0)
+            self.canvas2.create_image(cx2 + ref_offset_x, cy2 - gap_y_fg, image=self.photo_ref_fg, anchor='center', tags="stim")
+            self.canvas1.create_image(cx1 + bg_offset_x, cy1 + gap_y_bg, image=self.photo_noise_bg, anchor='center', tags="stim")
             self.canvas2.create_image(cx2, cy2 + gap_y_fg, image=self.photo_test_fg, anchor='center', tags="stim")
         else:
             self.photo_test = photos.get('photo_test')
