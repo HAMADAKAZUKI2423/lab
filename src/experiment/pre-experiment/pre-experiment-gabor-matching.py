@@ -58,10 +58,17 @@ VISUAL_ANGLE_DEG = 7.9
 NUM_REPETITIONS = 5
 SPATIAL_FREQ = 4  # Spatial frequency in cpd
 PUPIL_DIAMETER_MM = 4.0
-# Dual plane / Dual plane flat の binocular 条件における背景・ref の左右非対称化倍率
-# 各画像の「もとの横幅」に対する倍率。長い側 + 短い側 = 2.0（合計2倍）
+# Dual plane / Dual plane flat の背景(window1)の横幅拡張に使う倍率。
+#   - binocular: 長い側 + 短い側 = 1.3 + 0.7 = 2.0倍（優位眼依存の左右非対称）。
+#   - monocular: 1.3 × 2 = 2.6倍（左右対称・中央）。
 ASYM_WIDTH_FACTOR_LARGE = 1.3
 ASYM_WIDTH_FACTOR_SMALL = 0.7
+
+# Window2(canvas2)に表示する前景(ref/test)の左右対称拡張倍率。
+# 中心から片側 = 元画像幅の1.3倍 → 左右合計2.6倍。
+WIN2_HALF_WIDTH_FACTOR = 1.3
+WIN2_TOTAL_WIDTH_FACTOR = WIN2_HALF_WIDTH_FACTOR * 2  # = 2.6
+
 
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
@@ -795,10 +802,14 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         width_deg = 7.9
         height_deg = 3.95
-        width_fg = int(width_deg * ppd_fg)
+        # 元画像（1枚・約7.9deg）の前景幅。背景の非対称化はこの基準幅では使わないが、
+        # 「2.6倍前」の基準として保持する。
+        width_fg_base = int(width_deg * ppd_fg)
         height_fg = int(height_deg * ppd_fg)
-        width_bg = int(width_deg * ppd_bg)
+        width_bg = int(width_deg * ppd_bg)   # 背景(window1)の元幅。非対称化の基準（変更しない）
         height_bg = int(height_deg * ppd_bg)
+        # Window2(ref/test)はデフォルトで左右対称2.6倍幅にする（毎回paddingしない）
+        width_fg = int(width_fg_base * WIN2_TOTAL_WIDTH_FACTOR)
         
         ori = trial["orientation"]
         
@@ -807,32 +818,35 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         L_bg = self.L_bg
         
-        # === 追加: binocular の Dual plane / Dual plane flat における背景の左右非対称化 ===
+        # === 背景(window1)の横幅設定 ===
+        # Dual plane / Dual plane flat では、monocular・binocular の両方で背景の総横幅を
+        # 「合計2.0倍（= 1.3 + 0.7）」に統一する。
+        #   - binocular: 優位眼依存の左右非対称(1.3 / 0.7)オフセットを与える（従来どおり）。
+        #   - monocular: 横幅は binocular と同じだが、左右対称（中央配置・オフセット0）。
         ocularity = self.current_block_cond["ocularity"]
         dom_eye = self.participant_dominance.get()
-        apply_asym = (cond in ["Dual plane", "Dual plane flat"]) and (ocularity == "binocular")
+        is_dual = cond in ["Dual plane", "Dual plane flat"]
         
-        if apply_asym:
-            # 優位眼に応じて、提示中央から見た「背景」の左右倍率を決定
-            if dom_eye == "Right":
-                bg_left_factor = ASYM_WIDTH_FACTOR_SMALL   # 0.7
-                bg_right_factor = ASYM_WIDTH_FACTOR_LARGE  # 1.3
-            else:  # "Left"
-                bg_left_factor = ASYM_WIDTH_FACTOR_LARGE   # 1.3
-                bg_right_factor = ASYM_WIDTH_FACTOR_SMALL  # 0.7
-            # 背景の総幅 = (左 + 右) × width_bg = 2.0 × width_bg
-            width_bg_expanded = int(width_bg * (bg_left_factor + bg_right_factor))
-            # 提示中央(cx1)に対する背景の描画オフセット（右が大きいほど +x 側へ）
-            self.bg_center_offset_x = int(width_bg * (bg_right_factor - bg_left_factor) / 2.0)
-            # ref は背景と左右逆 → ref倍率は背景倍率を左右入れ替えたもの（update_stimuliで使用）
-            self.ref_left_factor = bg_right_factor
-            self.ref_right_factor = bg_left_factor
+        if is_dual:
+            if ocularity == "binocular":
+                # 背景は合計2.0倍（1.3 + 0.7）・優位眼依存の非対称（従来どおり）
+                width_bg_expanded = int(width_bg * (ASYM_WIDTH_FACTOR_LARGE + ASYM_WIDTH_FACTOR_SMALL))  # = 2.0
+                if dom_eye == "Right":
+                    bg_left_factor = ASYM_WIDTH_FACTOR_SMALL   # 0.7
+                    bg_right_factor = ASYM_WIDTH_FACTOR_LARGE  # 1.3
+                else:  # "Left"
+                    bg_left_factor = ASYM_WIDTH_FACTOR_LARGE   # 1.3
+                    bg_right_factor = ASYM_WIDTH_FACTOR_SMALL  # 0.7
+                # 提示中央(cx1)に対する背景の描画オフセット（右が大きいほど +x 側へ）
+                self.bg_center_offset_x = int(width_bg * (bg_right_factor - bg_left_factor) / 2.0)
+            else:
+                # monocular：左右とも1.3倍＝合計2.6倍・左右対称（中央配置）
+                width_bg_expanded = int(width_bg * (ASYM_WIDTH_FACTOR_LARGE * 2))  # = 2.6
+                self.bg_center_offset_x = 0
         else:
-            # monocular / Single plane 系：背景の横幅拡張は行わない（等倍）。中央配置・補正なし。
+            # Single plane 系：window1 背景は単独表示しない（等倍・中央）
             width_bg_expanded = width_bg
             self.bg_center_offset_x = 0
-            self.ref_left_factor = None
-            self.ref_right_factor = None
         # ============================================================================
         
         if cond == "Dual plane flat":
@@ -943,28 +957,11 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         if cond in ["Dual plane", "Dual plane flat"]:
             self.photo_test_fg = photos.get('photo_test_fg')
             self.photo_noise_bg = photos.get('photo_noise_bg')
-            
-            # --- ref画像の非対称化（binocular時のみ） ---
-            if self.ref_left_factor is not None:
-                width_fg_local = self.gabor_base.shape[1]
-                ref_pad_left = int(width_fg_local * (self.ref_left_factor - 0.5))
-                ref_pad_right = int(width_fg_local * (self.ref_right_factor - 0.5))
-                lum_ref_fg = L_ref * (1.0 + ref_c * self.gabor_base)
-                lum_ref_fg = np.pad(
-                    lum_ref_fg,
-                    ((0, 0), (ref_pad_left, ref_pad_right)),
-                    mode='constant',
-                    constant_values=L_ref,
-                )
-                self.photo_ref_fg = stimuli_utils.lum_to_photo(
-                    lum_ref_fg, self.fg_lums, self.fg_pixels, getattr(self, 'color_matrix', None)
-                )
-                ref_offset_x = int(width_fg_local * (self.ref_right_factor - self.ref_left_factor) / 2.0)
-            else:
-                # monocular時はオフセットなし
-                ref_offset_x = 0
-            # -----------------------------------------
-            
+
+            # ref/test は width_fg(=2.6倍) で生成済みのため、左右対称・中央配置でよい。
+            # 旧実装では binocular 時に ref のみ非対称paddingしていたが、本変更で廃止する。
+            # 背景(window1)の「合計2倍・非対称」は bg_center_offset_x として引き続き維持する。
+            ref_offset_x = 0
             bg_offset_x = getattr(self, 'bg_center_offset_x', 0)
             self.canvas2.create_image(cx2 + ref_offset_x, cy2 - gap_y_fg, image=self.photo_ref_fg, anchor='center', tags="stim")
             self.canvas1.create_image(cx1 + bg_offset_x, cy1 + gap_y_bg, image=self.photo_noise_bg, anchor='center', tags="stim")

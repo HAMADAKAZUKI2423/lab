@@ -173,6 +173,9 @@ def report(channel, M, rgb_lin, XYZ_meas, names):
 report("BGT(T')", T_prime, rgb_T, XYZ_T, names_T)
 report("FGR(R')", R_prime, rgb_R, XYZ_R, names_R)
 
+# フィッティングした行列
+# [[ 0.385676 -0.029594  0.007298] [ 0.002786  0.485416 -0.011852] [ 0.005025  0.003184  0.601995]]
+
 # =============================================================
 # 追加処理: 実測の透過T と シミュレート反射R の色差 (Yxy入力)
 #   W, R, G, B, C, M, Y, Gray の 8 色について
