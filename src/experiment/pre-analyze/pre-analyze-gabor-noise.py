@@ -16,31 +16,23 @@ lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 DATA_BASE_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-gabor")
 
 parser = argparse.ArgumentParser(description='Analyze Gabor and Noise experiment results.')
-parser.add_argument('target_dir', nargs='?', help='Path to the target directory')
+parser.add_argument('target_dirs', nargs='+', help='Paths to the target directories (e.g. 0_20260413 0_20260418)')
 args = parser.parse_args()
 
-if args.target_dir:
-    TARGET_DIR = args.target_dir
-    if not os.path.exists(TARGET_DIR):
-        print(f"指定されたディレクトリが見つかりません: {TARGET_DIR}")
-        exit()
-else:
-    # 最新のフォルダを検索
-    if not os.path.exists(DATA_BASE_DIR):
-        print(f"データディレクトリが見つかりません: {DATA_BASE_DIR}")
-        print("ヒント: ディレクトリ名が異なる場合は、スクリプト内の DATA_BASE_DIR を修正してください。")
-        exit()
+TARGET_DIRS = []
+for d in args.target_dirs:
+    if os.path.exists(d):
+        TARGET_DIRS.append(d)
+    else:
+        d_path = os.path.join(DATA_BASE_DIR, d)
+        if os.path.exists(d_path):
+            TARGET_DIRS.append(d_path)
+        else:
+            print(f"指定されたディレクトリが見つかりません: {d}")
+            exit()
 
-    subdirs = [d for d in glob.glob(os.path.join(DATA_BASE_DIR, "*")) if os.path.isdir(d)]
-    if not subdirs:
-        print(f"データフォルダが見つかりません: {DATA_BASE_DIR}")
-        exit()
-
-    # 最新のフォルダを取得 (更新日時順)
-    TARGET_DIR = max(subdirs, key=os.path.getmtime)
-
-target_folder_name = os.path.basename(os.path.normpath(TARGET_DIR))
-print(f"解析対象フォルダ: {TARGET_DIR}")
+target_folder_name = "_".join([os.path.basename(os.path.normpath(d)) for d in TARGET_DIRS])
+print(f"解析対象フォルダ: {TARGET_DIRS}")
 
 # 出力先ディレクトリの設定
 OUTPUT_DIR = os.path.join(lab_root, "results", "figures", "pre-experiment-gabor-noise", target_folder_name)
@@ -48,27 +40,26 @@ if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 print(f"結果出力先: {OUTPUT_DIR}")
 
-# フォルダ内のすべてのCSVファイルを取得
-file_paths = glob.glob(os.path.join(TARGET_DIR, '*.csv'))
-
-if not file_paths:
-    print(f"解析対象のCSVファイルがフォルダ '{TARGET_DIR}' に見つかりませんでした。")
-    exit()
-
+# 対象フォルダ内のすべてのCSVファイルを取得
 all_data = []
+for target_dir in TARGET_DIRS:
+    file_paths = glob.glob(os.path.join(target_dir, '*.csv'))
+    if not file_paths:
+        print(f"警告: フォルダ '{target_dir}' にCSVファイルが見つかりませんでした。")
+        continue
 
-for file in file_paths:
-    df = pd.read_csv(file, encoding='utf-8')
+    for file in file_paths:
+        df = pd.read_csv(file, encoding='utf-8')
 
-    if 'Viewing_Condition' not in df.columns:
-        df['Viewing_Condition'] = 'Binocular'
+        if 'Viewing_Condition' not in df.columns:
+            df['Viewing_Condition'] = 'Binocular'
 
-    d1 = df['Distance1(cm)'].iloc[0]
-    d2 = df['Distance2(cm)'].iloc[0]
-    df['distance'] = f"{d1}-{d2} cm"
-    print(f"ファイル '{os.path.basename(file)}' を読み込みました。距離: {d1} cm - {d2} cm")
-    
-    all_data.append(df)
+        d1 = df['Distance1(cm)'].iloc[0]
+        d2 = df['Distance2(cm)'].iloc[0]
+        df['distance'] = f"{d1}-{d2} cm"
+        print(f"ファイル '{os.path.basename(file)}' を読み込みました。距離: {d1} cm - {d2} cm")
+        
+        all_data.append(df)
 
 if not all_data:
     print("No data to process.")
@@ -120,138 +111,29 @@ if final_df.empty:
 final_df['fg_cpd'] = final_df['fg_cpd'].astype(float)
 final_df['bg_cpd'] = final_df['bg_cpd'].astype(float)
 
-# --- 集計 ---
-# グルーピング: 距離, 背景空間周波数
-# グルーピング: 前景空間周波数, 距離, 背景空間周波数
-# 他の条件（輝度、コントラスト）はすべて平均してまとめる
-summary_df = final_df.groupby(['fg_cpd', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
+# --- グラフ生成 ---
+print("\n--- Generating heatmaps ---")
 
-# 距離のソート順序指定
-custom_order_base = ['50-70 cm', '81-150 cm', '50-100 cm', '60-150 cm']
-found_distances = summary_df['distance'].unique().tolist()
-custom_order = [d for d in custom_order_base if d in found_distances]
-for d in found_distances:
-    if d not in custom_order:
-        custom_order.append(d)
+custom_order = ['50-70 cm', '81-150 cm', '50-100 cm', '60-150 cm']
+cpd_order = [2.0, 4.0, 6.0, 8.0]
 
-try:
-    summary_df['distance'] = pd.Categorical(summary_df['distance'], categories=custom_order, ordered=True)
-except ValueError:
-    pass
+view_conds = ['Binocular', 'Monocular']
+# データに存在する輝度の組み合わせを取得
+lum_combinations = final_df[['bg_lum', 'fg_lum']].drop_duplicates().sort_values(by=['bg_lum', 'fg_lum']).values.tolist()
 
-# --- 要望1: 単眼/複眼 x 背景コントラストごとのヒートマップ ---
-print("\n--- Generating heatmaps by Viewing Condition and Background Contrast ---")
-summary_view_contrast = final_df.groupby(['Viewing_Condition', 'bg_contrast', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
-try:
-    summary_view_contrast['distance'] = pd.Categorical(summary_view_contrast['distance'], categories=custom_order, ordered=True)
-except ValueError:
-    pass
-
-unique_conditions = summary_view_contrast[['Viewing_Condition', 'bg_contrast']].drop_duplicates().sort_values(by=['Viewing_Condition', 'bg_contrast'])
-
-for idx, row in unique_conditions.iterrows():
-    view_cond = row['Viewing_Condition']
-    bg_contrast = row['bg_contrast']
-    
-    plot_df = summary_view_contrast[(summary_view_contrast['Viewing_Condition'] == view_cond) & (summary_view_contrast['bg_contrast'] == bg_contrast)]
-    if plot_df.empty:
-        continue
-    
-    pivot_table = plot_df.pivot(index='bg_cpd', columns='distance', values='Score')
-    pivot_table.sort_index(ascending=True, inplace=True)
-    pivot_table = pivot_table.reindex(columns=custom_order)
-
-    fig, ax = plt.subplots(figsize=(8, 6))
-    im = ax.imshow(pivot_table, cmap='coolwarm', vmin=1, vmax=5, origin='lower', aspect='auto')
-
-    for i in range(len(pivot_table.index)):
-        for j in range(len(pivot_table.columns)):
-            val = pivot_table.iloc[i, j]
-            if not np.isnan(val):
-                text_color = "white" if (val < 2.5 or val > 4.0) else "black"
-                ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=10)
-
-    ax.set_xticks(np.arange(len(pivot_table.columns)))
-    ax.set_yticks(np.arange(len(pivot_table.index)))
-    ax.set_xticklabels(pivot_table.columns)
-    ax.set_yticklabels(pivot_table.index)
-    ax.set_xlabel('Distance')
-    ax.set_ylabel('Background Spatial Frequency (cpd)')
-    ax.set_title(f'Average Score Heatmap\n({view_cond}, BG Contrast: {bg_contrast})', fontsize=14)
-    cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('Average Score')
-    plt.tight_layout()
-
-    filename = f'heatmap_score_view_{view_cond}_bgcontrast_{bg_contrast}.png'
-    plt.savefig(os.path.join(OUTPUT_DIR, filename))
-    print(f"グラフ保存: {filename}")
-    plt.close(fig)
-
-# --- 要望2: 輝度組み合わせごとのヒートマップ ---
-print("\n--- Generating heatmaps by Luminance Combination and Viewing Condition ---")
-summary_lum = final_df.groupby(['Viewing_Condition', 'fg_lum', 'bg_lum', 'distance', 'bg_cpd'])['Score'].mean().reset_index()
-try:
-    summary_lum['distance'] = pd.Categorical(summary_lum['distance'], categories=custom_order, ordered=True)
-except ValueError:
-    pass
-
-unique_lum_conditions = summary_lum[['Viewing_Condition', 'fg_lum', 'bg_lum']].drop_duplicates().sort_values(by=['Viewing_Condition', 'fg_lum', 'bg_lum'])
-
-for idx, row in unique_lum_conditions.iterrows():
-    view_cond = row['Viewing_Condition']
-    fglum = row['fg_lum']
-    bglum = row['bg_lum']
-    
-    plot_df = summary_lum[(summary_lum['Viewing_Condition'] == view_cond) & (summary_lum['fg_lum'] == fglum) & (summary_lum['bg_lum'] == bglum)]
-    pivot_table = plot_df.pivot(index='bg_cpd', columns='distance', values='Score')
-    pivot_table.sort_index(ascending=True, inplace=True)
-    pivot_table = pivot_table.reindex(columns=custom_order)
-    
-    fig, ax = plt.subplots(figsize=(8, 6))
-    im = ax.imshow(pivot_table, cmap='coolwarm', vmin=1, vmax=5, origin='lower', aspect='auto')
-    
-    for i in range(len(pivot_table.index)):
-        for j in range(len(pivot_table.columns)):
-            val = pivot_table.iloc[i, j]
-            if not np.isnan(val):
-                text_color = "white" if (val < 2.5 or val > 4.0) else "black"
-                ax.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color, fontsize=10)
-    
-    ax.set_xticks(np.arange(len(pivot_table.columns)))
-    ax.set_yticks(np.arange(len(pivot_table.index)))
-    ax.set_xticklabels(pivot_table.columns)
-    ax.set_yticklabels(pivot_table.index)
-    ax.set_xlabel('Distance')
-    ax.set_ylabel('Background Spatial Frequency (cpd)')
-    ax.set_title(f'Average Score Heatmap\n({view_cond}, FG: {fglum}nit, BG: {bglum}nit)', fontsize=14)
-    cbar = plt.colorbar(im, ax=ax)
-    cbar.set_label('Average Score')
-    plt.tight_layout()
-    
-    filename = f'heatmap_score_view_{view_cond}_lum_fg{fglum}_bg{bglum}.png'
-    plt.savefig(os.path.join(OUTPUT_DIR, filename))
-    print(f"グラフ保存: {filename}")
-    plt.close(fig)
-
-# --- 新しいグラフ生成ロジック ---
-print("\n--- Generating new heatmaps based on user request ---")
-
-# X軸用の輝度組み合わせタプルを作成 (bg_lum, fg_lum)
-final_df['lum_combination'] = list(zip(final_df['bg_lum'], final_df['fg_lum']))
-
-# Y軸用の空間周波数とOcularity(Viewing_Condition)の組み合わせタプルを作成
-final_df['cpd_view_combination'] = list(zip(final_df['bg_cpd'], final_df['Viewing_Condition']))
-
-unique_distances = final_df['distance'].unique()
-unique_bg_contrasts = final_df['bg_contrast'].unique()
-
-# グラフを生成する条件のループ (距離 x 背景コントラスト)
-for dist in unique_distances:
-    for bg_c in unique_bg_contrasts:
+for view_cond in view_conds:
+    for bg_lum, fg_lum in lum_combinations:
+        subset_df_0 = final_df[(final_df['Viewing_Condition'] == view_cond) & 
+                               (final_df['bg_lum'] == bg_lum) & 
+                               (final_df['fg_lum'] == fg_lum) &
+                               (final_df['bg_contrast'] == 0.0)]
         
-        # 現在の条件でデータをフィルタリング
-        subset_df = final_df[(final_df['distance'] == dist) & (final_df['bg_contrast'] == bg_c)]
-        if subset_df.empty:
+        subset_df_1 = final_df[(final_df['Viewing_Condition'] == view_cond) & 
+                               (final_df['bg_lum'] == bg_lum) & 
+                               (final_df['fg_lum'] == fg_lum) &
+                               (final_df['bg_contrast'] == 1.0)]
+        
+        if subset_df_0.empty or subset_df_1.empty:
             continue
 
         # 軸の組み合わせごとにスコアの平均を計算
@@ -293,35 +175,24 @@ for dist in unique_distances:
 
         if pivot_table.empty:
             continue
-
-        # ヒートマップの描画
-        fig, ax = plt.subplots(figsize=(10, 8))
-        if is_diff:
-            im = ax.imshow(pivot_table, cmap='coolwarm', vmin=-3, vmax=3, aspect='auto')
-        else:
-            im = ax.imshow(pivot_table, cmap='coolwarm', vmin=1, vmax=5, aspect='auto')
-
-        # 軸ラベルの設定
+        max_int = int(np.ceil(max_abs_val))
+        if max_int == 0:
+            max_int = 1
+            
+        fig, ax = plt.subplots(figsize=(8, 6))
+        im = ax.imshow(pivot_table, cmap='coolwarm', vmin=-2, vmax=2, origin='lower', aspect='auto')
+        
         ax.set_xticks(np.arange(len(pivot_table.columns)))
         ax.set_yticks(np.arange(len(pivot_table.index)))
-
-        # X軸ラベル: (bg_lum, fg_lum)
-        x_labels = [f"BG:{int(bg)}, FG:{int(fg)}" for bg, fg in pivot_table.columns]
-        ax.set_xticklabels(x_labels, rotation=45, ha="right")
+        ax.set_xticklabels(pivot_table.columns)
+        ax.set_yticklabels([f"{int(c)}" for c in pivot_table.index])
         
-        # Y軸ラベル: (cpd, Viewing_Condition)
-        y_labels = [f"{int(cpd)}cpd, {view}" for cpd, view in pivot_table.index]
-        ax.set_yticklabels(y_labels)
-
-        ax.set_xlabel('Luminance Combination (cd/m^2)')
-        ax.set_ylabel('Condition (Spatial Freq, Viewing Condition)')
+        ax.set_xlabel('Distance')
+        ax.set_ylabel('Spatial Frequency (cpd)')
         
-        if is_diff:
-            title = f'Average Score Difference (BG 0.0 - 1.0)\nDistance: {dist}'
-        else:
-            title = f'Average Score Heatmap\nDistance: {dist}, BG Contrast: {bg_c}'
-        ax.set_title(title, fontsize=14)
-
+        #title = f'Score Difference (Contrast 0.0 - 1.0)\n({view_cond}, BG: {bg_lum}nit, FG: {fg_lum}nit)'
+        #ax.set_title(title, fontsize=14)
+        
         # 各セルに数値を書き込む
         for i in range(len(pivot_table.index)):
             for j in range(len(pivot_table.columns)):
@@ -340,11 +211,8 @@ for dist in unique_distances:
                     
 >>>>>>> c81d5b0 (paper: 輪講参照論文の整理)
         cbar = plt.colorbar(im, ax=ax)
-        if is_diff:
-            cbar.set_label('Score Difference (0.0 - 1.0)')
-        else:
-            cbar.set_label('Average Score')
-
+        cbar.set_label('Score Difference')
+        
         plt.tight_layout()
         
 <<<<<<< HEAD
