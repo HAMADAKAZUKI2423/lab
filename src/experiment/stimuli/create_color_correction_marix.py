@@ -28,7 +28,7 @@ PATCHES = [
 # ---- パッチごとの重み（輝度が最重要なら効かせたいパッチを大きく）----
 # 例: 混色・白を重めにして劣加法をしっかり吸わせる
 WEIGHTS = {
-    "R": 1.0, "G": 2.0, "B": 3.0, "W": 2.0, "semiR": 1.0, "semiG": 2.0, "semiB": 3.0, "Gray": 2.0,
+    "R": 1.0, "G": 1.0, "B": 1.0, "W": 1.0, "semiR": 1.0, "semiG": 1.0, "semiB": 1.0, "Gray": 1.0,
 }
 
 # ---- sRGB -> 線形RGB ----
@@ -48,6 +48,62 @@ def Yxy_to_XYZ(row):
     Z = ((1.0 - x - y) / y) * Y
     return np.array([X, Y, Z])
 
+# ============================================================
+# 実測EOTF g の構築（ページ「階調ランプコード」より移植）
+#   背景パス(T·Db)用 g_b、前景パス(R·Df)用 g_f、逆写像 g_f_inv
+#   画素値(0-1) <-> 正規化線形(0-1)、g(1)=1 に正規化
+# ============================================================
+CHANNELS = ("R", "G", "B")
+
+RAMP_BG = {  # 背景パス (T·Db) の階調ランプ  (pixel, Y, x, y)
+    "R": [(255,7.5,0.6235,0.3300),(224,6.0,0.6183,0.3278),(192,4.4,0.6173,0.3245),
+          (160,3.0,0.6049,0.3191),(128,1.9,0.5671,0.3127),(96,1.2,0.5391,0.3032),
+          (64,0.6,0.4342,0.2782),(32,0.3,0.2983,0.2362),(0,0.2,0.2717,0.2359)],
+    "G": [(255,32.6,0.3021,0.6246),(224,25.5,0.3019,0.6202),(192,18.8,0.3015,0.6154),
+          (160,12.6,0.2986,0.6140),(128,7.9,0.2971,0.5993),(96,4.3,0.3010,0.5833),
+          (64,2.0,0.2945,0.5139),(32,0.6,0.2620,0.3997),(0,0.2,0.2576,0.2164)],
+    "B": [(255,3.5,0.1570,0.0456),(224,2.8,0.1572,0.0459),(192,2.1,0.1536,0.0469),
+          (160,1.6,0.1562,0.0498),(128,1.0,0.1558,0.0521),(96,0.7,0.1599,0.0634),
+          (64,0.4,0.1871,0.0850),(32,0.3,0.2187,0.1561),(0,0.2,0.2667,0.1960)],
+}
+RAMP_FG = {  # 前景パス (R·Df) の階調ランプ  (pixel, Y, x, y)
+    "R": [(255,20.4,0.6436,0.3312),(224,16.0,0.6411,0.3311),(192,11.7,0.6407,0.3309),
+          (160,8.0,0.6271,0.3291),(128,5.0,0.6258,0.3263),(96,2.8,0.6216,0.3179),
+          (64,1.3,0.5439,0.3155),(32,0.5,0.3936,0.3120),(0,0.3,0.2753,0.2479)],
+    "G": [(255,74.1,0.3181,0.6227),(224,57.9,0.3186,0.6216),(192,42.1,0.3179,0.6226),
+          (160,28.5,0.3199,0.6181),(128,17.7,0.3134,0.6154),(96,9.4,0.3114,0.6038),
+          (64,4.1,0.2811,0.5819),(32,1.1,0.2856,0.4658),(0,0.2,0.3005,0.1945)],
+    "B": [(255,7.2,0.1528,0.0519),(224,5.7,0.1532,0.0519),(192,4.3,0.1536,0.0530),
+          (160,3.0,0.1564,0.0529),(128,1.9,0.1552,0.0550),(96,1.1,0.1624,0.0601),
+          (64,0.6,0.1714,0.0739),(32,0.3,0.1813,0.1073),(0,0.3,0.2485,0.2818)],
+}
+
+def build_eotf(ramp_channel):
+    """1チャネルのランプ [(pixel,Y,x,y),...] -> 正規化EOTF。g(1)=1。未計測(None)はスキップ。"""
+    pts = [(p[0] / 255.0, p[1]) for p in ramp_channel if p[1] is not None]
+    pts.sort(key=lambda t: t[0])
+    xs = np.array([p[0] for p in pts], dtype=float)
+    ys = np.array([p[1] for p in pts], dtype=float)
+    y_full = ys[np.argmax(xs)]           # フルスケール輝度
+    yn = ys / y_full                     # g(1)=1 へ正規化
+    def g(v):     return np.interp(np.asarray(v, dtype=float), xs, yn)   # 画素値 -> 正規化線形
+    def g_inv(y): return np.interp(np.asarray(y, dtype=float), yn, xs)   # 正規化線形 -> 画素値
+    return g, g_inv
+
+_gb = {c: build_eotf(RAMP_BG[c]) for c in CHANNELS}
+_gf = {c: build_eotf(RAMP_FG[c]) for c in CHANNELS}
+
+def _apply(funcs, arr, idx):
+    arr = np.asarray(arr, dtype=float)
+    out = np.empty_like(arr)
+    for i, c in enumerate(CHANNELS):
+        out[..., i] = funcs[c][idx](arr[..., i])
+    return out
+
+g_b     = lambda v: _apply(_gb, v, 0)   # 背景画素値 -> 正規化線形
+g_f     = lambda v: _apply(_gf, v, 0)   # 前景画素値 -> 正規化線形
+g_f_inv = lambda l: _apply(_gf, l, 1)   # 正規化線形 -> 前景画素値
+
 def collect(channel):
     """channel='BGT' or 'FGR' の有効パッチを (rgb_lin, XYZ, w, names) で返す"""
     idx = 2 if channel == "BGT" else 3
@@ -56,7 +112,8 @@ def collect(channel):
         meas = p[idx]
         if meas is None or any(v is None for v in meas):
             continue  # 未測定はスキップ
-        rgb_lin.append(srgb_to_linear(p[1]))
+        lin = g_b(p[1]) if channel == "BGT" else g_f(p[1])   # 背景=g_b / 前景=g_f で線形化
+        rgb_lin.append(lin)
         XYZ.append(Yxy_to_XYZ(meas))
         w.append(WEIGHTS.get(p[0], 1.0))
         names.append(p[0])
@@ -121,11 +178,11 @@ base_srgb = np.array([
 labels = ["R", "G", "B", "White", "Gray", "Black", "Cyan", "Magenta", "Yellow", "semiR", "semiG", "semiB"]
 
 # --- sRGB -> 線形 ---
-base_lin = srgb_to_linear(base_srgb)         # (9,3) 線形RGB
+base_lin = g_b(base_srgb)                     # ← 実測 g_b に置換（背景画素値 -> 正規化線形）
 
 # --- 補正後の前景駆動値 (RGB->RGB)【主成果物】---
-c_lin = (C @ base_lin.T).T                   # 前景に送る線形RGB
-c_colors = linear_to_srgb(c_lin)             # 保存用 sRGB
+c_lin = (C @ base_lin.T).T                    # v_fg = g_f^{-1}(C_lin · g_b(v)) の内側
+c_colors = g_f_inv(c_lin)                     # ← 実測 g_f^{-1} に置換（正規化線形 -> 前景画素値）
 
 # --- 「見え」(XYZ) の計算 ---
 trans_xyz = (T_prime @ base_lin.T).T        # 透過背景の見え (ターゲット)
@@ -180,9 +237,9 @@ PATCH_GAMMA = 512
 def correct_srgb(rgb_srgb):
     """本編と同一の補正: sRGB(0-1) -> 線形 -> C -> sRGB(0-1)。
        C はチャンネルを混ぜるので、純色入力でも出力は混色になる(それが投影値)。"""
-    lin = srgb_to_linear(np.asarray(rgb_srgb, dtype=float))
+    lin = g_b(np.asarray(rgb_srgb, dtype=float))
     c_lin_local = (C @ np.atleast_2d(lin).T).T
-    return linear_to_srgb(c_lin_local).reshape(np.asarray(rgb_srgb).shape)
+    return g_f_inv(c_lin_local).reshape(np.asarray(rgb_srgb).shape)
 
 gamma_paths = []
 for _ch in ("R", "G", "B"):
