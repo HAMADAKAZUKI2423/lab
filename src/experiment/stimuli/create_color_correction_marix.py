@@ -426,6 +426,7 @@ COMPARE = [
     ("M",     (11.3, 0.2675, 0.1114), (12.2, 0.2682, 0.1182)),
     ("Y",     (41.7, 0.4049, 0.5376), (42.6, 0.4084, 0.5424)),
     ("Gray",  (11.6, 0.2783, 0.2849), (11.2, 0.2727, 0.2829)),
+    
 ]
 
 # ---- 白色点の扱い ----
@@ -544,3 +545,166 @@ if dE00_list:
     avg = sum(d for _, d in dE00_list) / len(dE00_list)
     worst = max(dE00_list, key=lambda x: x[1])
     print(f"\n平均 ΔE00 = {avg:.3f} / 最大 ΔE00 = {worst[1]:.3f} ({worst[0]})")
+
+    # =============================================================
+# 追加: 輝度2倍バージョン（色味そのまま・最大輝度を2倍に）
+#   原理: R'は線形 → c_lin をk倍すると反射XYZもk倍（色度不変・輝度Yだけk倍）。
+#   「XYZ空間で2倍」= c_lin を2倍 = C を 2C にする、と等価。
+#   注意: k倍後に正規化線形が1.0(=画素値255)を超えるchは前景の物理上限で飽和し、
+#         そこから先は色味が崩れる。色味を保てる上限 k_max も併記。
+# =============================================================
+LUM_GAIN = 2.0
+
+c_lin_boost = LUM_GAIN * c_lin                          # XYZ空間で2倍（線形空間で等価）
+eps = 1e-12
+k_max   = 1.0 / np.maximum(np.max(c_lin, axis=1), eps)  # 各色で色味を保てる最大ゲイン
+clipped = np.max(c_lin_boost, axis=1) > 1.0             # 2倍で飽和＝色ずれする色
+
+c_lin_boost_clip = np.clip(c_lin_boost, 0.0, 1.0)
+c_colors_x2 = g_f_inv(c_lin_boost_clip)                 # 2倍版の前景画素値【成果物】
+refl_xyz_x2 = (R_prime @ c_lin_boost_clip.T).T          # クランプ後に実際に出る反射XYZ
+
+print("\n==== 輝度2倍版（色味固定）====")
+print(f"{'color':>8} {'Y_x1':>7} {'狙2x':>7} {'実x2':>7} {'k_max':>6} {'飽和':>4}")
+for i, label in enumerate(labels):
+    Y1 = refl_xyz[i, 1]
+    print(f"{label:>8} {Y1:7.2f} {2*Y1:7.2f} {refl_xyz_x2[i,1]:7.2f} "
+          f"{k_max[i]:6.2f} {'*' if clipped[i] else '':>4}")
+
+# 2倍版の前景画像を保存（suffix: 5_corrected_fg_x2）
+for idx, label in enumerate(labels):
+    patch = np.tile(np.clip(c_colors_x2[idx], 0.0, 1.0), (PATCH, PATCH, 1))
+    plt.imsave(os.path.join(SAVE_DIR, f"{label}_5_corrected_fg_x2.png"), patch)
+print("[保存] 2倍版 (5_corrected_fg_x2) を出力しました")
+print("k_max<2.0 の色は物理上限に達し、2倍まで到達できず色がずれます")
+
+# =============================================================
+# 追加: White を「指定した輝度」で出す（LUT一度だけ版・色味は背景透過の白）
+#   ・前景(反射)で狙い輝度を出す画像  + 検証用に背景(透過)で狙い輝度になる画像
+#   ・この範囲の出力は専用フォルダ RANGE_DIR にまとめて保存
+# =============================================================
+RANGE_DIR = os.path.join(SAVE_DIR, "white_lum_range")   # ★この範囲の出力先(専用フォルダ)
+os.makedirs(RANGE_DIR, exist_ok=True)
+
+# ---- 前景(反射)側: Y -> 前景画素値 の1D LUT を一度だけ構築（g_f_inv はここのみ）----
+w_idx       = labels.index("White")
+c_lin_white = c_lin[w_idx]                 # 白の補正後 線形駆動（背景白の色度を保持）
+Y_white_now = refl_xyz[w_idx, 1]           # 現状で出る白輝度(反射, ≒背景透過白)
+k_max_white = 1.0 / np.max(c_lin_white)    # 色味を保てる最大ゲイン
+Y_white_max = Y_white_now * k_max_white    # 反射で出せる白輝度の上限
+
+LUT_N   = 1024
+Y_grid  = np.linspace(0.0, Y_white_max, LUT_N)
+c_grid  = np.clip((Y_grid[:, None] / Y_white_now) * c_lin_white[None, :], 0.0, 1.0)
+px_grid = g_f_inv(c_grid)                                            # (LUT_N, 3)
+
+def _lut_lookup(Y):
+    """狙い輝度(スカラー/配列) -> 前景画素値。正規格子なので直接補間。"""
+    Yc  = np.clip(np.asarray(Y, dtype=float), 0.0, Y_white_max)
+    idx = Yc / Y_white_max * (LUT_N - 1)
+    i0  = np.floor(idx).astype(int)
+    i1  = np.minimum(i0 + 1, LUT_N - 1)
+    w   = (idx - i0)[..., None]
+    return px_grid[i0] * (1.0 - w) + px_grid[i1] * w
+
+def white_drive_for_luminance(Y_target, save=True, verbose=True):
+    """指定輝度 Y_target の白を出す【前景】画素値を LUT から取得。"""
+    feasible = Y_target <= Y_white_max + 1e-9
+    Y_eff    = min(float(Y_target), Y_white_max)
+    px       = _lut_lookup(Y_eff)
+    if verbose:
+        print(f"[FG 反射] 狙い={Y_target:6.2f}  実効={Y_eff:6.2f}  "
+              f"{'OK' if feasible else '★上限超過→クランプ'}")
+        print(f"          画素値(0-1)={np.round(px,4)}  (0-255)={np.round(px*255).astype(int)}")
+    if save:
+        patch = np.tile(px, (PATCH, PATCH, 1))
+        plt.imsave(os.path.join(RANGE_DIR, f"FG_White_Y{int(round(Y_target))}.png"), patch)
+    return px, Y_eff, feasible
+
+def white_image_from_luminance(Ymap):
+    """狙い輝度マップ Ymap(H,W) -> 前景画像(H,W,3)。"""
+    return _lut_lookup(Ymap)
+
+# ---- 背景(透過)側: 検証用に「透過後に狙い輝度になる」背景画像を出力 ----
+g_b_inv       = lambda l: _apply(_gb, l, 1)          # 正規化線形 -> 背景画素値(逆EOTF)
+base_lin_white = base_lin[w_idx]                     # = g_b([1,1,1]) = [1,1,1]
+Y_bg_white_now = trans_xyz[w_idx, 1]                 # 現状の透過白輝度(背景の白上限)
+
+def bg_image_for_transmitted_luminance(Y_target, save=True, verbose=True):
+    """透過後に Y_target になる【背景】白画素値を返す。色度は背景白のまま。"""
+    feasible = Y_target <= Y_bg_white_now + 1e-9
+    Y_eff    = min(float(Y_target), Y_bg_white_now)  # 背景は自分の白を超えられない
+    c_lin_bg = np.clip((Y_eff / Y_bg_white_now) * base_lin_white, 0.0, 1.0)
+    px       = g_b_inv(c_lin_bg)                     # 背景画素値(0-1)
+    if verbose:
+        print(f"[BG 透過] 狙い={Y_target:6.2f}  実効={Y_eff:6.2f}  "
+              f"{'OK' if feasible else '★背景上限超過→クランプ'}")
+        print(f"          画素値(0-1)={np.round(px,4)}  (0-255)={np.round(px*255).astype(int)}")
+    if save:
+        patch = np.tile(px, (PATCH, PATCH, 1))
+        plt.imsave(os.path.join(RANGE_DIR, f"BG_White_Y{int(round(Y_target))}.png"), patch)
+    return px, Y_eff, feasible
+
+print("\n==== White 指定輝度モード（LUT一度だけ版）====")
+print(f"保存先          RANGE_DIR    = {RANGE_DIR}")
+print(f"現状の白輝度    Y_white_now  = {Y_white_now:6.2f} cd/m^2 (反射)")
+print(f"反射の出せる上限 Y_white_max = {Y_white_max:6.2f} cd/m^2 (k_max={k_max_white:.3f})")
+print(f"透過白の上限    Y_bg_white   = {Y_bg_white_now:6.2f} cd/m^2 (背景)")
+print(f"LUT: {LUT_N} 点（g_f_inv の評価は構築時のみ）")
+
+# --- 前景: 好きな輝度を指定（上限 Y_white_max 以下）---
+print("\n-- 前景(反射)画像 --")
+for Yt in [15.0, 30.0, 45.0, 60.0]:
+    white_drive_for_luminance(Yt)
+
+# --- 背景: 検証用に透過後 15, 30 になる画像 ---
+print("\n-- 背景(透過)検証画像 --")
+for Yt in [15.0, 30.0]:
+    bg_image_for_transmitted_luminance(Yt)
+
+# =============================================================
+# 追加: 加算(Add) vs シミュレート(sim) の色差・輝度差
+#   White を対象に、狙い輝度ごとに Add と sim の Yxy を比較。
+#   出力: ΔE00, ΔL*, Δa*, Δb*, ΔY   （符号は sim - add）
+#   ※Lab の基準白は既存 WHITE_XYZ を流用（add/sim 共通）。別の白にするなら差し替え。
+# =============================================================
+# name(狙い輝度), Add(Y,x,y), sim(Y,x,y)
+ADDSIM = [
+    ("Y15", (15.0, 0.2894, 0.3075), (14.9, 0.2866, 0.3071)),
+    ("Y30", (29.4, 0.2862, 0.3070), (31.1, 0.2869, 0.3035)),
+    ("Y45", (45.1, 0.2861, 0.3038), (46.2, 0.2842, 0.3000)),
+    ("Y60", (59.9, 0.2837, 0.2985), (61.4, 0.2838, 0.2989)),
+]
+
+ADDSIM_WHITE = WHITE_XYZ   # Lab 基準白（Yw=100スケール）。必要なら実測白に変更可。
+
+print("\n==== Add(加算) vs sim(シミュレート) 色差・輝度差  [符号 = sim - add] ====")
+print(f"{'target':>7} {'ΔE00':>8} {'ΔL*':>8} {'Δa*':>8} {'Δb*':>8} "
+      f"{'ΔY':>7} {'Y_add':>7} {'Y_sim':>7}")
+
+_addsim_dE = []
+for name, add_row, sim_row in ADDSIM:
+    if add_row is None or sim_row is None:
+        continue
+    if any(v is None for v in add_row) or any(v is None for v in sim_row):
+        continue
+
+    xyz_add = Yxy_to_XYZ(add_row)
+    xyz_sim = Yxy_to_XYZ(sim_row)
+    Lab_add = XYZ_to_Lab(xyz_add, ADDSIM_WHITE)
+    Lab_sim = XYZ_to_Lab(xyz_sim, ADDSIM_WHITE)
+
+    dE00 = ciede2000(Lab_add, Lab_sim)
+    dL = Lab_sim[0] - Lab_add[0]        # ΔL* = sim - add
+    da = Lab_sim[1] - Lab_add[1]        # Δa*
+    db = Lab_sim[2] - Lab_add[2]        # Δb*
+    dY = sim_row[0] - add_row[0]        # ΔY (絶対輝度差)
+
+    _addsim_dE.append((name, dE00))
+    print(f"{name:>7} {dE00:8.3f} {dL:+8.3f} {da:+8.3f} {db:+8.3f} "
+          f"{dY:+7.2f} {add_row[0]:7.2f} {sim_row[0]:7.2f}")
+
+if _addsim_dE:
+    _avg = sum(d for _, d in _addsim_dE) / len(_addsim_dE)
+    _worst = max(_addsim_dE, key=lambda x: x[1])
+    print(f"\n平均 ΔE00 = {_avg:.3f} / 最大 ΔE00 = {_worst[1]:.3f} ({_worst[0]})")
