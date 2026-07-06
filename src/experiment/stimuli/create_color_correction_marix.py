@@ -2,6 +2,7 @@ import numpy as np
 import os
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.optimize import curve_fit
 
 # =============================================================
 # 最小二乗版: T', R' を「純色 + 白 + CMY + グレー」から推定
@@ -90,8 +91,148 @@ def build_eotf(ramp_channel):
     def g_inv(y): return np.interp(np.asarray(y, dtype=float), yn, xs)   # 正規化線形 -> 画素値
     return g, g_inv
 
-_gb = {c: build_eotf(RAMP_BG[c]) for c in CHANNELS}
-_gf = {c: build_eotf(RAMP_FG[c]) for c in CHANNELS}
+# =============================================================
+# 追加: 階調ランプの直線性チェック & ガンマ推定 & モデル自動選択
+#   (1) XYZ^(1/2.2) を横軸に取り、画素値との直線性を確認
+#         完全に gamma=2.2 なら yn = v^2.2  →  yn^(1/2.2) = v (直線 y=x)
+#         → y=x からの残差プロットで「2.2 とのズレ」を見る
+#   (2) 最小二乗(log-log)で実ガンマをフィット
+#         log(yn) = gamma*log(v)  の傾き=gamma / 決定係数 R^2
+#         → フィットしたガンマとの残差(yn - v^gamma)プロット
+#   (3) 残差が均一  → フィットしたガンマ(べき乗モデル)を採用
+#       残差が不均一→ 線形補完(np.interp: 既存 build_eotf 相当)を採用
+# =============================================================
+
+def _prep_ramp(ramp_channel, remove_black=True):
+    """ramp [(pixel,Y,x,y),...] -> (v, yn, Y0)
+    v : 正規化画素値(0-1)
+    yn: 黒レベル除去 & フルスケール正規化した輝度(0-1, yn(1)=1)
+    """
+    pts = [(p[0] / 255.0, p[1]) for p in ramp_channel if p[1] is not None]
+    pts.sort(key=lambda t: t[0])
+    v = np.array([p[0] for p in pts], dtype=float)
+    Y = np.array([p[1] for p in pts], dtype=float)
+    Y0 = Y[np.argmin(v)] if remove_black else 0.0     # v=0 の輝度を黒レベルに
+    Ymax = Y[np.argmax(v)]
+    denom = (Ymax - Y0) if (Ymax - Y0) != 0 else 1.0
+    yn = np.clip((Y - Y0) / denom, 0.0, None)          # 0-1 正規化
+    return v, yn, Y0
+
+def analyze_gamma(name, ramp_channel,
+                  target_gamma=2.2,
+                  resid_tol=0.02,   # 均一とみなす残差RMSの上限(正規化輝度)
+                  trend_tol=0.5,    # 残差と入力の相関係数の上限(系統ズレ判定)
+                  r2_tol=0.99,      # log-log フィットの決定係数の下限
+                  plot_dir=None):
+    """1チャネルの (1)直線性チェック (2)ガンマ推定 (3)モデル選択 を実行。
+    戻り値 dict: gamma, r2, use('power'|'interp'), rms_resid, trend, uniform ...
+    """
+    v, yn, Y0 = _prep_ramp(ramp_channel)
+    # ---- (1) gamma=2.2 からのズレ: 画素値^2.2 を横軸、測定輝度を縦軸に ----
+    x_22     = v ** target_gamma      # 横軸: 画素値を2.2乗
+    resid_22 = yn - x_22              # 直線 y=x からの残差（測定輝度基準）
+    # ---- (2) 最小二乗(log-log)で実ガンマをフィット ----
+    m = (v > 0) & (yn > 0)
+    gamma, _ = curve_fit(lambda x, g: x ** g, v[m], yn[m], p0=[2.2])
+    gamma = float(gamma[0])
+    # フィットしたガンマでの線形空間残差 (yn vs v^gamma)
+    yn_fit    = v ** gamma
+    resid_fit = yn - yn_fit
+    ss_res = np.sum(resid_fit[m] ** 2)
+    ss_tot = np.sum((yn[m] - yn[m].mean()) ** 2)
+    r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else float("nan")
+    # ---- (3) 残差の均一性を判定 → モデル選択 ----
+    # 均一の目安:
+    # (a) 残差RMSが小さい (resid_tol以下)
+    # (b) 残差に系統的トレンドが無い(残差とvの相関が小さい)
+    # (c) log-log フィットの当てはまりが良い(R^2が高い)
+    rms_resid = float(np.sqrt(np.mean(resid_fit[m] ** 2)))
+    if np.std(resid_fit[m]) > 0 and np.std(v[m]) > 0:
+        trend = float(abs(np.corrcoef(v[m], resid_fit[m])[0, 1]))
+    else:
+        trend = 0.0
+    uniform = (rms_resid <= resid_tol) and (trend <= trend_tol) and (r2 >= r2_tol)
+    use = "power" if uniform else "interp"
+    # ---- ログ出力 ----
+    print(f"\n---- [{name}] 直線性 & ガンマ解析 ----")
+    print(f"  fit gamma = {gamma:.3f}  (target {target_gamma})  Δ={gamma-target_gamma:+.3f}  (by non-linear LSQ)")
+    print(f"  R^2(log-log) = {r2:.4f}")
+    print(f"  残差RMS(vs v^gamma) = {rms_resid:.4f} / トレンド(相関) = {trend:.3f}")
+    print(f"  → 残差は{'均一' if uniform else '不均一'} → 採用モデル: "
+          f"{'べき乗ガンマ(v^gamma)' if use=='power' else '線形補完(np.interp)'}")
+    # ---- プロット ----
+    if plot_dir is not None:
+        os.makedirs(plot_dir, exist_ok=True)
+        fig, ax = plt.subplots(2, 2, figsize=(11, 8))
+        # (1) 直線性: 横軸 v^2.2 vs 測定輝度 yn
+        ax[0, 0].plot([0, 1], [0, 1], "k--", lw=1, label=f"ideal γ={target_gamma} (y=x)")
+        ax[0, 0].plot(x_22, yn, "o-", label="measured")
+        ax[0, 0].set_title(f"[{name}] linearity: pixel^{target_gamma} vs measured")
+        ax[0, 0].set_xlabel(f"v^{target_gamma}"); ax[0, 0].set_ylabel("yn (measured, 0-1)")
+        ax[0, 0].legend(); ax[0, 0].grid(True, alpha=.3)
+        # (1) 2.2 との残差プロット
+        ax[0, 1].axhline(0, color="k", lw=1)
+        ax[0, 1].plot(v, resid_22, "o-")
+        ax[0, 1].set_title(f"[{name}] residual vs γ={target_gamma}")
+        ax[0, 1].set_xlabel("v (0-1)"); ax[0, 1].set_ylabel(f"yn - v^{target_gamma}")
+        ax[0, 1].grid(True, alpha=.3)
+        # (2) フィット後γで左上と同じ見方に:
+        #     横軸 = 画素値にフィットγを適用 (v^γ_fit), 縦軸 = 測定輝度 yn, 理想線 y=x
+        x_fit = v ** gamma
+        ax[1, 0].plot([0, 1], [0, 1], "k--", lw=1, label="ideal (y=x)")
+        ax[1, 0].plot(x_fit, yn, "o-", label=f"measured (γ_fit={gamma:.3f})")
+        ax[1, 0].set_title(f"[{name}] linearity: pixel^γ_fit vs measured (R^2={r2:.4f})")
+        ax[1, 0].set_xlabel("v^γ_fit"); ax[1, 0].set_ylabel("yn (measured, 0-1)")
+        ax[1, 0].legend(); ax[1, 0].grid(True, alpha=.3)
+        # (2) フィットガンマとの残差プロット
+        ax[1, 1].axhline(0, color="k", lw=1)
+        ax[1, 1].plot(v, resid_fit, "o-")
+        ax[1, 1].set_title(f"[{name}] residual vs v^γ  (RMS={rms_resid:.4f})")
+        ax[1, 1].set_xlabel("v (0-1)"); ax[1, 1].set_ylabel("yn - v^γ")
+        ax[1, 1].grid(True, alpha=.3)
+        fig.tight_layout()
+        path = os.path.join(plot_dir, f"gamma_analysis_{name}.png")
+        fig.savefig(path, dpi=120); plt.close(fig)
+        print(f"  [plot] {path}")
+    return {
+        "name": name, "gamma": float(gamma),
+        "r2": float(r2), "rms_resid": rms_resid, "trend": trend,
+        "uniform": bool(uniform), "use": use,
+        "v": v, "yn": yn, "Y0": float(Y0),
+        "resid_22": resid_22, "resid_fit": resid_fit,
+    }
+
+def build_eotf_auto(ramp_channel, analysis=None, **kwargs):
+    """解析結果に基づき EOTF を構築して (g, g_inv, info) を返す。
+    use='power'  : g(v)=v^gamma,  g_inv(y)=y^(1/gamma)  (残差が均一)
+    use='interp' : 既存 build_eotf と同じ線形補完          (残差が不均一)
+    g(1)=1 に正規化。既存 _gb/_gf の代わりに使える。
+    """
+    if analysis is None:
+        name = kwargs.pop("name", "(auto)")
+        analysis = analyze_gamma(name, ramp_channel, **kwargs)
+    v, yn = analysis["v"], analysis["yn"]
+    if analysis["use"] == "power":
+        gm = analysis["gamma"]
+        g     = lambda val: np.clip(np.asarray(val, dtype=float), 0.0, None) ** gm
+        g_inv = lambda y:   np.clip(np.asarray(y,   dtype=float), 0.0, None) ** (1.0 / gm)
+    else:
+        # 線形補完(既存 build_eotf 相当)。yn は単調前提で np.interp。
+        g     = lambda val: np.interp(np.asarray(val, dtype=float), v, yn)
+        g_inv = lambda y:   np.interp(np.asarray(y,   dtype=float), yn, v)
+    return g, g_inv, analysis
+
+SAVE_DIR = r"C:\Users\Hamada.MSI\Desktop\Hamada\lab\archive"
+
+_gb = {}
+_gf = {}
+for c in CHANNELS:
+    g_b, g_b_inv, _ = build_eotf_auto(RAMP_BG[c], name=f"BG_{c}", plot_dir=SAVE_DIR)
+    _gb[c] = (g_b, g_b_inv)
+
+for c in CHANNELS:
+    g_f, g_f_inv, _ = build_eotf_auto(RAMP_FG[c], name=f"FG_{c}", plot_dir=SAVE_DIR)
+    _gf[c] = (g_f, g_f_inv)
 
 def _apply(funcs, arr, idx):
     arr = np.asarray(arr, dtype=float)
@@ -157,8 +298,6 @@ M_XYZ2RGB = np.array([
     [-0.9689,  1.8758,  0.0415],
     [ 0.0557, -0.2040,  1.0570],
 ])
-
-SAVE_DIR = r"C:\Users\Hamada.MSI\Desktop\Hamada\lab\archive"
 
 # --- テスト色 (各行が1色 / 列=R,G,B / 0-1) ---
 base_srgb = np.array([
