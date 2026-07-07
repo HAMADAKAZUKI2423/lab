@@ -286,6 +286,36 @@ print("R_prime:\n", R_prime)
 print("C = inv(R') @ T':\n", C)
 
 # =============================================================
+# 追加: R', T', C を CSV 保存（実験プログラムから参照する用）
+#   保存先: results/tables/DisplayBrightness/
+#   ・毎回同じファイル名で np.savetxt するので実行のたびに上書きされる
+#   ・区切りはカンマ、# 始まりのヘッダ行付き（np.loadtxt は自動スキップ）
+# =============================================================
+TABLE_DIR = os.path.join("results", "tables", "DisplayBrightness")
+os.makedirs(TABLE_DIR, exist_ok=True)
+
+def save_matrix_csv(mat, name, header):
+    """3x3 行列を CSV で上書き保存。np.loadtxt(delimiter=',') でそのまま読める。"""
+    path = os.path.join(TABLE_DIR, f"{name}.csv")
+    np.savetxt(
+        path,
+        np.asarray(mat, dtype=float),
+        delimiter=",",
+        fmt="%.10g",
+        header=header,        # comments 既定"#"なので loadtxt はこの行をスキップ
+    )
+    return path
+
+_saved = [
+    save_matrix_csv(T_prime, "T_prime", "T_prime (T*Db): RGB_linear -> XYZ, row-major 3x3"),
+    save_matrix_csv(R_prime, "R_prime", "R_prime (R*Df): RGB_linear -> XYZ, row-major 3x3"),
+    save_matrix_csv(C,       "C",       "C = inv(R') @ T': RGB_linear(bg) -> RGB_linear(fg), row-major 3x3"),
+]
+print("\n[CSV保存] R'/T'/C を上書き保存しました ->", os.path.abspath(TABLE_DIR))
+for _p in _saved:
+    print("  ", _p)
+
+# =============================================================
 # 追加処理(After): C補正画像の生成と「見え」の照合
 #   T_prime = T·Db, R_prime = R·Df は RGB->XYZ、C は RGB->RGB
 # =============================================================
