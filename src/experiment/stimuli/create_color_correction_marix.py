@@ -11,20 +11,129 @@ from scipy.optimize import curve_fit
 #   ※ 純色のみだと白/混色は span 内で情報ゼロ。混色を足して初めて効く。
 # =============================================================
 
-# ---- 入力パッチ: name, sRGB(0-1), BGT実測(Y,x,y), FGR実測(Y,x,y) ----
-#  純色3つは元データ。White/CMY/Gray の実測値を埋めて使う。
-PATCHES = [
-    # name      sRGB(R,G,B)             BGT (Y, x, y)          FGR (Y, x, y)
-    ("R",     (1.0, 0.0, 0.0),        (8.00,  0.6327, 0.3286), (19.90, 0.6448, 0.3320)),
-    ("G",     (0.0, 1.0, 0.0),        (34.36, 0.3097, 0.6264), (71.80, 0.3191, 0.6231)),
-    ("B",     (0.0, 0.0, 1.0),        (3.60,  0.1543, 0.0457), (6.97,  0.1525, 0.0527)),
-    # --- ここから追加測定（実測値を入れる）---
-    ("W",     (1.0, 1.0, 1.0),        (46.7, 0.2803, 0.2921),      (101.4, 0.3130, 0.3222)),
-    ("semiR",     (0.5, 0.0, 0.0),        (2.1, 0.5723, 0.3091),      (4.8, 0.6284, 0.3214)),
-    ("semiG",     (0.0, 0.5, 0.0),        (8.3, 0.3003, 0.6163),      (17.2, 0.3181, 0.6094)),
-    ("semiB",     (0.0, 0.0, 0.5),        (1.1, 0.1541, 0.0521),      (1.9, 0.1540, 0.0567)),
-    ("Gray",  (0.5, 0.5, 0.5),        (12.0, 0.2795, 0.2852),      (25.3, 0.3084, 0.3169)),
-]
+# =============================================================
+# 入力パッチを CSV から読み込み（複数ファイルをXYZ空間で平均）
+#   results/tables/DisplayBrightness/{background,foreground}/patches/*.csv
+#   列: name, sR, sG, sB, Y, x, y  （ヘッダ行あり / 1ファイル=1測定）
+#   ・平均は Yxy->XYZ に変換して XYZ空間で平均 -> Yxy に戻す
+#   ・欠損（あるファイルに無いパッチ）は「あるものだけ」で平均
+# =============================================================
+import csv
+import glob
+
+DATA_ROOT   = os.path.join("results", "tables", "DisplayBrightness")
+PATCH_ORDER = ["R", "G", "B", "W", "semiR", "semiG", "semiB", "Gray"]
+
+def _yxy2xyz(Y, x, y):
+    if y == 0:
+        return np.array([0.0, 0.0, 0.0])
+    X = (x / y) * Y
+    Z = ((1.0 - x - y) / y) * Y
+    return np.array([X, float(Y), Z])
+
+def _xyz2yxy(xyz):
+    X, Y, Z = (float(v) for v in xyz)
+    s = X + Y + Z
+    if s == 0:
+        return (0.0, 0.0, 0.0)
+    return (Y, X / s, Z / s)
+
+def _read_csv_dicts(path):
+    """ヘッダ付きCSVを {列名(大小保持): 値} の dict のリストで返す。"""
+    rows = []
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        for raw in csv.DictReader(f):
+            row, empty = {}, True
+            for k, v in raw.items():
+                if k is None:
+                    continue
+                val = (v or "").strip()
+                row[k.strip()] = val
+                if val != "":
+                    empty = False
+            if not empty:
+                rows.append(row)
+    return rows
+
+def _get(row, *names):
+    """候補列名のうち最初に見つかった非空の値を返す。"""
+    for nm in names:
+        if nm in row and row[nm] != "":
+            return row[nm]
+    raise KeyError(names)
+
+def load_patches_avg(sub):
+    """{sub}/patches/*.csv を name ごとにXYZ平均。 -> ({name:{'srgb','yxy','n'}}, ファイル数)"""
+    d = os.path.join(DATA_ROOT, sub, "patches")
+    files = sorted(glob.glob(os.path.join(d, "*.csv")))
+    if not files:
+        raise FileNotFoundError(f"CSVが見つかりません: {d}")
+    srgb_acc, xyz_acc = {}, {}
+    for path in files:
+        for row in _read_csv_dicts(path):
+            try:
+                name = _get(row, "name", "Name")
+                srgb = (float(_get(row, "sR", "sr")),
+                        float(_get(row, "sG", "sg")),
+                        float(_get(row, "sB", "sb")))
+                Y = float(_get(row, "Y")); x = float(_get(row, "x")); y = float(_get(row, "y"))
+            except (KeyError, ValueError):
+                continue
+            srgb_acc.setdefault(name, []).append(srgb)
+            xyz_acc.setdefault(name, []).append(_yxy2xyz(Y, x, y))
+    out = {}
+    for name, xyzs in xyz_acc.items():
+        out[name] = {
+            "srgb": tuple(np.mean(np.array(srgb_acc[name]), axis=0)),
+            "yxy":  _xyz2yxy(np.mean(np.array(xyzs), axis=0)),
+            "n":    len(xyzs),
+        }
+    return out, len(files)
+
+def load_ramps_avg(sub):
+    """{sub}/ramps/*.csv を (channel,pixel) ごとにXYZ平均。 -> {ch:[(pixel,Y,x,y),...]}"""
+    d = os.path.join(DATA_ROOT, sub, "ramps")
+    files = sorted(glob.glob(os.path.join(d, "*.csv")))
+    if not files:
+        raise FileNotFoundError(f"CSVが見つかりません: {d}")
+    xyz_acc = {}
+    for path in files:
+        for row in _read_csv_dicts(path):
+            try:
+                ch = _get(row, "channel", "Channel", "ch").upper()
+                px = int(round(float(_get(row, "pixel", "level"))))
+                Y = float(_get(row, "Y")); x = float(_get(row, "x")); y = float(_get(row, "y"))
+            except (KeyError, ValueError):
+                continue
+            xyz_acc.setdefault((ch, px), []).append(_yxy2xyz(Y, x, y))
+    ramp = {}
+    for (ch, px), xyzs in xyz_acc.items():
+        Yc, xc, yc = _xyz2yxy(np.mean(np.array(xyzs), axis=0))
+        ramp.setdefault(ch, []).append((px, Yc, xc, yc))
+    for ch in ramp:
+        ramp[ch].sort(key=lambda t: -t[0])   # 255 -> 0 の順
+    return ramp
+
+# ---- パッチ平均を読み込み、背景(BGT)・前景(FGR)を name で突き合わせて PATCHES を生成 ----
+_bg_p, _n_bg = load_patches_avg("background")
+_fg_p, _n_fg = load_patches_avg("foreground")
+
+_names  = [n for n in PATCH_ORDER if (n in _bg_p or n in _fg_p)]
+_names += [n for n in sorted(set(_bg_p) | set(_fg_p)) if n not in _names]
+
+PATCHES = []
+for n in _names:
+    _src = _bg_p.get(n) or _fg_p.get(n)
+    srgb = tuple(float(c) for c in _src["srgb"])
+    bgt  = tuple(_bg_p[n]["yxy"]) if n in _bg_p else None
+    fgr  = tuple(_fg_p[n]["yxy"]) if n in _fg_p else None
+    PATCHES.append((n, srgb, bgt, fgr))
+
+print(f"[CSV読込] パッチ: background {_n_bg} ファイル / foreground {_n_fg} ファイル -> {len(PATCHES)} パッチ")
+for _p in PATCHES:
+    _b = None if _p[2] is None else tuple(round(v, 4) for v in _p[2])
+    _f = None if _p[3] is None else tuple(round(v, 4) for v in _p[3])
+    print(f"  {_p[0]:>6}  sRGB={tuple(round(c,3) for c in _p[1])}  BGT={_b}  FGR={_f}")
 
 # ---- パッチごとの重み（輝度が最重要なら効かせたいパッチを大きく）----
 # 例: 混色・白を重めにして劣加法をしっかり吸わせる
@@ -56,28 +165,13 @@ def Yxy_to_XYZ(row):
 # ============================================================
 CHANNELS = ("R", "G", "B")
 
-RAMP_BG = {  # 背景パス (T·Db) の階調ランプ  (pixel, Y, x, y)
-    "R": [(255,7.5,0.6235,0.3300),(224,6.0,0.6183,0.3278),(192,4.4,0.6173,0.3245),
-          (160,3.0,0.6049,0.3191),(128,1.9,0.5671,0.3127),(96,1.2,0.5391,0.3032),
-          (64,0.6,0.4342,0.2782),(32,0.3,0.2983,0.2362),(0,0.2,0.2717,0.2359)],
-    "G": [(255,32.6,0.3021,0.6246),(224,25.5,0.3019,0.6202),(192,18.8,0.3015,0.6154),
-          (160,12.6,0.2986,0.6140),(128,7.9,0.2971,0.5993),(96,4.3,0.3010,0.5833),
-          (64,2.0,0.2945,0.5139),(32,0.6,0.2620,0.3997),(0,0.2,0.2576,0.2164)],
-    "B": [(255,3.5,0.1570,0.0456),(224,2.8,0.1572,0.0459),(192,2.1,0.1536,0.0469),
-          (160,1.6,0.1562,0.0498),(128,1.0,0.1558,0.0521),(96,0.7,0.1599,0.0634),
-          (64,0.4,0.1871,0.0850),(32,0.3,0.2187,0.1561),(0,0.2,0.2667,0.1960)],
-}
-RAMP_FG = {  # 前景パス (R·Df) の階調ランプ  (pixel, Y, x, y)
-    "R": [(255,20.4,0.6436,0.3312),(224,16.0,0.6411,0.3311),(192,11.7,0.6407,0.3309),
-          (160,8.0,0.6271,0.3291),(128,5.0,0.6258,0.3263),(96,2.8,0.6216,0.3179),
-          (64,1.3,0.5439,0.3155),(32,0.5,0.3936,0.3120),(0,0.3,0.2753,0.2479)],
-    "G": [(255,74.1,0.3181,0.6227),(224,57.9,0.3186,0.6216),(192,42.1,0.3179,0.6226),
-          (160,28.5,0.3199,0.6181),(128,17.7,0.3134,0.6154),(96,9.4,0.3114,0.6038),
-          (64,4.1,0.2811,0.5819),(32,1.1,0.2856,0.4658),(0,0.2,0.3005,0.1945)],
-    "B": [(255,7.2,0.1528,0.0519),(224,5.7,0.1532,0.0519),(192,4.3,0.1536,0.0530),
-          (160,3.0,0.1564,0.0529),(128,1.9,0.1552,0.0550),(96,1.1,0.1624,0.0601),
-          (64,0.6,0.1714,0.0739),(32,0.3,0.1813,0.1073),(0,0.3,0.2485,0.2818)],
-}
+# 階調ランプを CSV から生成（{background,foreground}/ramps/*.csv をXYZ空間で平均, 欠損は無視）
+RAMP_BG = load_ramps_avg("background")   # 背景パス (T·Db) の階調ランプ {ch:[(pixel,Y,x,y),...]}
+RAMP_FG = load_ramps_avg("foreground")   # 前景パス (R·Df) の階調ランプ
+
+print("[CSV読込] 階調ランプ (レベル数):")
+for _side, _ramp in (("BG", RAMP_BG), ("FG", RAMP_FG)):
+    print(f"  {_side}: " + ", ".join(f"{_ch}={len(_ramp.get(_ch, []))}" for _ch in CHANNELS))
 
 def build_eotf(ramp_channel):
     """1チャネルのランプ [(pixel,Y,x,y),...] -> 正規化EOTF。g(1)=1。未計測(None)はスキップ。"""
