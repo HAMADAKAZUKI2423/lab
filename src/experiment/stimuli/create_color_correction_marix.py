@@ -36,7 +36,7 @@ def _xyz2yxy(xyz):
     s = X + Y + Z
     if s == 0:
         return (0.0, 0.0, 0.0)
-    return (Y, X / s, Z / s)
+    return (Y, X / s, Y / s)   # (Y, x=X/s, y=Y/s)
 
 def _read_csv_dicts(path):
     """ヘッダ付きCSVを {列名(大小保持): 値} の dict のリストで返す。"""
@@ -316,16 +316,23 @@ def build_eotf_auto(ramp_channel, analysis=None, **kwargs):
         g_inv = lambda y:   np.interp(np.asarray(y,   dtype=float), yn, v)
     return g, g_inv, analysis
 
-SAVE_DIR = r"C:\Users\Hamada.MSI\Desktop\Hamada\lab\archive"
+import datetime
+
+# ---- 図の出力先 ----
+FIG_DIR      = os.path.join("results", "figures", "DisplayBrightness")
+RAMP_FIG_DIR = os.path.join(FIG_DIR, "ramps")
+# 階調解析結果(残差・直線性プロット)は ramps/<出力日付> フォルダに保存
+_date          = datetime.datetime.now().strftime("%Y-%m-%d")
+GAMMA_PLOT_DIR = os.path.join(RAMP_FIG_DIR, _date)
 
 _gb = {}
 _gf = {}
 for c in CHANNELS:
-    g_b, g_b_inv, _ = build_eotf_auto(RAMP_BG[c], name=f"BG_{c}", plot_dir=SAVE_DIR)
+    g_b, g_b_inv, _ = build_eotf_auto(RAMP_BG[c], name=f"BG_{c}", plot_dir=GAMMA_PLOT_DIR)
     _gb[c] = (g_b, g_b_inv)
 
 for c in CHANNELS:
-    g_f, g_f_inv, _ = build_eotf_auto(RAMP_FG[c], name=f"FG_{c}", plot_dir=SAVE_DIR)
+    g_f, g_f_inv, _ = build_eotf_auto(RAMP_FG[c], name=f"FG_{c}", plot_dir=GAMMA_PLOT_DIR)
     _gf[c] = (g_f, g_f_inv)
 
 def _apply(funcs, arr, idx):

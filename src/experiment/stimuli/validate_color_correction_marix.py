@@ -124,7 +124,11 @@ def build_eotf_auto(ramp_channel, analysis=None, **kwargs):
         g_inv = lambda y:   np.interp(np.asarray(y,   dtype=float), yn, v)
     return g, g_inv, analysis
 
-SAVE_DIR = r"C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\archive"
+# ---- 図の出力先 ----
+FIG_DIR       = os.path.join("results", "figures", "DisplayBrightness")
+PATCH_FIG_DIR = os.path.join(FIG_DIR, "patches")          # テスト色パッチ & 輝度2倍版
+RAMP_FIG_DIR  = os.path.join(FIG_DIR, "ramps")            # ガンマ検証用ランプ画像
+FG_ADD_DIR    = os.path.join(FIG_DIR, "foreground_add")   # 白輝度指定(前景加算)画像
 
 # ---- チャネル別 EOTF を構築（プロットは省略: plot_dir=None）----
 _gb = {}
@@ -234,8 +238,8 @@ def xyz_to_srgb_img(xyz, wY):
 trans_view = xyz_to_srgb_img(trans_xyz, white_Y)
 refl_view = xyz_to_srgb_img(refl_xyz, white_Y)
 
-# --- 保存 ---
-os.makedirs(SAVE_DIR, exist_ok=True)
+# --- 保存 (results/figures/DisplayBrightness/patches) ---
+os.makedirs(PATCH_FIG_DIR, exist_ok=True)
 PATCH = 256
 variants = [
     ("1_original",      base_srgb),    # 元のRGB
@@ -247,11 +251,11 @@ saved_paths = []
 for idx, label in enumerate(labels):
     for suffix, colors in variants:
         patch = np.tile(np.clip(colors[idx], 0.0, 1.0), (PATCH, PATCH, 1))
-        path = os.path.join(SAVE_DIR, f"{label}_{suffix}.png")
+        path = os.path.join(PATCH_FIG_DIR, f"{label}_{suffix}.png")
         plt.imsave(path, patch)
         saved_paths.append(path)
 
-print(f"\n[保存] {len(saved_paths)} 枚 -> {SAVE_DIR}")
+print(f"\n[保存] {len(saved_paths)} 枚 -> {PATCH_FIG_DIR}")
 print("c_colors (補正後前景 sRGB):\n", c_colors)
 
 # =============================================================
@@ -264,8 +268,11 @@ print("c_colors (補正後前景 sRGB):\n", c_colors)
 #   ファイル名: gamma_<channel>_<level3桁>.png (level は 0-255 の入力画素値)
 #   ※画素値をそのまま出したいので、カラマネ/ガンマ補正OFFのビューアで表示すること。
 # =============================================================
-GAMMA_DIR = os.path.join(SAVE_DIR, "gamma_check")
-os.makedirs(GAMMA_DIR, exist_ok=True)
+# ramps 配下に 生(row) と 補正後(corrected) の2種類のサブフォルダを作成
+ROW_RAMP_DIR       = os.path.join(RAMP_FIG_DIR, "row_ramps")        # 生(未補正)ランプ画像: 素のガンマ測定用
+CORRECTED_RAMP_DIR = os.path.join(RAMP_FIG_DIR, "corrected_ramps")  # 補正後ランプ画像: 補正後ガンマ検証用
+os.makedirs(ROW_RAMP_DIR, exist_ok=True)
+os.makedirs(CORRECTED_RAMP_DIR, exist_ok=True)
 
 # 0~255 の確認ステップ(必要に応じて増減可)。0 と 255 は必ず含める。
 GAMMA_LEVELS = [0, 16, 32, 48, 64, 96, 128, 160, 192, 224, 255]
@@ -279,28 +286,34 @@ def correct_srgb(rgb_srgb):
     c_lin_local = (C @ np.atleast_2d(lin).T).T
     return g_f_inv(c_lin_local).reshape(np.asarray(rgb_srgb).shape)
 
-gamma_paths = []
-for _ch in ("R", "G", "B"):
-    for _lv in GAMMA_LEVELS:
-        _rgb = np.zeros(3, dtype=float)
-        _rgb[_ch_index[_ch]] = _lv / 255.0          # 該当チャネルにのみ入力画素値
-        _corr = np.clip(correct_srgb(_rgb), 0.0, 1.0)  # 補正後の駆動値
-        _patch = np.tile(_corr, (PATCH_GAMMA, PATCH_GAMMA, 1))
-        _path = os.path.join(GAMMA_DIR, f"gamma_{_ch}_{_lv:03d}.png")
-        plt.imsave(_path, _patch)
-        gamma_paths.append(_path)
-print(f"\n[ガンマ確認画像] {len(gamma_paths)} 枚 -> {GAMMA_DIR}")
+def _ramp_rgb(ch, lv):
+    """ch in ('R','G','B','W'), lv(0-255) -> 生の sRGB(0-1) ベクトル。W は R=G=B。"""
+    v = lv / 255.0
+    if ch == "W":
+        return np.array([v, v, v], dtype=float)
+    rgb = np.zeros(3, dtype=float)
+    rgb[_ch_index[ch]] = v
+    return rgb
 
-# White (Gray) ramp
-_ch = "W"
-for _lv in GAMMA_LEVELS:
-    _rgb = np.array([_lv / 255.0] * 3, dtype=float) # R=G=B
-    _corr = np.clip(correct_srgb(_rgb), 0.0, 1.0)
-    _patch = np.tile(_corr, (PATCH_GAMMA, PATCH_GAMMA, 1))
-    _path = os.path.join(GAMMA_DIR, f"gamma_{_ch}_{_lv:03d}.png")
-    plt.imsave(_path, _patch)
-    gamma_paths.append(_path)
-print("  各チャンネル×各レベルの補正画像を前景に表示し、Yxy を計測して")
+# R/G/B/W 各チャンネル × 各レベルで「生」と「補正後」の2枚を出力
+row_ramp_paths, corrected_ramp_paths = [], []
+for _ch in ("R", "G", "B", "W"):
+    for _lv in GAMMA_LEVELS:
+        _rgb = _ramp_rgb(_ch, _lv)
+        # (1) 生ランプ(未補正): 素のディスプレイEOTF(ガンマ)測定用
+        _raw   = np.clip(_rgb, 0.0, 1.0)
+        _p_raw = os.path.join(ROW_RAMP_DIR, f"ramp_{_ch}_{_lv:03d}.png")
+        plt.imsave(_p_raw, np.tile(_raw, (PATCH_GAMMA, PATCH_GAMMA, 1)))
+        row_ramp_paths.append(_p_raw)
+        # (2) 補正後ランプ: sRGB -> 線形 -> C -> sRGB(前景駆動値)
+        _corr   = np.clip(correct_srgb(_rgb), 0.0, 1.0)
+        _p_corr = os.path.join(CORRECTED_RAMP_DIR, f"ramp_{_ch}_{_lv:03d}.png")
+        plt.imsave(_p_corr, np.tile(_corr, (PATCH_GAMMA, PATCH_GAMMA, 1)))
+        corrected_ramp_paths.append(_p_corr)
+
+print(f"\n[生ランプ画像]   {len(row_ramp_paths)} 枚 -> {ROW_RAMP_DIR}")
+print(f"[補正ランプ画像] {len(corrected_ramp_paths)} 枚 -> {CORRECTED_RAMP_DIR}")
+print("  各チャンネル×各レベルの画像を前景に表示し、Yxy を計測して")
 print("  下の GAMMA_MEAS に (level, Y, x, y) で記入してください。")
 
 # =============================================================
@@ -609,10 +622,10 @@ for i, label in enumerate(labels):
     print(f"{label:>8} {Y1:7.2f} {2*Y1:7.2f} {refl_xyz_x2[i,1]:7.2f} "
           f"{k_max[i]:6.2f} {'*' if clipped[i] else '':>4}")
 
-# 2倍版の前景画像を保存（suffix: 5_corrected_fg_x2）
+# 2倍版の前景画像を保存（suffix: 5_corrected_fg_x2, -> patches）
 for idx, label in enumerate(labels):
     patch = np.tile(np.clip(c_colors_x2[idx], 0.0, 1.0), (PATCH, PATCH, 1))
-    plt.imsave(os.path.join(SAVE_DIR, f"{label}_5_corrected_fg_x2.png"), patch)
+    plt.imsave(os.path.join(PATCH_FIG_DIR, f"{label}_5_corrected_fg_x2.png"), patch)
 print("[保存] 2倍版 (5_corrected_fg_x2) を出力しました")
 print("k_max<2.0 の色は物理上限に達し、2倍まで到達できず色がずれます")
 
@@ -621,7 +634,7 @@ print("k_max<2.0 の色は物理上限に達し、2倍まで到達できず色�
 #   ・前景(反射)で狙い輝度を出す画像  + 検証用に背景(透過)で狙い輝度になる画像
 #   ・この範囲の出力は専用フォルダ RANGE_DIR にまとめて保存
 # =============================================================
-RANGE_DIR = os.path.join(SAVE_DIR, "white_lum_range")   # ★この範囲の出力先(専用フォルダ)
+RANGE_DIR = FG_ADD_DIR   # 白輝度指定(前景加算) -> results/figures/DisplayBrightness/foreground_add
 os.makedirs(RANGE_DIR, exist_ok=True)
 
 # ---- 前景(反射)側: Y -> 前景画素値 の1D LUT を一度だけ構築（g_f_inv はここのみ）----
