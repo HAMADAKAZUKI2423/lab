@@ -10,17 +10,126 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
-# ---- 入力パッチ: name, sRGB(0-1), BGT実測(Y,x,y), FGR実測(Y,x,y) ----
-PATCHES = [
-    ("R",     (1.0, 0.0, 0.0),        (8.00,  0.6327, 0.3286), (19.90, 0.6448, 0.3320)),
-    ("G",     (0.0, 1.0, 0.0),        (34.36, 0.3097, 0.6264), (71.80, 0.3191, 0.6231)),
-    ("B",     (0.0, 0.0, 1.0),        (3.60,  0.1543, 0.0457), (6.97,  0.1525, 0.0527)),
-    ("W",     (1.0, 1.0, 1.0),        (46.7, 0.2803, 0.2921),      (101.4, 0.3130, 0.3222)),
-    ("semiR",     (0.5, 0.0, 0.0),        (2.1, 0.5723, 0.3091),      (4.8, 0.6284, 0.3214)),
-    ("semiG",     (0.0, 0.5, 0.0),        (8.3, 0.3003, 0.6163),      (17.2, 0.3181, 0.6094)),
-    ("semiB",     (0.0, 0.0, 0.5),        (1.1, 0.1541, 0.0521),      (1.9, 0.1540, 0.0567)),
-    ("Gray",  (0.5, 0.5, 0.5),        (12.0, 0.2795, 0.2852),      (25.3, 0.3084, 0.3169)),
-]
+# =============================================================
+# 入力パッチ & 階調ランプを CSV から読み込み（コード1と同じローダを再掲）
+#   results/tables/DisplayBrightness/{background,foreground}/{patches,ramps}/*.csv
+#   ・patches 列: name, sR, sG, sB, Y, x, y
+#   ・ramps   列: channel, pixel, Y, x, y
+#   ・平均は Yxy->XYZ に変換して XYZ空間で平均 -> Yxy に戻す（欠損は「あるものだけ」）
+# =============================================================
+import csv
+import glob
+
+DATA_ROOT   = os.path.join("results", "tables", "DisplayBrightness")
+PATCH_ORDER = ["R", "G", "B", "W", "semiR", "semiG", "semiB", "Gray"]
+
+def _yxy2xyz(Y, x, y):
+    if y == 0:
+        return np.array([0.0, 0.0, 0.0])
+    X = (x / y) * Y
+    Z = ((1.0 - x - y) / y) * Y
+    return np.array([X, float(Y), Z])
+
+def _xyz2yxy(xyz):
+    X, Y, Z = (float(v) for v in xyz)
+    s = X + Y + Z
+    if s == 0:
+        return (0.0, 0.0, 0.0)
+    return (Y, X / s, Y / s)   # (Y, x=X/s, y=Y/s)
+
+def _read_csv_dicts(path):
+    """ヘッダ付きCSVを {列名(大小保持): 値} の dict のリストで返す。"""
+    rows = []
+    with open(path, newline="", encoding="utf-8-sig") as f:
+        for raw in csv.DictReader(f):
+            row, empty = {}, True
+            for k, v in raw.items():
+                if k is None:
+                    continue
+                val = (v or "").strip()
+                row[k.strip()] = val
+                if val != "":
+                    empty = False
+            if not empty:
+                rows.append(row)
+    return rows
+
+def _get(row, *names):
+    """候補列名のうち最初に見つかった非空の値を返す。"""
+    for nm in names:
+        if nm in row and row[nm] != "":
+            return row[nm]
+    raise KeyError(names)
+
+def load_patches_avg(sub):
+    """{sub}/patches/*.csv を name ごとにXYZ平均。 -> ({name:{'srgb','yxy','n'}}, ファイル数)"""
+    d = os.path.join(DATA_ROOT, sub, "patches")
+    files = sorted(glob.glob(os.path.join(d, "*.csv")))
+    if not files:
+        raise FileNotFoundError(f"CSVが見つかりません: {d}")
+    srgb_acc, xyz_acc = {}, {}
+    for path in files:
+        for row in _read_csv_dicts(path):
+            try:
+                name = _get(row, "name", "Name")
+                srgb = (float(_get(row, "sR", "sr")),
+                        float(_get(row, "sG", "sg")),
+                        float(_get(row, "sB", "sb")))
+                Y = float(_get(row, "Y")); x = float(_get(row, "x")); y = float(_get(row, "y"))
+            except (KeyError, ValueError):
+                continue
+            srgb_acc.setdefault(name, []).append(srgb)
+            xyz_acc.setdefault(name, []).append(_yxy2xyz(Y, x, y))
+    out = {}
+    for name, xyzs in xyz_acc.items():
+        out[name] = {
+            "srgb": tuple(np.mean(np.array(srgb_acc[name]), axis=0)),
+            "yxy":  _xyz2yxy(np.mean(np.array(xyzs), axis=0)),
+            "n":    len(xyzs),
+        }
+    return out, len(files)
+
+def load_ramps_avg(sub):
+    """{sub}/ramps/*.csv を (channel,pixel) ごとにXYZ平均。 -> {ch:[(pixel,Y,x,y),...]}"""
+    d = os.path.join(DATA_ROOT, sub, "ramps")
+    files = sorted(glob.glob(os.path.join(d, "*.csv")))
+    if not files:
+        raise FileNotFoundError(f"CSVが見つかりません: {d}")
+    xyz_acc = {}
+    for path in files:
+        for row in _read_csv_dicts(path):
+            try:
+                ch = _get(row, "channel", "Channel", "ch").upper()
+                px = int(round(float(_get(row, "pixel", "level"))))
+                Y = float(_get(row, "Y")); x = float(_get(row, "x")); y = float(_get(row, "y"))
+            except (KeyError, ValueError):
+                continue
+            xyz_acc.setdefault((ch, px), []).append(_yxy2xyz(Y, x, y))
+    ramp = {}
+    for (ch, px), xyzs in xyz_acc.items():
+        Yc, xc, yc = _xyz2yxy(np.mean(np.array(xyzs), axis=0))
+        ramp.setdefault(ch, []).append((px, Yc, xc, yc))
+    for ch in ramp:
+        ramp[ch].sort(key=lambda t: -t[0])   # 255 -> 0 の順
+    return ramp
+
+# ---- パッチ平均を読み込み、背景(BGT)・前景(FGR)を name で突き合わせて PATCHES を生成 ----
+_bg_p, _n_bg = load_patches_avg("background")
+_fg_p, _n_fg = load_patches_avg("foreground")
+
+_names  = [n for n in PATCH_ORDER if (n in _bg_p or n in _fg_p)]
+_names += [n for n in sorted(set(_bg_p) | set(_fg_p)) if n not in _names]
+
+PATCHES = []
+for n in _names:
+    _src = _bg_p.get(n) or _fg_p.get(n)
+    srgb = tuple(float(c) for c in _src["srgb"])
+    bgt  = tuple(_bg_p[n]["yxy"]) if n in _bg_p else None
+    fgr  = tuple(_fg_p[n]["yxy"]) if n in _fg_p else None
+    PATCHES.append((n, srgb, bgt, fgr))
+
+print(f"[CSV読込] パッチ: background {_n_bg} ファイル / foreground {_n_fg} ファイル -> {len(PATCHES)} パッチ")
+
 WEIGHTS = {
     "R": 1.0, "G": 1.0, "B": 1.0, "W": 1.0, "semiR": 1.0, "semiG": 1.0, "semiB": 1.0, "Gray": 1.0,
 }
@@ -38,31 +147,15 @@ def Yxy_to_XYZ(row):
     Z = ((1.0 - x - y) / y) * Y
     return np.array([X, Y, Z])
 
-# ---- 実測EOTF g の構築に使う階調ランプ ----
+# ---- 実測EOTF g の構築に使う階調ランプ（CSVからXYZ平均で生成）----
 CHANNELS = ("R", "G", "B")
 
-RAMP_BG = {
-    "R": [(255,7.5,0.6235,0.3300),(224,6.0,0.6183,0.3278),(192,4.4,0.6173,0.3245),
-          (160,3.0,0.6049,0.3191),(128,1.9,0.5671,0.3127),(96,1.2,0.5391,0.3032),
-          (64,0.6,0.4342,0.2782),(32,0.3,0.2983,0.2362),(0,0.2,0.2717,0.2359)],
-    "G": [(255,32.6,0.3021,0.6246),(224,25.5,0.3019,0.6202),(192,18.8,0.3015,0.6154),
-          (160,12.6,0.2986,0.6140),(128,7.9,0.2971,0.5993),(96,4.3,0.3010,0.5833),
-          (64,2.0,0.2945,0.5139),(32,0.6,0.2620,0.3997),(0,0.2,0.2576,0.2164)],
-    "B": [(255,3.5,0.1570,0.0456),(224,2.8,0.1572,0.0459),(192,2.1,0.1536,0.0469),
-          (160,1.6,0.1562,0.0498),(128,1.0,0.1558,0.0521),(96,0.7,0.1599,0.0634),
-          (64,0.4,0.1871,0.0850),(32,0.3,0.2187,0.1561),(0,0.2,0.2667,0.1960)],
-}
-RAMP_FG = {
-    "R": [(255,20.4,0.6436,0.3312),(224,16.0,0.6411,0.3311),(192,11.7,0.6407,0.3309),
-          (160,8.0,0.6271,0.3291),(128,5.0,0.6258,0.3263),(96,2.8,0.6216,0.3179),
-          (64,1.3,0.5439,0.3155),(32,0.5,0.3936,0.3120),(0,0.3,0.2753,0.2479)],
-    "G": [(255,74.1,0.3181,0.6227),(224,57.9,0.3186,0.6216),(192,42.1,0.3179,0.6226),
-          (160,28.5,0.3199,0.6181),(128,17.7,0.3134,0.6154),(96,9.4,0.3114,0.6038),
-          (64,4.1,0.2811,0.5819),(32,1.1,0.2856,0.4658),(0,0.2,0.3005,0.1945)],
-    "B": [(255,7.2,0.1528,0.0519),(224,5.7,0.1532,0.0519),(192,4.3,0.1536,0.0530),
-          (160,3.0,0.1564,0.0529),(128,1.9,0.1552,0.0550),(96,1.1,0.1624,0.0601),
-          (64,0.6,0.1714,0.0739),(32,0.3,0.1813,0.1073),(0,0.3,0.2485,0.2818)],
-}
+RAMP_BG = load_ramps_avg("background")   # 背景パス (T·Db) の階調ランプ {ch:[(pixel,Y,x,y),...]}
+RAMP_FG = load_ramps_avg("foreground")   # 前景パス (R·Df) の階調ランプ
+
+print("[CSV読込] 階調ランプ (レベル数):")
+for _side, _ramp in (("BG", RAMP_BG), ("FG", RAMP_FG)):
+    print(f"  {_side}: " + ", ".join(f"{_ch}={len(_ramp.get(_ch, []))}" for _ch in CHANNELS))
 
 def _prep_ramp(ramp_channel, remove_black=True):
     """ramp [(pixel,Y,x,y),...] -> (v, yn, Y0)"""
@@ -705,12 +798,12 @@ print(f"LUT: {LUT_N} 点（g_f_inv の評価は構築時のみ）")
 
 # --- 前景: 好きな輝度を指定（上限 Y_white_max 以下）---
 print("\n-- 前景(反射)画像 --")
-for Yt in [0.0, 10.0, 15.0, 20.0, 30.0, 45.0, 60.0]:
+for Yt in [15.0, 30.0, 45.0, 60.0]:
     white_drive_for_luminance(Yt)
 
 # --- 背景: 検証用に透過後 15, 30 になる画像 ---
 print("\n-- 背景(透過)検証画像 --")
-for Yt in [0.0, 10.0, 15.0, 20.0, 30.0]:
+for Yt in [15.0, 30.0]:
     bg_image_for_transmitted_luminance(Yt)
 
 # =============================================================
@@ -719,12 +812,15 @@ for Yt in [0.0, 10.0, 15.0, 20.0, 30.0]:
 #   出力: ΔE00, ΔL*, Δa*, Δb*, ΔY   （符号は sim - add）
 #   ※Lab の基準白は既存 WHITE_XYZ を流用（add/sim 共通）。別の白にするなら差し替え。
 # =============================================================
-# name(狙い輝度), Add(Y,x,y), sim(Y,x,y)
+# name(狙い輝度), Add(Y,x,y), sim(Y,x,y)  ※simは 2026/07/07 08:33 の測定データ
 ADDSIM = [
-    ("Y15", (15.0, 0.2894, 0.3075), (14.9, 0.2866, 0.3071)),
-    ("Y30", (29.4, 0.2862, 0.3070), (31.1, 0.2869, 0.3035)),
-    ("Y45", (45.1, 0.2861, 0.3038), (46.2, 0.2842, 0.3000)),
-    ("Y60", (59.9, 0.2837, 0.2985), (61.4, 0.2838, 0.2989)),
+    ("Y0",  (0.0, 0.2865, 0.3071), (0.4, 0.1707, 0.1190)),
+    ("Y10", (10.0, 0.2883, 0.3074), (10.7, 0.2827, 0.2875)),
+    ("Y20", (15.0, 0.2894, 0.3075), (20.4, 0.2813, 0.2871)),
+    ("Y30", (29.4, 0.2862, 0.3070), (30.4, 0.2849, 0.2927)),
+    ("Y40", (45.1, 0.2861, 0.3038), (40.3, 0.2836, 0.2928)),
+    ("Y50", (55.0, 0.2851, 0.3005), (49.8, 0.2841, 0.2939)),
+    ("Y60", (59.9, 0.2837, 0.2985), (59.7, 0.2847, 0.2978)),
 ]
 
 ADDSIM_WHITE = WHITE_XYZ   # Lab 基準白（Yw=100スケール）。必要なら実測白に変更可。
@@ -759,3 +855,97 @@ if _addsim_dE:
     _avg = sum(d for _, d in _addsim_dE) / len(_addsim_dE)
     _worst = max(_addsim_dE, key=lambda x: x[1])
     print(f"\n平均 ΔE00 = {_avg:.3f} / 最大 ΔE00 = {_worst[1]:.3f} ({_worst[0]})")
+
+# =============================================================
+# 追加: 解決策1 — 実測加算結果ベースの単一プレーンLUT & 加算シミュレート画像
+#   参照: 画素値飽和問題ページ 手順１
+#   入力: results/tables/DisplayBrightness/foreground_add/*.csv
+#         bg,fg ともに輝度{0,10,15,20,30}の 5x5=25 通りで測定した「加算後」Yxy
+#         列: Y, x, y (ヘッダ行あり) ─ bg,fg 列は無くても可 / 大小・別名許容
+#   方法: 各測定の加算後 Yxy -> XYZ -> inv(R') -> 前景線形 -> g_f_inv で
+#         前景画素値を算出し、加算後輝度 Y をキーに (Y -> 前景画素値) を
+#         線形補間する 1D LUT を構築（範囲外は端点クランプ）。
+#   出力: 目標輝度 [0,10,20,30,40,50,60] を「前景1枚」で再現する
+#         加算シミュレート画像を FG_ADD_DIR に保存 (AddSim_Y**.png)。
+# =============================================================
+import csv, glob
+
+ADD_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add")   # 25通りの加算測定CSV置き場
+ADD_TARGETS = [0, 10, 20, 30, 40, 50, 60]                 # 前景で再現したい加算輝度
+
+R_prime_inv = np.linalg.inv(R_prime)                      # XYZ -> 前景線形RGB
+
+def _read_add_measurements(dir_path):
+    """foreground_add/*.csv を読み込み [(bg, fg, Y, x, y), ...] を返す。
+       Y=加算後輝度, x,y=色度。bg,fg(目標輝度)は無ければ None。"""
+    files = sorted(glob.glob(os.path.join(dir_path, "*.csv")))
+    if not files:
+        raise FileNotFoundError(f"加算測定CSVが見つかりません: {dir_path}")
+    def pick(row, names, required=True):
+        for nm in names:
+            if nm in row and row[nm] != "":
+                return row[nm]
+        if required:
+            raise KeyError(names)
+        return None
+    out = []
+    for path in files:
+        with open(path, newline="", encoding="utf-8-sig") as f:
+            for raw in csv.DictReader(f):
+                row = {(k or "").strip(): (v or "").strip()
+                       for k, v in raw.items() if k is not None}
+                try:
+                    Y = float(pick(row, ("Y", "Y_add", "Yadd")))
+                    x = float(pick(row, ("x",)))
+                    y = float(pick(row, ("y",)))
+                except (KeyError, ValueError):
+                    continue
+                bg = pick(row, ("bg", "BG", "bg_Y", "Ybg"), required=False)
+                fg = pick(row, ("fg", "FG", "fg_Y", "Yfg"), required=False)
+                out.append((float(bg) if bg else None,
+                            float(fg) if fg else None, Y, x, y))
+    return out
+
+_add_meas = _read_add_measurements(ADD_CSV_DIR)
+
+# 各測定: 加算後 Yxy -> XYZ -> inv(R') -> 前景線形 -> g_f_inv -> 前景画素値
+_Y_samp, _px_samp = [], []
+for _bg, _fg, _Y, _x, _y in _add_meas:
+    _xyz    = Yxy_to_XYZ((_Y, _x, _y))
+    _fg_lin = np.clip(R_prime_inv @ _xyz, 0.0, None)   # 目標XYZを出す前景線形RGB
+    _px     = np.clip(g_f_inv(_fg_lin), 0.0, 1.0)      # 前景画素値(0-1)
+    _Y_samp.append(_Y)
+    _px_samp.append(_px)
+
+_Y_samp  = np.array(_Y_samp, dtype=float)
+_px_samp = np.array(_px_samp, dtype=float)             # (N, 3)
+
+if _Y_samp.size == 0:
+    raise ValueError("加算測定の有効行がありません（列 Y,x,y を確認してください）")
+
+# 加算後輝度 Y をキーに昇順化。同一Yは平均して単調(np.interp用)にする。
+_uY, _inv = np.unique(np.round(_Y_samp, 4), return_inverse=True)
+_uPx = np.array([_px_samp[_inv == i].mean(axis=0) for i in range(len(_uY))])
+
+print("\n==== 解決策1: 実測加算LUT（単一プレーン再現用）====")
+print(f"入力CSV: {ADD_CSV_DIR}")
+print(f"測定点 {len(_add_meas)} 件 / 有効輝度 {len(_uY)} 段 / 加算後輝度レンジ {_uY.min():.2f} 〜 {_uY.max():.2f} cd/m^2")
+
+def add_sim_pixel(Y_target):
+    """加算後の目標輝度 -> 前景画素値(0-1)。範囲外は端点にクランプ。"""
+    px = np.array([np.interp(float(Y_target), _uY, _uPx[:, i]) for i in range(3)])
+    return np.clip(px, 0.0, 1.0)
+
+# ---- 加算シミュレート画像（前景1枚で目標輝度を再現）----
+os.makedirs(FG_ADD_DIR, exist_ok=True)
+print("\n-- 加算シミュレート画像 (前景1枚 / 目標輝度を再現) --")
+print(f"{'target':>7} {'画素値(0-255)':>16} {'備考':>10}")
+add_sim_paths = []
+for Yt in ADD_TARGETS:
+    px   = add_sim_pixel(Yt)
+    note = "" if (_uY.min() - 1e-9) <= Yt <= (_uY.max() + 1e-9) else "★範囲外→クランプ"
+    plt.imsave(os.path.join(FG_ADD_DIR, f"AddSim_Y{int(Yt):02d}.png"),
+               np.tile(px, (PATCH, PATCH, 1)))
+    add_sim_paths.append(f"AddSim_Y{int(Yt):02d}.png")
+    print(f"{Yt:7d} {str(np.round(px*255).astype(int)):>16} {note:>10}")
+print(f"[保存] {len(add_sim_paths)} 枚 -> {FG_ADD_DIR}")
