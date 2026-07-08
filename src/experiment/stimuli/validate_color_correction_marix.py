@@ -208,13 +208,11 @@ def build_eotf_auto(ramp_channel, analysis=None, **kwargs):
         name = kwargs.pop("name", "(auto)")
         analysis = analyze_gamma(name, ramp_channel, **kwargs)
     v, yn = analysis["v"], analysis["yn"]
-    if analysis["use"] == "power":
-        gm = analysis["gamma"]
-        g     = lambda val: np.clip(np.asarray(val, dtype=float), 0.0, None) ** gm
-        g_inv = lambda y:   np.clip(np.asarray(y,   dtype=float), 0.0, None) ** (1.0 / gm)
-    else:
-        g     = lambda val: np.interp(np.asarray(val, dtype=float), v, yn)
-        g_inv = lambda y:   np.interp(np.asarray(y,   dtype=float), yn, v)
+    # 常に個別EOTF（実測点の線形補完）を採用する。
+    # ※power/interp の自動判定は使わず、interp に固定。
+    #   直線性チェック・残差プロットは analyze_gamma 側で従来どおり生成される。
+    g     = lambda val: np.interp(np.asarray(val, dtype=float), v, yn)
+    g_inv = lambda y:   np.interp(np.asarray(y,   dtype=float), yn, v)
     return g, g_inv, analysis
 
 # ---- 図の出力先 ----
