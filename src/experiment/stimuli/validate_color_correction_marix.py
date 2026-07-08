@@ -1,25 +1,21 @@
 # =============================================================
-# コード2: 検証パート（独立実行版）
-#   コード1と独立して実行できるよう、必要な定義をここで再掲する。
-#   行列 R'/T'/C はコード1が保存した CSV から読み込む
-#   （コード1を先に一度実行して results/tables/DisplayBrightness/*.csv を生成しておくこと）
-#   ※ 階調解析プロットはコード1で生成済みのため、ここでは plot_dir=None で省略する。
+# 検証パート（単独実行可）: 保存済み行列 R'/T'/C を読み込み、補正・色差・輝度を検証する
 # =============================================================
 import os
+import csv
+import glob
+import math
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
 # =============================================================
-# 入力パッチ & 階調ランプを CSV から読み込み（コード1と同じローダを再掲）
+# 入力パッチ & 階調ランプを CSV から読み込む
 #   results/tables/DisplayBrightness/{background,foreground}/{patches,ramps}/*.csv
 #   ・patches 列: name, sR, sG, sB, Y, x, y
 #   ・ramps   列: channel, pixel, Y, x, y
 #   ・平均は Yxy->XYZ に変換して XYZ空間で平均 -> Yxy に戻す（欠損は「あるものだけ」）
 # =============================================================
-import csv
-import glob
-
 DATA_ROOT   = os.path.join("results", "tables", "DisplayBrightness")
 PATCH_ORDER = ["R", "G", "B", "W", "semiR", "semiG", "semiB", "Gray"]
 
@@ -130,22 +126,13 @@ for n in _names:
 
 print(f"[CSV読込] パッチ: background {_n_bg} ファイル / foreground {_n_fg} ファイル -> {len(PATCHES)} パッチ")
 
-WEIGHTS = {
-    "R": 1.0, "G": 1.0, "B": 1.0, "W": 1.0, "semiR": 1.0, "semiG": 1.0, "semiB": 1.0, "Gray": 1.0,
-}
-
 # ---- 色変換ユーティリティ ----
 def linear_to_srgb(c):
     c = np.clip(np.asarray(c, dtype=float), 0.0, 1.0)
     return np.where(c <= 0.0031308, 12.92 * c, 1.055 * (c ** (1 / 2.0)) - 0.055)
 
 def Yxy_to_XYZ(row):
-    Y, x, y = row
-    if y == 0:
-        return np.array([0.0, 0.0, 0.0])
-    X = (x / y) * Y
-    Z = ((1.0 - x - y) / y) * Y
-    return np.array([X, Y, Z])
+    return _yxy2xyz(*row)   # Yxy -> XYZ（_yxy2xyz に委譲）
 
 # ---- 実測EOTF g の構築に使う階調ランプ（CSVからXYZ平均で生成）----
 CHANNELS = ("R", "G", "B")
@@ -172,7 +159,7 @@ def _prep_ramp(ramp_channel, remove_black=True):
 def analyze_gamma(name, ramp_channel,
                   target_gamma=2.2, resid_tol=0.02, trend_tol=0.5, r2_tol=0.99,
                   plot_dir=None):
-    """1チャネルの直線性チェック・ガンマ推定・モデル選択（プロットはコード1側で生成済みのため省略）。"""
+    """1チャネルの直線性チェック・ガンマ推定・モデル選択。"""
     v, yn, Y0 = _prep_ramp(ramp_channel)
     resid_22 = yn - v ** target_gamma
     m = (v > 0) & (yn > 0)
@@ -208,9 +195,7 @@ def build_eotf_auto(ramp_channel, analysis=None, **kwargs):
         name = kwargs.pop("name", "(auto)")
         analysis = analyze_gamma(name, ramp_channel, **kwargs)
     v, yn = analysis["v"], analysis["yn"]
-    # 常に個別EOTF（実測点の線形補完）を採用する。
-    # ※power/interp の自動判定は使わず、interp に固定。
-    #   直線性チェック・残差プロットは analyze_gamma 側で従来どおり生成される。
+    # 個別EOTF（実測点の線形補完）に固定
     g     = lambda val: np.interp(np.asarray(val, dtype=float), v, yn)
     g_inv = lambda y:   np.interp(np.asarray(y,   dtype=float), yn, v)
     return g, g_inv, analysis
@@ -242,26 +227,11 @@ g_b     = lambda v: _apply(_gb, v, 0)   # 背景画素値 -> 正規化線形
 g_f     = lambda v: _apply(_gf, v, 0)   # 前景画素値 -> 正規化線形
 g_f_inv = lambda l: _apply(_gf, l, 1)   # 正規化線形 -> 前景画素値
 
-def collect(channel):
-    """channel='BGT' or 'FGR' の有効パッチを (rgb_lin, XYZ, w, names) で返す"""
-    idx = 2 if channel == "BGT" else 3
-    rgb_lin, XYZ, w, names = [], [], [], []
-    for p in PATCHES:
-        meas = p[idx]
-        if meas is None or any(v is None for v in meas):
-            continue
-        lin = g_b(p[1]) if channel == "BGT" else g_f(p[1])
-        rgb_lin.append(lin)
-        XYZ.append(Yxy_to_XYZ(meas))
-        w.append(WEIGHTS.get(p[0], 1.0))
-        names.append(p[0])
-    return np.array(rgb_lin), np.array(XYZ), np.array(w), names
-
-# ---- コード1が保存した行列を CSV から読み込む ----
+# ---- 保存済みの行列を CSV から読み込む ----
 TABLE_DIR = os.path.join("results", "tables", "DisplayBrightness")
 
 def load_matrix_csv(name):
-    """results/tables/DisplayBrightness/<name>.csv を 3x3 行列として読み込む。"""
+    """<name>.csv を 3x3 行列として読み込む。"""
     path = os.path.join(TABLE_DIR, f"{name}.csv")
     return np.loadtxt(path, delimiter=",")   # '#' ヘッダ行は自動スキップ
 
@@ -276,11 +246,8 @@ print("R_prime:\n", R_prime)
 print("C:\n", C)
 
 # =============================================================
-# 追加処理(After): C補正画像の生成と「見え」の照合
-#   T_prime = T·Db, R_prime = R·Df は RGB->XYZ、C は RGB->RGB
+# C補正画像の生成と「見え」の照合（T'=T·Db, R'=R·Df は RGB->XYZ、C は RGB->RGB）
 # =============================================================
-
-# --- sRGB <-> 線形RGB 変換 (IEC 61966-2-1) ---
 
 # --- XYZ(D65) -> linear sRGB 標準行列 ---
 M_XYZ2RGB = np.array([
@@ -346,7 +313,7 @@ print(f"\n[保存] {len(saved_paths)} 枚 -> {PATCH_FIG_DIR}")
 print("c_colors (補正後前景 sRGB):\n", c_colors)
 
 # =============================================================
-# 追加①: ガンマ確認用ランプ画像の生成・保存
+# ガンマ確認用ランプ画像の生成・保存（生ランプと補正後ランプを出力）
 #   目的: 「補正後(前景に送る駆動値)」でも Y が入力に対して
 #         ガンマ2.0 に乗っているかを検証する。
 #   手順: R/G/B 各チャンネルを 0~255 の複数ステップで単色駆動し、
@@ -404,10 +371,10 @@ print("  各チャンネル×各レベルの画像(生/補正後)を前景に表
 print(f"  生を {os.path.join('foreground', 'ramps')} / 補正後を {os.path.join('foreground', 'corrected_ramps')} に CSV 保存してください。")
 
 # =============================================================
-# 追加②: 補正後の直線性チェック（個別EOTF が補正後も効いているか）
+# 補正後の直線性チェック（個別EOTF が補正後も効いているか）
 #   生ランプ   : results/tables/DisplayBrightness/foreground/ramps           の平均
 #   補正後ランプ: results/tables/DisplayBrightness/foreground/corrected_ramps の平均
-#   コード1と同様に「横軸 v^2.2 vs 測定輝度」と残差プロットを、生・補正後で重ね描き。
+#   「横軸 v^2.2 vs 測定輝度」と残差プロットを生・補正後で重ね描き。
 #   ※どちらも実測点を結ぶ線グラフ(個別EOTF=線形補完)のため、
 #     ガンマ推定・決定係数などのフィットは行わない。
 # =============================================================
@@ -435,40 +402,40 @@ def _load_ramps_dir(dir_path):
     return ramp
 
 def plot_corrected_linearity(name, ramp_raw, ramp_corr, target_gamma=2.2, plot_dir=None):
-    """生ランプ(未補正)と補正後ランプの直線性・残差を重ね描き。
+    """生ランプ(未補正)と補正後ランプの線形性を比較する。
        個別EOTF(線形補完)が補正後も効いているかの確認用。
-       横軸 v^2.2 / 縦軸 正規化輝度 yn。理想(=完全な線形補完)なら y=x に乗る。
-       戻り値: (rms_raw, rms_corr) = 各々の y=x からの残差RMS。"""
+       (左) 横軸 v^2.2 vs 測定輝度 yn を 生・補正後で重ね描き（γ=2.2の基準線は描かない）。
+       (右) 同一画素値での 補正前後の値の差 (corrected - raw) をプロット。
+       戻り値: rms_diff = 補正前後差のRMS。"""
     v_raw,  yn_raw,  _ = _prep_ramp(ramp_raw)
     v_corr, yn_corr, _ = _prep_ramp(ramp_corr)
     x_raw,  x_corr = v_raw ** target_gamma, v_corr ** target_gamma
-    resid_raw, resid_corr = yn_raw - x_raw, yn_corr - x_corr   # y=x(理想γ2.2)からのズレ
-    rms_raw  = float(np.sqrt(np.mean(resid_raw ** 2)))
-    rms_corr = float(np.sqrt(np.mean(resid_corr ** 2)))
-    print(f"\n---- [{name}] 補正前後の直線性（横軸 v^{target_gamma}）----")
-    print(f"  残差RMS(vs y=x): raw={rms_raw:.4f} / corrected={rms_corr:.4f}")
+    # 補正後を生の画素値グリッドに合わせて 補正前後の差 (corrected - raw) を取る
+    yn_corr_on_raw = np.interp(v_raw, v_corr, yn_corr)
+    diff = yn_corr_on_raw - yn_raw
+    rms_diff = float(np.sqrt(np.mean(diff ** 2)))
+    print(f"\n---- [{name}] 補正前後の線形性比較 ----")
+    print(f"  補正前後差RMS(corrected - raw) = {rms_diff:.4f}")
     if plot_dir is not None:
         os.makedirs(plot_dir, exist_ok=True)
         fig, ax = plt.subplots(1, 2, figsize=(11, 4.5))
-        # (左) 直線性: v^2.2 vs 測定輝度 yn を 生・補正後で重ね描き
-        ax[0].plot([0, 1], [0, 1], "k--", lw=1, label=f"ideal γ={target_gamma} (y=x)")
+        # (左) 線形性: v^2.2 vs 測定輝度 yn を 生・補正後で重ね描き（γ=2.2基準線なし）
         ax[0].plot(x_raw,  yn_raw,  "o-", label="raw (uncorrected)")
         ax[0].plot(x_corr, yn_corr, "s-", label="corrected")
         ax[0].set_title(f"[{name}] linearity: pixel^{target_gamma} vs measured")
         ax[0].set_xlabel(f"v^{target_gamma}"); ax[0].set_ylabel("yn (measured, 0-1)")
         ax[0].legend(); ax[0].grid(True, alpha=.3)
-        # (右) 残差プロット: yn - v^2.2 を 生・補正後で重ね描き
+        # (右) 補正前後の値の差: yn(corrected) - yn(raw) を画素値ごとにプロット
         ax[1].axhline(0, color="k", lw=1)
-        ax[1].plot(v_raw,  resid_raw,  "o-", label=f"raw (RMS={rms_raw:.4f})")
-        ax[1].plot(v_corr, resid_corr, "s-", label=f"corrected (RMS={rms_corr:.4f})")
-        ax[1].set_title(f"[{name}] residual vs γ={target_gamma}")
-        ax[1].set_xlabel("v (0-1)"); ax[1].set_ylabel(f"yn - v^{target_gamma}")
+        ax[1].plot(v_raw, diff, "o-", label=f"corrected - raw (RMS={rms_diff:.4f})")
+        ax[1].set_title(f"[{name}] difference: corrected - raw")
+        ax[1].set_xlabel("v (0-1)"); ax[1].set_ylabel("Δyn (corrected - raw)")
         ax[1].legend(); ax[1].grid(True, alpha=.3)
         fig.tight_layout()
         path = os.path.join(plot_dir, f"corrected_linearity_{name}.png")
         fig.savefig(path, dpi=120); plt.close(fig)
         print(f"  [plot] {path}")
-    return rms_raw, rms_corr
+    return rms_diff
 
 # 生(未補正)= foreground/ramps の平均(=RAMP_FG) / 補正後 = foreground/corrected_ramps の平均
 RAMP_FG_RAW       = RAMP_FG
@@ -484,13 +451,11 @@ for _ch in [c for c in RAMP_FG_RAW if c in RAMP_FG_CORR]:
     plot_corrected_linearity(_ch, RAMP_FG_RAW[_ch], RAMP_FG_CORR[_ch], plot_dir=CORR_PLOT_DIR)
 
 # =============================================================
-# 追加処理: 透過T(背景ランプ) vs 反射R(補正後ランプ) の色差
-#   コード1の背景ランプ RAMP_BG を透過ターゲット T、
-#   B-3 で読み込んだ補正後ランプ RAMP_FG_CORR を反射結果 R とみなし、
+# 透過T(背景ランプ) vs 反射R(補正後ランプ) の色差
+#   背景ランプ RAMP_BG を透過ターゲット T、
+#   補正後ランプ RAMP_FG_CORR を反射結果 R とみなし、
 #   同一画素レベルで CIEDE2000(ΔE00) と ΔY を算出する。
 # =============================================================
-import math
-
 # Lab の基準白（共通白）。R/T 両方の Lab をこの白基準で評価する。
 WHITE_XYZ = np.array([97.5, 100.9, 116.1])
 
@@ -506,10 +471,6 @@ def XYZ_to_Lab(xyz, white_xyz):
     a = 500.0 * (fx - fy)
     b = 200.0 * (fy - fz)
     return np.array([L, a, b])
-
-def delta_e_76(Lab1, Lab2):
-    """単純なユークリッド色差 ΔE*ab (CIE1976)"""
-    return float(np.linalg.norm(np.asarray(Lab1) - np.asarray(Lab2)))
 
 def ciede2000(Lab1, Lab2, kL=1.0, kC=1.0, kH=1.0):
     """CIEDE2000 色差"""
@@ -586,7 +547,7 @@ else:
         print(f"{_ch:>3} {np.mean(_dE):9.3f} {np.max(_dE):9.3f} {np.mean(_dY):+8.2f} {len(_dE):5d}")
 
 # =============================================================
-# 追加: White を「指定した輝度」で出す（LUT一度だけ版・色味は背景透過の白）
+# White を指定輝度で出す（前景=反射画像 + 検証用の背景=透過画像）
 #   ・前景(反射)で狙い輝度を出す画像  + 検証用に背景(透過)で狙い輝度になる画像
 #   ・この範囲の出力は専用フォルダ RANGE_DIR にまとめて保存
 # =============================================================
@@ -628,10 +589,6 @@ def white_drive_for_luminance(Y_target, save=True, verbose=True):
         plt.imsave(os.path.join(RANGE_DIR, f"FG_White_Y{int(round(Y_target))}.png"), patch)
     return px, Y_eff, feasible
 
-def white_image_from_luminance(Ymap):
-    """狙い輝度マップ Ymap(H,W) -> 前景画像(H,W,3)。"""
-    return _lut_lookup(Ymap)
-
 # ---- 背景(透過)側: 検証用に「透過後に狙い輝度になる」背景画像を出力 ----
 g_b_inv       = lambda l: _apply(_gb, l, 1)          # 正規化線形 -> 背景画素値(逆EOTF)
 base_lin_white = base_lin[w_idx]                     # = g_b([1,1,1]) = [1,1,1]
@@ -670,15 +627,15 @@ for Yt in [15.0, 30.0]:
     bg_image_for_transmitted_luminance(Yt)
 
 # =============================================================
-# 追加: 加算(Add) vs シミュレート(sim) の色差・輝度差
+# 加算(Add) vs シミュレート(sim) の色差・輝度差
 #   White を対象に、狙い輝度ごとに Add と sim の Yxy を比較。
 #   出力: ΔE00, ΔL*, Δa*, Δb*, ΔY   （符号は sim - add）
 #   ※Lab の基準白は既存 WHITE_XYZ を流用（add/sim 共通）。別の白にするなら差し替え。
 # =============================================================
 # ---- Add(加算) は実測を引用 / sim は既存の測定値をそのまま使用 ----
-#   Add: results/tables/DisplayBrightness/foreground_add/*.csv（解決策1と同じCSV群）の
+#   Add: foreground_add/*.csv の
 #        「加算後」Yxy を、狙い輝度(=bg+fg)ごとに XYZ空間で平均して引用する。
-#   sim: 2026/07/07 08:33 の測定データ（数値は変更しない）。
+#   sim: 既存の測定値をそのまま使用。
 _SIM_BY_TARGET = [
     # name,  target,  sim(Y, x, y)
     ("Y0",    0, (0.4,  0.1707, 0.1190)),
@@ -692,13 +649,14 @@ _SIM_BY_TARGET = [
 
 _ADDSIM_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add")
 
-def _load_add_by_target(dir_path):
-    """foreground_add/*.csv を読み、狙い輝度(=bg+fg)ごとに加算後Yxyを XYZ空間で平均。
-       -> {target(int): (Y, x, y)}。bg/fg 列が無い行は加算後Yの丸めをキーにする。"""
+def _read_add_rows(dir_path):
+    """foreground_add/*.csv を読み、[(bg, fg, Y, x, y), ...] を返す共通リーダー。
+       Y=加算後輝度, x,y=色度, bg/fg=目標輝度(無ければ None)。
+       CSVが無い場合は警告を表示し、空リストを返して処理を継続する。"""
     files = sorted(glob.glob(os.path.join(dir_path, "*.csv")))
     if not files:
-        print(f"[Add実測] CSVが見つかりません（Add列は空でスキップ）: {dir_path}")
-        return {}
+        print(f"[Add実測] CSVが見つかりません（スキップして継続）: {dir_path}")
+        return []
     def _pick(row, names, required=True):
         for nm in names:
             if nm in row and row[nm] != "":
@@ -706,7 +664,7 @@ def _load_add_by_target(dir_path):
         if required:
             raise KeyError(names)
         return None
-    acc = {}   # target(int) -> [XYZ, ...]
+    out = []
     for path in files:
         with open(path, newline="", encoding="utf-8-sig") as f:
             for raw in csv.DictReader(f):
@@ -720,11 +678,20 @@ def _load_add_by_target(dir_path):
                     continue
                 bg = _pick(row, ("bg", "BG", "bg_Y", "Ybg"), required=False)
                 fg = _pick(row, ("fg", "FG", "fg_Y", "Yfg"), required=False)
-                try:
-                    key = int(round(float(bg) + float(fg)))   # 狙い輝度 = bg + fg
-                except (TypeError, ValueError):
-                    key = int(round(Y))                        # bg/fg 無ければ加算後Yで代用
-                acc.setdefault(key, []).append(_yxy2xyz(Y, x, y))
+                out.append((float(bg) if bg else None,
+                            float(fg) if fg else None, Y, x, y))
+    return out
+
+def _load_add_by_target(dir_path):
+    """加算測定を狙い輝度(=bg+fg)ごとに XYZ空間で平均。
+       -> {target(int): (Y, x, y)}。bg/fg が無い行は加算後Yの丸めをキーにする。"""
+    acc = {}   # target(int) -> [XYZ, ...]
+    for bg, fg, Y, x, y in _read_add_rows(dir_path):
+        try:
+            key = int(round(bg + fg))   # 狙い輝度 = bg + fg
+        except (TypeError, ValueError):
+            key = int(round(Y))         # bg/fg 無ければ加算後Yで代用
+        acc.setdefault(key, []).append(_yxy2xyz(Y, x, y))
     return {k: _xyz2yxy(np.mean(np.array(v), axis=0)) for k, v in acc.items()}
 
 _add_by_target = _load_add_by_target(_ADDSIM_CSV_DIR)
@@ -780,97 +747,3 @@ if _addsim_dE:
     _avg = sum(d for _, d in _addsim_dE) / len(_addsim_dE)
     _worst = max(_addsim_dE, key=lambda x: x[1])
     print(f"\n平均 ΔE00 = {_avg:.3f} / 最大 ΔE00 = {_worst[1]:.3f} ({_worst[0]})")
-
-# =============================================================
-# 追加: 解決策1 — 実測加算結果ベースの単一プレーンLUT & 加算シミュレート画像
-#   参照: 画素値飽和問題ページ 手順１
-#   入力: results/tables/DisplayBrightness/foreground_add/*.csv
-#         bg,fg ともに輝度{0,10,15,20,30}の 5x5=25 通りで測定した「加算後」Yxy
-#         列: Y, x, y (ヘッダ行あり) ─ bg,fg 列は無くても可 / 大小・別名許容
-#   方法: 各測定の加算後 Yxy -> XYZ -> inv(R') -> 前景線形 -> g_f_inv で
-#         前景画素値を算出し、加算後輝度 Y をキーに (Y -> 前景画素値) を
-#         線形補間する 1D LUT を構築（範囲外は端点クランプ）。
-#   出力: 目標輝度 [0,10,20,30,40,50,60] を「前景1枚」で再現する
-#         加算シミュレート画像を FG_ADD_DIR に保存 (AddSim_Y**.png)。
-# =============================================================
-import csv, glob
-
-ADD_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add")   # 25通りの加算測定CSV置き場
-ADD_TARGETS = [0, 10, 20, 30, 40, 50, 60]                 # 前景で再現したい加算輝度
-
-R_prime_inv = np.linalg.inv(R_prime)                      # XYZ -> 前景線形RGB
-
-def _read_add_measurements(dir_path):
-    """foreground_add/*.csv を読み込み [(bg, fg, Y, x, y), ...] を返す。
-       Y=加算後輝度, x,y=色度。bg,fg(目標輝度)は無ければ None。"""
-    files = sorted(glob.glob(os.path.join(dir_path, "*.csv")))
-    if not files:
-        raise FileNotFoundError(f"加算測定CSVが見つかりません: {dir_path}")
-    def pick(row, names, required=True):
-        for nm in names:
-            if nm in row and row[nm] != "":
-                return row[nm]
-        if required:
-            raise KeyError(names)
-        return None
-    out = []
-    for path in files:
-        with open(path, newline="", encoding="utf-8-sig") as f:
-            for raw in csv.DictReader(f):
-                row = {(k or "").strip(): (v or "").strip()
-                       for k, v in raw.items() if k is not None}
-                try:
-                    Y = float(pick(row, ("Y", "Y_add", "Yadd")))
-                    x = float(pick(row, ("x",)))
-                    y = float(pick(row, ("y",)))
-                except (KeyError, ValueError):
-                    continue
-                bg = pick(row, ("bg", "BG", "bg_Y", "Ybg"), required=False)
-                fg = pick(row, ("fg", "FG", "fg_Y", "Yfg"), required=False)
-                out.append((float(bg) if bg else None,
-                            float(fg) if fg else None, Y, x, y))
-    return out
-
-_add_meas = _read_add_measurements(ADD_CSV_DIR)
-
-# 各測定: 加算後 Yxy -> XYZ -> inv(R') -> 前景線形 -> g_f_inv -> 前景画素値
-_Y_samp, _px_samp = [], []
-for _bg, _fg, _Y, _x, _y in _add_meas:
-    _xyz    = Yxy_to_XYZ((_Y, _x, _y))
-    _fg_lin = np.clip(R_prime_inv @ _xyz, 0.0, None)   # 目標XYZを出す前景線形RGB
-    _px     = np.clip(g_f_inv(_fg_lin), 0.0, 1.0)      # 前景画素値(0-1)
-    _Y_samp.append(_Y)
-    _px_samp.append(_px)
-
-_Y_samp  = np.array(_Y_samp, dtype=float)
-_px_samp = np.array(_px_samp, dtype=float)             # (N, 3)
-
-if _Y_samp.size == 0:
-    raise ValueError("加算測定の有効行がありません（列 Y,x,y を確認してください）")
-
-# 加算後輝度 Y をキーに昇順化。同一Yは平均して単調(np.interp用)にする。
-_uY, _inv = np.unique(np.round(_Y_samp, 4), return_inverse=True)
-_uPx = np.array([_px_samp[_inv == i].mean(axis=0) for i in range(len(_uY))])
-
-print("\n==== 解決策1: 実測加算LUT（単一プレーン再現用）====")
-print(f"入力CSV: {ADD_CSV_DIR}")
-print(f"測定点 {len(_add_meas)} 件 / 有効輝度 {len(_uY)} 段 / 加算後輝度レンジ {_uY.min():.2f} 〜 {_uY.max():.2f} cd/m^2")
-
-def add_sim_pixel(Y_target):
-    """加算後の目標輝度 -> 前景画素値(0-1)。範囲外は端点にクランプ。"""
-    px = np.array([np.interp(float(Y_target), _uY, _uPx[:, i]) for i in range(3)])
-    return np.clip(px, 0.0, 1.0)
-
-# ---- 加算シミュレート画像（前景1枚で目標輝度を再現）----
-os.makedirs(FG_ADD_DIR, exist_ok=True)
-print("\n-- 加算シミュレート画像 (前景1枚 / 目標輝度を再現) --")
-print(f"{'target':>7} {'画素値(0-255)':>16} {'備考':>10}")
-add_sim_paths = []
-for Yt in ADD_TARGETS:
-    px   = add_sim_pixel(Yt)
-    note = "" if (_uY.min() - 1e-9) <= Yt <= (_uY.max() + 1e-9) else "★範囲外→クランプ"
-    plt.imsave(os.path.join(FG_ADD_DIR, f"AddSim_Y{int(Yt):02d}.png"),
-               np.tile(px, (PATCH, PATCH, 1)))
-    add_sim_paths.append(f"AddSim_Y{int(Yt):02d}.png")
-    print(f"{Yt:7d} {str(np.round(px*255).astype(int)):>16} {note:>10}")
-print(f"[保存] {len(add_sim_paths)} 枚 -> {FG_ADD_DIR}")

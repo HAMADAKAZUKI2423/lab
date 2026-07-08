@@ -344,3 +344,65 @@ _saved = [
 print("\n[CSV保存] R'/T'/C を上書き保存しました ->", os.path.abspath(TABLE_DIR))
 for _p in _saved:
     print("  ", _p)
+
+# =============================================================
+# 単一プレーンLUT: 実測の加算結果から「前景1枚で目標輝度を再現」する画像を生成
+#   入力: results/tables/DisplayBrightness/foreground_add/*.csv （加算後の測定値 Y,x,y）
+#   方法: 加算後 Yxy -> XYZ -> inv(R') -> 前景線形 -> g_f_inv で前景画素値を求め、
+#         加算後輝度 Y をキーに 1D LUT(線形補間・範囲外は端点クランプ)を構築する。
+#   出力: 目標輝度ごとの前景画像 AddSim_Y**.png を foreground_add に保存。
+# =============================================================
+FG_ADD_DIR  = os.path.join(FIG_DIR, "foreground_add")
+ADD_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add")
+ADD_TARGETS = [0, 10, 20, 30, 40, 50, 60]   # 前景1枚で再現したい加算輝度(cd/m^2)
+PATCH       = 256                            # 出力画像の一辺(px)
+
+R_prime_inv = np.linalg.inv(R_prime)         # XYZ -> 前景線形RGB
+
+def load_add_measurements(dir_path):
+    """foreground_add/*.csv から加算後の (Y, x, y) を読み込む。CSVが無ければ空リスト。"""
+    files = sorted(glob.glob(os.path.join(dir_path, "*.csv")))
+    if not files:
+        print(f"[単一プレーンLUT] 加算測定CSVが見つかりません（スキップ）: {dir_path}")
+        return []
+    out = []
+    for path in files:
+        for row in _read_csv_dicts(path):
+            try:
+                Y = float(_get(row, "Y", "Y_add", "Yadd"))
+                x = float(_get(row, "x")); y = float(_get(row, "y"))
+            except (KeyError, ValueError):
+                continue
+            out.append((Y, x, y))
+    return out
+
+_add_meas = load_add_measurements(ADD_CSV_DIR)
+if not _add_meas:
+    print("[単一プレーンLUT] 加算測定が無いため LUT 構築・画像出力をスキップします")
+else:
+    # 各測定: 加算後 Yxy -> XYZ -> inv(R') -> 前景線形 -> g_f_inv -> 前景画素値(0-1)
+    _Y  = np.array([m[0] for m in _add_meas], dtype=float)
+    _px = np.array([np.clip(g_f_inv(np.clip(R_prime_inv @ _yxy2xyz(*m), 0.0, None)), 0.0, 1.0)
+                    for m in _add_meas])
+
+    # 加算後輝度 Y をキーに昇順化（同一 Y は平均して単調化: np.interp 用）
+    _uY, _inv = np.unique(np.round(_Y, 4), return_inverse=True)
+    _uPx = np.array([_px[_inv == i].mean(axis=0) for i in range(len(_uY))])
+
+    def add_sim_pixel(Y_target):
+        """加算後の目標輝度 -> 前景画素値(0-1)。範囲外は端点にクランプ。"""
+        px = np.array([np.interp(float(Y_target), _uY, _uPx[:, i]) for i in range(3)])
+        return np.clip(px, 0.0, 1.0)
+
+    os.makedirs(FG_ADD_DIR, exist_ok=True)
+    print("\n==== 単一プレーンLUT（実測加算ベース）====")
+    print(f"入力CSV: {ADD_CSV_DIR}")
+    print(f"測定点 {len(_add_meas)} 件 / 有効輝度 {len(_uY)} 段 / レンジ {_uY.min():.2f}〜{_uY.max():.2f} cd/m^2")
+    print(f"{'target':>7} {'画素値(0-255)':>16} {'備考':>10}")
+    for Yt in ADD_TARGETS:
+        px   = add_sim_pixel(Yt)
+        note = "" if (_uY.min() - 1e-9) <= Yt <= (_uY.max() + 1e-9) else "★範囲外→クランプ"
+        plt.imsave(os.path.join(FG_ADD_DIR, f"AddSim_Y{int(Yt):02d}.png"),
+                   np.tile(px, (PATCH, PATCH, 1)))
+        print(f"{Yt:7d} {str(np.round(px*255).astype(int)):>16} {note:>10}")
+    print(f"[保存] 前景画像 {len(ADD_TARGETS)} 枚 -> {FG_ADD_DIR}")
