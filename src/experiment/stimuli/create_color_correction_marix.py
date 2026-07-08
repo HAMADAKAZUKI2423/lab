@@ -1,25 +1,19 @@
-import numpy as np
 import os
-import matplotlib.pyplot as plt
+import csv
+import glob
+import datetime
 import numpy as np
+import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
 # =============================================================
-# 最小二乗版: T', R' を「純色 + 白 + CMY + グレー」から推定
-#   モデル: XYZ = M @ rgb_lin   (M = T'(透過) または R'(反射), 3x3)
-#   劣加法(混色で輝度過大)を平均的に吸収させるのが狙い。
-#   ※ 純色のみだと白/混色は span 内で情報ゼロ。混色を足して初めて効く。
+# 実測パッチから色変換行列 T'(透過)・R'(反射)・C(=inv(R')·T') を推定し CSV 保存する
+#   モデル: XYZ = M @ rgb_lin  (M は 3x3 / 純色+白+CMY+グレーを最小二乗で当てはめ)
 # =============================================================
 
-# =============================================================
-# 入力パッチを CSV から読み込み（複数ファイルをXYZ空間で平均）
+# ---- 入力パッチを CSV から読み込み（複数ファイルを XYZ 空間で平均）----
 #   results/tables/DisplayBrightness/{background,foreground}/patches/*.csv
-#   列: name, sR, sG, sB, Y, x, y  （ヘッダ行あり / 1ファイル=1測定）
-#   ・平均は Yxy->XYZ に変換して XYZ空間で平均 -> Yxy に戻す
-#   ・欠損（あるファイルに無いパッチ）は「あるものだけ」で平均
-# =============================================================
-import csv
-import glob
+#   列: name, sR, sG, sB, Y, x, y
 
 DATA_ROOT   = os.path.join("results", "tables", "DisplayBrightness")
 PATCH_ORDER = ["R", "G", "B", "W", "semiR", "semiG", "semiB", "Gray"]
@@ -135,31 +129,8 @@ for _p in PATCHES:
     _f = None if _p[3] is None else tuple(round(v, 4) for v in _p[3])
     print(f"  {_p[0]:>6}  sRGB={tuple(round(c,3) for c in _p[1])}  BGT={_b}  FGR={_f}")
 
-# ---- パッチごとの重み（輝度が最重要なら効かせたいパッチを大きく）----
-# 例: 混色・白を重めにして劣加法をしっかり吸わせる
-WEIGHTS = {
-    "R": 1.0, "G": 1.0, "B": 1.0, "W": 1.0, "semiR": 1.0, "semiG": 1.0, "semiB": 1.0, "Gray": 1.0,
-}
-
-# ---- sRGB -> 線形RGB ----
-def srgb_to_linear(c):
-    c = np.asarray(c, dtype=float)
-    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.0)
-
-def linear_to_srgb(c):
-    c = np.clip(np.asarray(c, dtype=float), 0.0, 1.0)
-    return np.where(c <= 0.0031308, 12.92 * c, 1.055 * (c ** (1 / 2.0)) - 0.055)
-
-def Yxy_to_XYZ(row):
-    Y, x, y = row
-    if y == 0:
-        return np.array([0.0, 0.0, 0.0])
-    X = (x / y) * Y
-    Z = ((1.0 - x - y) / y) * Y
-    return np.array([X, Y, Z])
-
 # ============================================================
-# 実測EOTF g の構築（ページ「階調ランプコード」より移植）
+# 実測EOTF g の構築
 #   背景パス(T·Db)用 g_b、前景パス(R·Df)用 g_f、逆写像 g_f_inv
 #   画素値(0-1) <-> 正規化線形(0-1)、g(1)=1 に正規化
 # ============================================================
@@ -173,28 +144,16 @@ print("[CSV読込] 階調ランプ (レベル数):")
 for _side, _ramp in (("BG", RAMP_BG), ("FG", RAMP_FG)):
     print(f"  {_side}: " + ", ".join(f"{_ch}={len(_ramp.get(_ch, []))}" for _ch in CHANNELS))
 
-def build_eotf(ramp_channel):
-    """1チャネルのランプ [(pixel,Y,x,y),...] -> 正規化EOTF。g(1)=1。未計測(None)はスキップ。"""
-    pts = [(p[0] / 255.0, p[1]) for p in ramp_channel if p[1] is not None]
-    pts.sort(key=lambda t: t[0])
-    xs = np.array([p[0] for p in pts], dtype=float)
-    ys = np.array([p[1] for p in pts], dtype=float)
-    y_full = ys[np.argmax(xs)]           # フルスケール輝度
-    yn = ys / y_full                     # g(1)=1 へ正規化
-    def g(v):     return np.interp(np.asarray(v, dtype=float), xs, yn)   # 画素値 -> 正規化線形
-    def g_inv(y): return np.interp(np.asarray(y, dtype=float), yn, xs)   # 正規化線形 -> 画素値
-    return g, g_inv
-
 # =============================================================
-# 追加: 階調ランプの直線性チェック & ガンマ推定 & モデル自動選択
+# 階調ランプの直線性チェック & ガンマ推定（プロットのみ）
 #   (1) XYZ^(1/2.2) を横軸に取り、画素値との直線性を確認
 #         完全に gamma=2.2 なら yn = v^2.2  →  yn^(1/2.2) = v (直線 y=x)
 #         → y=x からの残差プロットで「2.2 とのズレ」を見る
 #   (2) 最小二乗(log-log)で実ガンマをフィット
 #         log(yn) = gamma*log(v)  の傾き=gamma / 決定係数 R^2
 #         → フィットしたガンマとの残差(yn - v^gamma)プロット
-#   (3) 残差が均一  → フィットしたガンマ(べき乗モデル)を採用
-#       残差が不均一→ 線形補完(np.interp: 既存 build_eotf 相当)を採用
+#   ※ EOTF は常に個別EOTF（線形補完）を用いるため、残差からの
+#      モデル自動選択は行わない（直線性チェックは把握用のプロット）。
 # =============================================================
 
 def _prep_ramp(ramp_channel, remove_black=True):
@@ -214,12 +173,10 @@ def _prep_ramp(ramp_channel, remove_black=True):
 
 def analyze_gamma(name, ramp_channel,
                   target_gamma=2.2,
-                  resid_tol=0.02,   # 均一とみなす残差RMSの上限(正規化輝度)
-                  trend_tol=0.5,    # 残差と入力の相関係数の上限(系統ズレ判定)
-                  r2_tol=0.99,      # log-log フィットの決定係数の下限
                   plot_dir=None):
-    """1チャネルの (1)直線性チェック (2)ガンマ推定 (3)モデル選択 を実行。
-    戻り値 dict: gamma, r2, use('power'|'interp'), rms_resid, trend, uniform ...
+    """1チャネルの (1)直線性チェック (2)ガンマ推定 を実行し、プロットを出力する。
+    戻り値 dict: gamma, r2, rms_resid, v, yn, Y0, resid_22, resid_fit
+    ※ モデル選択は行わない（EOTF は常に個別EOTF＝線形補完）。
     """
     v, yn, Y0 = _prep_ramp(ramp_channel)
     # ---- (1) gamma=2.2 からのズレ: 画素値^2.2 を横軸、測定輝度を縦軸に ----
@@ -235,25 +192,12 @@ def analyze_gamma(name, ramp_channel,
     ss_res = np.sum(resid_fit[m] ** 2)
     ss_tot = np.sum((yn[m] - yn[m].mean()) ** 2)
     r2 = 1.0 - ss_res / ss_tot if ss_tot > 0 else float("nan")
-    # ---- (3) 残差の均一性を判定 → モデル選択 ----
-    # 均一の目安:
-    # (a) 残差RMSが小さい (resid_tol以下)
-    # (b) 残差に系統的トレンドが無い(残差とvの相関が小さい)
-    # (c) log-log フィットの当てはまりが良い(R^2が高い)
     rms_resid = float(np.sqrt(np.mean(resid_fit[m] ** 2)))
-    if np.std(resid_fit[m]) > 0 and np.std(v[m]) > 0:
-        trend = float(abs(np.corrcoef(v[m], resid_fit[m])[0, 1]))
-    else:
-        trend = 0.0
-    uniform = (rms_resid <= resid_tol) and (trend <= trend_tol) and (r2 >= r2_tol)
-    use = "power" if uniform else "interp"
-    # ---- ログ出力 ----
+    # ---- ログ出力（直線性・ガンマの把握用。モデル選択は行わない）----
     print(f"\n---- [{name}] 直線性 & ガンマ解析 ----")
     print(f"  fit gamma = {gamma:.3f}  (target {target_gamma})  Δ={gamma-target_gamma:+.3f}  (by non-linear LSQ)")
     print(f"  R^2(log-log) = {r2:.4f}")
-    print(f"  残差RMS(vs v^gamma) = {rms_resid:.4f} / トレンド(相関) = {trend:.3f}")
-    print(f"  → 残差は{'均一' if uniform else '不均一'} → 採用モデル: "
-          f"{'べき乗ガンマ(v^gamma)' if use=='power' else '線形補完(np.interp)'}")
+    print(f"  残差RMS(vs v^gamma) = {rms_resid:.4f}")
     # ---- プロット ----
     if plot_dir is not None:
         os.makedirs(plot_dir, exist_ok=True)
@@ -290,31 +234,25 @@ def analyze_gamma(name, ramp_channel,
         print(f"  [plot] {path}")
     return {
         "name": name, "gamma": float(gamma),
-        "r2": float(r2), "rms_resid": rms_resid, "trend": trend,
-        "uniform": bool(uniform), "use": use,
+        "r2": float(r2), "rms_resid": rms_resid,
         "v": v, "yn": yn, "Y0": float(Y0),
         "resid_22": resid_22, "resid_fit": resid_fit,
     }
 
 def build_eotf_auto(ramp_channel, analysis=None, **kwargs):
-    """解析結果に基づき EOTF を構築して (g, g_inv, info) を返す。
-    use='power'  : g(v)=v^gamma,  g_inv(y)=y^(1/gamma)  (残差が均一)
-    use='interp' : 既存 build_eotf と同じ線形補完          (残差が不均一)
+    """解析結果(v, yn)から個別EOTF（線形補完）を構築して (g, g_inv, info) を返す。
+    g(v)  = np.interp(v, v_samples, yn)   画素値 -> 正規化線形
+    g_inv = np.interp(y, yn, v_samples)   正規化線形 -> 画素値
     g(1)=1 に正規化。既存 _gb/_gf の代わりに使える。
     """
     if analysis is None:
         name = kwargs.pop("name", "(auto)")
         analysis = analyze_gamma(name, ramp_channel, **kwargs)
     v, yn = analysis["v"], analysis["yn"]
-    # 常に個別EOTF（実測点の線形補完）を採用する。
-    # ※power/interp の自動判定は使わず、interp に固定。
-    #   直線性チェック・残差プロットは analyze_gamma 側で従来どおり生成される。
-    # 線形補完(既存 build_eotf 相当)。yn は単調前提で np.interp。
+    # 個別EOTF（実測点の線形補完）。yn は単調前提で np.interp。
     g     = lambda val: np.interp(np.asarray(val, dtype=float), v, yn)
     g_inv = lambda y:   np.interp(np.asarray(y,   dtype=float), yn, v)
     return g, g_inv, analysis
-
-import datetime
 
 # ---- 図の出力先 ----
 FIG_DIR      = os.path.join("results", "figures", "DisplayBrightness")
@@ -323,15 +261,13 @@ RAMP_FIG_DIR = os.path.join(FIG_DIR, "ramps")
 _date          = datetime.datetime.now().strftime("%Y-%m-%d")
 GAMMA_PLOT_DIR = os.path.join(RAMP_FIG_DIR, _date)
 
-_gb = {}
-_gf = {}
-for c in CHANNELS:
-    g_b, g_b_inv, _ = build_eotf_auto(RAMP_BG[c], name=f"BG_{c}", plot_dir=GAMMA_PLOT_DIR)
-    _gb[c] = (g_b, g_b_inv)
+def _build_eotf_set(ramp, tag):
+    """各チャネルの EOTF (g, g_inv) を {ch: (g, g_inv)} で構築する。"""
+    return {c: build_eotf_auto(ramp[c], name=f"{tag}_{c}", plot_dir=GAMMA_PLOT_DIR)[:2]
+            for c in CHANNELS}
 
-for c in CHANNELS:
-    g_f, g_f_inv, _ = build_eotf_auto(RAMP_FG[c], name=f"FG_{c}", plot_dir=GAMMA_PLOT_DIR)
-    _gf[c] = (g_f, g_f_inv)
+_gb = _build_eotf_set(RAMP_BG, "BG")
+_gf = _build_eotf_set(RAMP_FG, "FG")
 
 def _apply(funcs, arr, idx):
     arr = np.asarray(arr, dtype=float)
@@ -345,38 +281,33 @@ g_f     = lambda v: _apply(_gf, v, 0)   # 前景画素値 -> 正規化線形
 g_f_inv = lambda l: _apply(_gf, l, 1)   # 正規化線形 -> 前景画素値
 
 def collect(channel):
-    """channel='BGT' or 'FGR' の有効パッチを (rgb_lin, XYZ, w, names) で返す"""
+    """channel='BGT' or 'FGR' の有効パッチを (rgb_lin, XYZ, names) で返す"""
     idx = 2 if channel == "BGT" else 3
-    rgb_lin, XYZ, w, names = [], [], [], []
+    rgb_lin, XYZ, names = [], [], []
     for p in PATCHES:
         meas = p[idx]
         if meas is None or any(v is None for v in meas):
             continue  # 未測定はスキップ
         lin = g_b(p[1]) if channel == "BGT" else g_f(p[1])   # 背景=g_b / 前景=g_f で線形化
         rgb_lin.append(lin)
-        XYZ.append(Yxy_to_XYZ(meas))
-        w.append(WEIGHTS.get(p[0], 1.0))
+        XYZ.append(_yxy2xyz(*meas))
         names.append(p[0])
-    return np.array(rgb_lin), np.array(XYZ), np.array(w), names
+    return np.array(rgb_lin), np.array(XYZ), names
 
-def fit_matrix(rgb_lin, XYZ, weights=None):
+def fit_matrix(rgb_lin, XYZ):
     """
     XYZ = M @ rgb_lin を最小二乗で解く (M: 3x3)
     行形式: rgb_lin(N,3) @ M.T = XYZ(N,3)
     """
-    A, Bm = rgb_lin, XYZ
-    if weights is not None:
-        s = np.sqrt(weights).reshape(-1, 1)
-        A, Bm = A * s, Bm * s
-    Mt, *_ = np.linalg.lstsq(A, Bm, rcond=None)  # A @ Mt = Bm -> Mt = M.T
+    Mt, *_ = np.linalg.lstsq(rgb_lin, XYZ, rcond=None)  # A @ Mt = Bm -> Mt = M.T
     return Mt.T
 
 # ===================== 推定 =====================
-rgb_T, XYZ_T, w_T, names_T = collect("BGT")
-rgb_R, XYZ_R, w_R, names_R = collect("FGR")
+rgb_T, XYZ_T, names_T = collect("BGT")
+rgb_R, XYZ_R, names_R = collect("FGR")
 
-T_prime = fit_matrix(rgb_T, XYZ_T, w_T)   # T·Db
-R_prime = fit_matrix(rgb_R, XYZ_R, w_R)   # R·Df
+T_prime = fit_matrix(rgb_T, XYZ_T)   # T·Db
+R_prime = fit_matrix(rgb_R, XYZ_R)   # R·Df
 C = np.linalg.inv(R_prime) @ T_prime      # = (R·Df)^(-1)(T·Db)
 
 np.set_printoptions(precision=6, suppress=True)
@@ -385,12 +316,12 @@ print("R_prime:\n", R_prime)
 print("C = inv(R') @ T':\n", C)
 
 # =============================================================
-# 追加: R', T', C を CSV 保存（実験プログラムから参照する用）
+# R', T', C を CSV 保存（別プログラムから参照する用）
 #   保存先: results/tables/DisplayBrightness/
-#   ・毎回同じファイル名で np.savetxt するので実行のたびに上書きされる
+#   ・毎回同じファイル名で上書き保存
 #   ・区切りはカンマ、# 始まりのヘッダ行付き（np.loadtxt は自動スキップ）
 # =============================================================
-TABLE_DIR = os.path.join("results", "tables", "DisplayBrightness")
+TABLE_DIR = DATA_ROOT   # 行列CSVの保存先（入力CSVと同じルート）
 os.makedirs(TABLE_DIR, exist_ok=True)
 
 def save_matrix_csv(mat, name, header):
