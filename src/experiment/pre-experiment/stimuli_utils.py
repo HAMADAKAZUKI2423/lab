@@ -813,6 +813,16 @@ def lum_to_pil_window2(lum_np, lums, pixels, color_matrix):
     return Image.fromarray(out, mode='RGB')
 
 
+def lum_to_pil_singleplane(lum_np, Y_grid, px_grid):
+    """Single Plane用（保存用）。lum_to_photo_singleplane と同処理だが PIL.Image を返す。"""
+    lum = np.asarray(lum_np, dtype=np.float64)
+    out = np.empty(lum.shape + (3,), dtype=np.float64)
+    for c in range(3):
+        out[..., c] = np.interp(lum, Y_grid, px_grid[:, c])  # 端点クランプはinterp既定
+    out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
+    return Image.fromarray(out, mode="RGB")
+
+
 def generate_matching_photos(gabor_base, cached_lum_noise,
                              fg_lums, fg_pixels, bg_lums, bg_pixels,
                              L_fg, L_bg, L_ref, c_test, ref_c, cond,
@@ -825,13 +835,18 @@ def generate_matching_photos(gabor_base, cached_lum_noise,
     lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
 
     if cond in ["Dual plane", "Dual plane flat"]:
-        # --- Dual plane系: C適用 ---
-        # 参照刺激 (Window2 上側)
-        out['photo_ref_fg'] = lum_to_photo_window2(
-            lum_ref_fg, bg_lums, bg_pixels, color_matrix,
-            eotf_bg, eotf_fg, cond=cond
-        )
-        # Window2 下側: 前景テスト刺激
+        # --- Dual plane系 ---
+        # 参照刺激 (Window2 上側): 前景C経路は前景プレーンの再現上限が低く高輝度で
+        # クリップするため、test とは別に Single plane と同じ拡張輝度LUT(最大60cd/m²)で変換する。
+        if Y_grid is not None and px_grid is not None:
+            out['photo_ref_fg'] = lum_to_photo_singleplane(lum_ref_fg, Y_grid, px_grid)
+        else:
+            # LUT未整備時のフォールバック: 従来どおりC経路
+            out['photo_ref_fg'] = lum_to_photo_window2(
+                lum_ref_fg, bg_lums, bg_pixels, color_matrix,
+                eotf_bg, eotf_fg, cond=cond
+            )
+        # Window2 下側: 前景テスト刺激（従来どおりC適用）
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         out['photo_test_fg'] = lum_to_photo_window2(
             lum_test_fg, bg_lums, bg_pixels, color_matrix,
