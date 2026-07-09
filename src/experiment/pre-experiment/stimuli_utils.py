@@ -562,29 +562,60 @@ def apply_torch_fft_blur_luminance(lum_np, D, pd_mm, pixels_per_deg):
     return blur_tensor.cpu().numpy()
 
 
-def lum_to_photo_window2(lum_np, lums, pixels, color_matrix):
-    """
-    Window2用。
-    lums, pixels には必ず Window1 と同じ bg_lums, bg_pixels を渡すこと。
+def _apply_eotf(eotf, ch, vals, inverse=False):
+    v, yn = eotf[ch]
+    if inverse:            # 線形 -> 画素
+        return np.interp(vals, yn, v)
+    return np.interp(vals, v, yn)   # 画素 -> 線形
 
-    処理:
-    1. lum_np を bg_lums/bg_pixels で pixel 値化する
-    2. その pixel 値をグレースケール sRGB とみなす (R=G=B)
-    3. sRGB -> linear RGB
-    4. 線形RGB空間で color_matrix (= 前景補正行列 C) を適用
-    5. linear RGB -> sRGB
-    6. RGB画像として PhotoImage を返す
+def lum_to_photo_dualplane_fg(lum_np, bg_lums, bg_pixels, C, eotf_bg, eotf_fg):
+    """Dual Planeの前景用。実測EOTFでCを適用。"""
+    # 1) 目標輝度 -> 背景画素(0-1) （背景校正）
+    pix = np.clip(np.interp(lum_np, bg_lums, bg_pixels), 0, 255) / 255.0
+    # 2) g_b で背景線形へ（グレースケールなのでR=G=B=pix）
+    lin_bg = np.stack([_apply_eotf(eotf_bg, ch, pix) for ch in ("R","G","B")], axis=-1)
+    # 3) 線形空間でC適用（背景線形 -> 前景線形）
+    lin_fg = lin_bg @ C.T
+    lin_fg = np.clip(lin_fg, 0.0, None)
+    # 4) g_f_inv で前景画素へ
+    out = np.empty_like(lin_fg)
+    for i, ch in enumerate(("R","G","B")):
+        out[..., i] = _apply_eotf(eotf_fg, ch, lin_fg[..., i], inverse=True)
+    out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
+    return ImageTk.PhotoImage(Image.fromarray(out, mode="RGB"))
 
-    輝度保持・再スケーリングは行わない（補正効果は C に含まれる）。
-    XYZ空間は経由しない。
+def lum_to_photo_singleplane(lum_np, Y_grid, px_grid):
+    """Single Plane用。拡張輝度LUTで変換。"""
+    lum = np.asarray(lum_np, dtype=np.float64)
+    out = np.empty(lum.shape + (3,), dtype=np.float64)
+    for c in range(3):
+        out[..., c] = np.interp(lum, Y_grid, px_grid[:, c])  # 端点クランプはinterp既定
+    out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
+    return ImageTk.PhotoImage(Image.fromarray(out, mode="RGB"))
+
+
+def lum_to_photo_window2(lum_np, lums, pixels, color_matrix, eotf_bg=None, eotf_fg=None, Y_grid=None, px_grid=None, cond=""):
     """
-    # 1) window1と同じ校正で輝度->画素値(グレースケール 0-255)
-    pix = np.interp(lum_np, lums, pixels)
-    g = np.clip(pix, 0, 255).astype(np.float64) / 255.0      # sRGB[0,1], R=G=B
+    Window2用の刺激を生成するディスパッチャ。
+    条件に応じて、C適用 or LUT適用を切り替える。
+    フォールバックとして、EOTF/LUTがない場合は従来のsRGB近似でCを適用する。
+    """
+    # --- 新しい方式：EOTF/LUTが利用可能な場合 ---
+    if cond in ["Dual plane", "Dual plane flat"] and eotf_bg and eotf_fg and color_matrix is not None:
+        return lum_to_photo_dualplane_fg(lum_np, lums, pixels, color_matrix, eotf_bg, eotf_fg)
     
-    if color_matrix is None:
-        gray = np.clip(g * 255.0, 0, 255).astype(np.uint8)
+    if cond.startswith("Single plane") and Y_grid is not None and px_grid is not None:
+        return lum_to_photo_singleplane(lum_np, Y_grid, px_grid)
+
+    # --- フォールバック：従来のsRGB近似方式 ---
+    if color_matrix is None: # Cがない場合は無補正グレー
+        pix = np.interp(lum_np, lums, pixels)
+        gray = np.clip(pix, 0, 255).astype(np.uint8)
         return ImageTk.PhotoImage(Image.fromarray(gray, mode='L'))
+
+    # 輝度 -> 画素値(0-255)
+    pix = np.interp(lum_np, lums, pixels)
+    g = np.clip(pix, 0, 255).astype(np.float64) / 255.0  # sRGB[0,1], R=G=B
 
     lin = srgb_to_linear(g)                          # (H,W)
     lin_rgb = np.stack([lin, lin, lin], axis=-1)     # (H,W,3)
@@ -782,52 +813,49 @@ def lum_to_pil_window2(lum_np, lums, pixels, color_matrix):
     return Image.fromarray(out, mode='RGB')
 
 
-def generate_matching_photos(gabor_base, cached_lum_noise, fg_lums, fg_pixels, bg_lums, bg_pixels,
-                             L_fg=35.0, L_bg=15.0, L_ref=50.0, c_test=0.4, ref_c=0.2, cond='Single plane',
-                             color_matrix=None):
+def generate_matching_photos(gabor_base, cached_lum_noise,
+                             fg_lums, fg_pixels, bg_lums, bg_pixels,
+                             L_fg, L_bg, L_ref, c_test, ref_c, cond,
+                             color_matrix, eotf_bg, eotf_fg, Y_grid, px_grid):
     """
     gabor_base とノイズ基盤から、表示に使う PhotoImage を生成するヘルパ。
-
-    重要仕様:
-    - Window1 は bg_lums / bg_pixels で pixel 値化し、色補正なし。
-    - Window2 も補正前 pixel 値は bg_lums / bg_pixels で作る。
-    - Window2 のみ、補正前のグレースケール pixel を RGB 化し、
-      sRGB -> linear RGB -> XYZ -> color_matrix -> linear RGB -> sRGB
-      の順で色補正する。
-    - Window2 では fg_lums / fg_pixels を使わない。
-    - Window2 では apply_color_matrix_preserve_luminance() や
-      scale_image_to_target_luminance() を使わない。
+    条件に応じて適切な色変換（C適用 or LUT）をディスパッチする。
     """
     out = {}
-
-    # fg_lums, fg_pixels are kept only for API compatibility.
-    # Do not use them for Window2 image generation.
-
-    # ----------------------------
-    # Window2 上側: 参照刺激
-    # ----------------------------
     lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
-    out['photo_ref_fg'] = lum_to_photo_window2(lum_ref_fg, bg_lums, bg_pixels, color_matrix)
 
-    # ----------------------------
-    # Dual plane / Dual plane flat
-    # ----------------------------
     if cond in ["Dual plane", "Dual plane flat"]:
+        # --- Dual plane系: C適用 ---
+        # 参照刺激 (Window2 上側)
+        out['photo_ref_fg'] = lum_to_photo_window2(
+            lum_ref_fg, bg_lums, bg_pixels, color_matrix,
+            eotf_bg, eotf_fg, cond=cond
+        )
         # Window2 下側: 前景テスト刺激
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
-        out['photo_test_fg'] = lum_to_photo_window2(lum_test_fg, bg_lums, bg_pixels, color_matrix)
+        out['photo_test_fg'] = lum_to_photo_window2(
+            lum_test_fg, bg_lums, bg_pixels, color_matrix,
+            eotf_bg, eotf_fg, cond=cond
+        )
 
         # Window1: 背景刺激。補正なし。
         lum_noise_bg = cached_lum_noise
         out['photo_noise_bg'] = lum_to_photo(lum_noise_bg, bg_lums, bg_pixels, None)
 
-    # ----------------------------
-    # Single plane / Single plane + defocus simulation
-    # ----------------------------
     else:
+        # --- Single plane系: 拡張輝度LUT適用 ---
+        # 参照刺激 (Window2 上側)
+        out['photo_ref_fg'] = lum_to_photo_window2(
+            lum_ref_fg, bg_lums, bg_pixels, color_matrix,
+            Y_grid=Y_grid, px_grid=px_grid, cond=cond
+        )
+        # Window2 下側: 合成刺激
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         lum_noise = cached_lum_noise
-        lum_test_total = lum_noise + lum_test_fg # Single plane系では、Window2 に背景 + 前景の合成刺激を表示する
-        out['photo_test'] = lum_to_photo_window2(lum_test_total, bg_lums, bg_pixels, color_matrix)
+        lum_test_total = lum_noise + lum_test_fg
+        out['photo_test'] = lum_to_photo_window2(
+            lum_test_total, bg_lums, bg_pixels, color_matrix,
+            Y_grid=Y_grid, px_grid=px_grid, cond=cond
+        )
 
     return out

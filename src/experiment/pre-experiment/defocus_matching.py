@@ -296,7 +296,7 @@ def update_defocus_view(app):
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT) # 実験者ビュー用に左右反転
     color_matrix = getattr(app, 'color_matrix', None)
     if color_matrix is not None:
-        img_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_fg, color_matrix)
+        img_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_fg, color_matrix.T)
 
     img_fg = stimuli_utils.scale_image_to_target_luminance(
         img_fg, 15.0,
@@ -490,7 +490,7 @@ def update_defocus_view_gabor(app):
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT)
     color_matrix = getattr(app, 'color_matrix', None)
     if color_matrix is not None:
-        img_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_fg, color_matrix)
+        img_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_fg, color_matrix.T)
 
     img_fg = stimuli_utils.scale_image_to_target_luminance(
         img_fg, 30.0,
@@ -629,7 +629,7 @@ def update_defocus_view_image(app):
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT)
     color_matrix = getattr(app, 'color_matrix', None)
     if color_matrix is not None:
-        img_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_fg, color_matrix)
+        img_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_fg, color_matrix.T)
 
     img_fg = stimuli_utils.scale_image_to_target_luminance(
         img_fg, 30.0,

@@ -346,6 +346,28 @@ for _p in _saved:
     print("  ", _p)
 
 # =============================================================
+# EOTF と 拡張輝度LUT をCSV保存
+# =============================================================
+def save_eotf_csv(ramp_data, name):
+    path = os.path.join(TABLE_DIR, f"{name}.csv")
+    with open(path, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(["channel", "v", "yn"])
+        for ch, ramp_channel in ramp_data.items():
+            v, yn, _ = _prep_ramp(ramp_channel)
+            for val_v, val_yn in zip(v, yn):
+                writer.writerow([ch, val_v, val_yn])
+    return path
+
+_saved_eotf = [
+    save_eotf_csv(RAMP_BG, "eotf_bg"),
+    save_eotf_csv(RAMP_FG, "eotf_fg"),
+]
+print("\n[CSV保存] EOTFデータを保存しました ->", os.path.abspath(TABLE_DIR))
+for _p in _saved_eotf:
+    print("  ", _p)
+
+# =============================================================
 # 単一プレーンLUT: 実測の加算結果から「前景1枚で目標輝度を再現」する画像を生成
 #   入力: results/tables/DisplayBrightness/foreground_add/*.csv （加算後の測定値 Y,x,y）
 #   方法: 加算後 Yxy -> XYZ -> inv(R') -> 前景線形 -> g_f_inv で前景画素値を求め、
@@ -393,12 +415,22 @@ else:
         """加算後の目標輝度 -> 前景画素値(0-1)。範囲外は端点にクランプ。"""
         px = np.array([np.interp(float(Y_target), _uY, _uPx[:, i]) for i in range(3)])
         return np.clip(px, 0.0, 1.0)
+    
+    # 拡張輝度LUTをCSVに保存
+    Y_grid = np.linspace(0.0, float(_uY.max()), 1024)
+    px_grid = np.stack([np.interp(Y_grid, _uY, _uPx[:,c]) for c in range(3)], axis=1)
+    lut_path = os.path.join(TABLE_DIR, "ext_lum_lut.csv")
+    np.savetxt(lut_path,
+               np.column_stack([Y_grid, px_grid]), delimiter=",",
+               header="Y,pxR,pxG,pxB", comments="")
+    print(f"\n[CSV保存] 拡張輝度LUTを保存しました -> {os.path.abspath(lut_path)}")
 
     os.makedirs(FG_ADD_DIR, exist_ok=True)
     print("\n==== 単一プレーンLUT（実測加算ベース）====")
     print(f"入力CSV: {ADD_CSV_DIR}")
     print(f"測定点 {len(_add_meas)} 件 / 有効輝度 {len(_uY)} 段 / レンジ {_uY.min():.2f}〜{_uY.max():.2f} cd/m^2")
     print(f"{'target':>7} {'画素値(0-255)':>16} {'備考':>10}")
+
     for Yt in ADD_TARGETS:
         px   = add_sim_pixel(Yt)
         note = "" if (_uY.min() - 1e-9) <= Yt <= (_uY.max() + 1e-9) else "★範囲外→クランプ"
