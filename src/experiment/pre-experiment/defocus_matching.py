@@ -150,6 +150,10 @@ def _show_defocus_matching_step(app):
     update_defocus_view(app)
 
 def _next_defocus_matching_step(app):
+    # Guard: if called after completion, ignore
+    if not hasattr(app, 'defocus_match_patterns') or app.current_match_idx >= len(app.defocus_match_patterns):
+        return
+
     # 結果を記録
     pattern, cpd = app.defocus_match_patterns[app.current_match_idx]
     pd_val = app.pupil_diameter_val.get()
@@ -201,19 +205,27 @@ def finish_eye_defocus_matching(app):
         if hasattr(app, 'detailed_defocus_results') and app.detailed_defocus_results:
             p_id = app.participant_id.get() if hasattr(app, 'participant_id') else "Unknown"
             now = datetime.datetime.now()
-            date_str = now.strftime("%Y%m%d_%H%M%S")
+            date_str = now.strftime("%Y%m%d")
             
             result_dir = getattr(app, 'result_dir', os.path.join(lab_root, "results", "tables", "pre-experiment-matching"))
             save_folder = os.path.join(result_dir, f"{p_id}_{date_str}")
             if not os.path.exists(save_folder):
                 os.makedirs(save_folder)
                 
-            filename = os.path.join(save_folder, f"defocus_matching_{p_id}_{date_str}.csv")
+            filename = os.path.join(save_folder, f"defocus_matching_{p_id}_{now.strftime('%Y%m%d_%H%M%S')}.csv")
             with open(filename, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=["ID", "Eye", "Pattern", "Spatial_Freq(cpd)", "Matched_PD(mm)"])
                 writer.writeheader()
                 writer.writerows(app.detailed_defocus_results)
             print(f"Detailed defocus matching results saved to {filename}")
+
+    # Clear any remaining key bindings to avoid callbacks after finish
+    try:
+        for key, binding_id in list(app.key_bindings.items()):
+            app.root.unbind(key, binding_id)
+    except Exception:
+        pass
+    app.key_bindings.clear()
 
     app.start_eye_calibration()
 
@@ -280,13 +292,40 @@ def update_defocus_view(app):
     img_fg = img_fg.resize((fg_size, fg_size // 2), Image.LANCZOS)
     img_fg = apply_torch_fft_blur(img_fg, D, pd_mm, pixels_per_deg_fg)
     img_bg = img_bg.resize((bg_size, bg_size // 2), Image.LANCZOS)
-    
+
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT) # 実験者ビュー用に左右反転
+
+    # === test/ref (Dual plane) と同一のC変換パイプライン ===
+    # 生成側は校正を焼き込まず「正規化模様 base∈[0,1]」のみを出力している。
+    # ここで輝度へ線形復元し（lum = MATCH_MEAN_LUM*(1 + MATCH_CONTRAST*(2*base-1))）、
+    # lum_to_photo_dualplane_fg（目標輝度→背景画素→g_b→C→g_f_inv→前景画素）へ渡す。
+    # ※ base 空間でブラー済みだが lum は base の線形写像のため輝度空間でのブラーと等価。
+    MATCH_MEAN_LUM = 15.0
+    MATCH_CONTRAST = 1.0
+    base_fg = np.asarray(img_fg.convert('L'), dtype=np.float64) / 255.0
+    lum_fg = MATCH_MEAN_LUM * (1.0 + MATCH_CONTRAST * (2.0 * base_fg - 1.0))
+
+    color_matrix = getattr(app, 'color_matrix', None)
+    gamma_bg = getattr(app, 'gamma_bg', None)
+    gamma_fg = getattr(app, 'gamma_fg', None)
+    if color_matrix is not None and gamma_bg is not None and gamma_fg is not None:
+        # 目標輝度→背景画素→g_b→C→g_f_inv→前景画素（test/ref と同一）
+        app.photo_match_fg = stimuli_utils.lum_to_photo_dualplane_fg(
+            lum_fg, app.bg_lums, app.bg_pixels, color_matrix, gamma_bg, gamma_fg
+        )
+    else:
+        # フォールバック: C/ガンマパラメータ未整備時は背景校正で前景画素へ変換
+        img_fg = stimuli_utils.lum_to_pil(lum_fg, app.bg_lums, app.bg_pixels)
+        app.photo_match_fg = ImageTk.PhotoImage(img_fg)
+
+    # 背景(window1): 生パターンを背景校正で目標輝度15へ
+    base_bg = np.asarray(img_bg.convert('L'), dtype=np.float64) / 255.0
+    lum_bg = MATCH_MEAN_LUM * (1.0 + MATCH_CONTRAST * (2.0 * base_bg - 1.0))
+    img_bg = stimuli_utils.lum_to_pil(lum_bg, app.bg_lums, app.bg_pixels)
 
     dy_fg = fg_size // 4
     dy_bg = -bg_size // 4
 
-    app.photo_match_fg = ImageTk.PhotoImage(img_fg)
     app.photo_match_bg = ImageTk.PhotoImage(img_bg)
 
     # 3. 描画
@@ -464,6 +503,19 @@ def update_defocus_view_gabor(app):
     img_fg = img_fg.resize((fg_size, fg_size // 2), Image.LANCZOS)
     img_fg = apply_torch_fft_blur(img_fg, D, pd_mm, pixels_per_deg_fg)
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT)
+    color_matrix = getattr(app, 'color_matrix', None)
+    if color_matrix is not None:
+        img_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_fg, color_matrix.T)
+
+    img_fg = stimuli_utils.scale_image_to_target_luminance(
+        img_fg, 30.0,
+        getattr(app, 'fg_lums', None), getattr(app, 'fg_pixels', None)
+    )
+    img_bg = img_bg.resize((bg_size, bg_size // 2), Image.LANCZOS)
+    img_bg = stimuli_utils.scale_image_to_target_luminance(
+        img_bg, 30.0,
+        getattr(app, 'bg_lums', None), getattr(app, 'bg_pixels', None)
+    )
 
     dy_fg = fg_size // 4
     dy_bg = -bg_size // 4
@@ -590,6 +642,19 @@ def update_defocus_view_image(app):
     img_fg = img_fg.resize((fg_size, fg_size // 2), Image.LANCZOS)
     img_fg = apply_torch_fft_blur(img_fg, D, PUPIL_DIAMETER_MM, pixels_per_deg_fg)
     img_fg = img_fg.transpose(Image.FLIP_LEFT_RIGHT)
+    color_matrix = getattr(app, 'color_matrix', None)
+    if color_matrix is not None:
+        img_fg = stimuli_utils.apply_color_matrix_preserve_luminance(img_fg, color_matrix.T)
+
+    img_fg = stimuli_utils.scale_image_to_target_luminance(
+        img_fg, 30.0,
+        getattr(app, 'fg_lums', None), getattr(app, 'fg_pixels', None)
+    )
+    img_bg = img_bg.resize((bg_size, bg_size // 2), Image.LANCZOS)
+    img_bg = stimuli_utils.scale_image_to_target_luminance(
+        img_bg, 30.0,
+        getattr(app, 'bg_lums', None), getattr(app, 'bg_pixels', None)
+    )
 
     dy_fg = fg_size // 4
     dy_bg = -bg_size // 4

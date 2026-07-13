@@ -123,7 +123,7 @@ if __name__ == "__main__":
     # --- 基本設定 (背景ディスプレイ用に必要に応じて調整してください) ---
     MAX_LUMINANCE = 30.0
     MIN_LUMINANCE = 0.0
-    TARGET_LUMINANCE_LEVELS = [30, 25, 20, 15, 10, 5, 0]
+    TARGET_LUMINANCE_LEVELS = [30, 25, 20, 15, 10, 8, 6, 4, 2, 0]
     IMAGE_SIZE = (400, 300)
     GAMMA = 2.2
     

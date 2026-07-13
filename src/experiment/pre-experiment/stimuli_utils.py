@@ -18,6 +18,20 @@ CROSS_SIZE = 30        # 中央の十字マーカーのサイズ (px)
 MARKER_LINE_WIDTH = 5  # マーカーの線の太さ
 PIXELS_PER_CM = 1/0.02331  # モニタのPPC
 
+# sRGB(D65) <-> XYZ 標準変換行列
+M_RGB2XYZ = np.array([
+    [0.41239080, 0.35758434, 0.18048079],
+    [0.21263901, 0.71516868, 0.07219232],
+    [0.01933082, 0.11919478, 0.95053215],
+], dtype=np.float64)
+
+M_XYZ2RGB = np.array([
+    [ 3.24096994, -1.53738318, -0.49861076],
+    [-0.96924364,  1.87596750,  0.04155506],
+    [ 0.05563008, -0.20397696,  1.05697151],
+], dtype=np.float64)
+
+
 
 # ==========================================
 # 画像生成関数
@@ -216,25 +230,58 @@ def create_cosine_windowed_grating_base(width_px, height_px, ppd, cpd, orientati
     
     return grating * envelope
 
+def srgb_to_linear(c):
+    """
+    sRGB EOTF (gamma correction)
+    """
+    c = np.asarray(c, dtype=np.float64)
+    return np.where(c <= 0.04045, c / 12.92, ((c + 0.055) / 1.055) ** 2.0)
+
+def linear_to_srgb(c):
+    """
+    sRGB OETF (inverse gamma correction)
+    """
+    c = np.asarray(c, dtype=np.float64)
+    c = np.clip(c, 0.0, 1.0)
+    return np.where(c <= 0.0031308, c * 12.92, 1.055 * (c ** (1.0 / 2.0)) - 0.055)
+
+
+
+
+
+
+
 
 # ==========================================
 # ユーティリティ関数
 # ==========================================
 
-def get_size_for_visual_angle(distance_cm, angle_deg, pixels_per_cm=PIXELS_PER_CM):
+def get_size_for_visual_angle(distance_cm, angle_deg, pixels_per_cm=PIXELS_PER_CM, canvas=None):
     """
     指定された視角と距離から、対応するピクセルサイズを計算する
-    
+
     Args:
         distance_cm: 観視距離 (cm)
         angle_deg: 視角 (度数)
-        pixels_per_cm: モニタのPPC (ピクセル/cm)
-    
+        pixels_per_cm: モニタのPPC (ピクセル/cm)。`canvas`を指定した場合は無視されます。
+        canvas: (optional) Tkinter Canvas/Widget。与えるとそのウィジェットのDPIからピクセル密度を取得します。
+
     Returns:
         int: 対応するピクセルサイズ (四捨五入)
     """
     if distance_cm <= 0:
         return 0
+
+    # canvasが与えられたらそのウィジェットの DPI 情報から pixels_per_cm を計算する
+    if canvas is not None:
+        try:
+            # winfo_fpixels('1i') は1インチあたりのピクセル数を返す
+            ppi = float(canvas.winfo_fpixels('1i'))
+            pixels_per_cm = ppi / 2.54
+        except Exception:
+            # 取得できなければ既定値を使う
+            pixels_per_cm = pixels_per_cm
+
     # 物理サイズ[cm] = 2 * 距離[cm] * tan(視角[rad] / 2)
     angle_rad = math.radians(angle_deg)
     size_cm = 2 * distance_cm * math.tan(angle_rad / 2)
@@ -314,7 +361,7 @@ def draw_center_cross(canvas, offset_x=0, offset_y=0, color='white', gap=0):
     pts_down = [cx, cy + gap, cx - d3, cy + d2 + gap, cx, cy + d1 + gap, cx + d3, cy + d2 + gap]
 
     for pts in [pts_left, pts_right, pts_up, pts_down]:
-        canvas.create_polygon(pts, fill=color, outline="red", width=2, tags="calib")
+        canvas.create_polygon(pts, fill=color, outline="black", width=2, tags="calib")
 
 
 # ==========================================
@@ -515,6 +562,72 @@ def apply_torch_fft_blur_luminance(lum_np, D, pd_mm, pixels_per_deg):
     return blur_tensor.cpu().numpy()
 
 
+def _apply_gamma(gamma_by_channel, ch, vals, inverse=False):
+    """Fitted channel gamma: pixel drive <-> normalized linear light."""
+    gamma = float(gamma_by_channel[ch])
+    if not np.isfinite(gamma) or gamma <= 0:
+        raise ValueError(f"invalid gamma for {ch}: {gamma}")
+    x = np.asarray(vals, dtype=np.float64)
+    if inverse:            # normalized linear -> pixel drive
+        return np.power(np.clip(x, 0.0, None), 1.0 / gamma)
+    return np.power(np.clip(x, 0.0, 1.0), gamma)  # pixel drive -> normalized linear
+
+def lum_to_photo_dualplane_fg(lum_np, bg_lums, bg_pixels, C, gamma_bg, gamma_fg):
+    """Dual Planeの前景用。チャンネル別fitガンマで線形化・逆線形化してCを適用。"""
+    # 1) 目標輝度 -> 背景画素(0-1) （背景校正）
+    pix = np.clip(np.interp(lum_np, bg_lums, bg_pixels), 0, 255) / 255.0
+    # 2) g_b で背景線形へ（グレースケールなのでR=G=B=pix）
+    lin_bg = np.stack([_apply_gamma(gamma_bg, ch, pix) for ch in ("R","G","B")], axis=-1)
+    # 3) 線形空間でC適用（背景線形 -> 前景線形）
+    lin_fg = lin_bg @ C.T
+    lin_fg = np.clip(lin_fg, 0.0, None)
+    # 4) g_f_inv で前景画素へ
+    out = np.empty_like(lin_fg)
+    for i, ch in enumerate(("R","G","B")):
+        out[..., i] = _apply_gamma(gamma_fg, ch, lin_fg[..., i], inverse=True)
+    out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
+    return ImageTk.PhotoImage(Image.fromarray(out, mode="RGB"))
+
+def lum_to_photo_singleplane(lum_np, Y_grid, px_grid):
+    """Single Plane用。拡張輝度LUTで変換。"""
+    lum = np.asarray(lum_np, dtype=np.float64)
+    out = np.empty(lum.shape + (3,), dtype=np.float64)
+    for c in range(3):
+        out[..., c] = np.interp(lum, Y_grid, px_grid[:, c])  # 端点クランプはinterp既定
+    out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
+    return ImageTk.PhotoImage(Image.fromarray(out, mode="RGB"))
+
+
+def lum_to_photo_window2(lum_np, lums, pixels, color_matrix, gamma_bg=None, gamma_fg=None, Y_grid=None, px_grid=None, cond=""):
+    """
+    Window2用の刺激を生成するディスパッチャ。
+    条件に応じて、C適用 or LUT適用を切り替える。
+    フォールバックとして、EOTF/LUTがない場合は従来のsRGB近似でCを適用する。
+    """
+    # --- 新しい方式：EOTF/LUTが利用可能な場合 ---
+    if cond in ["Dual plane", "Dual plane flat"] and gamma_bg and gamma_fg and color_matrix is not None:
+        return lum_to_photo_dualplane_fg(lum_np, lums, pixels, color_matrix, gamma_bg, gamma_fg)
+    
+    if cond.startswith("Single plane") and Y_grid is not None and px_grid is not None:
+        return lum_to_photo_singleplane(lum_np, Y_grid, px_grid)
+
+    # --- フォールバック：従来のsRGB近似方式 ---
+    if color_matrix is None: # Cがない場合は無補正グレー
+        pix = np.interp(lum_np, lums, pixels)
+        gray = np.clip(pix, 0, 255).astype(np.uint8)
+        return ImageTk.PhotoImage(Image.fromarray(gray, mode='L'))
+
+    # 輝度 -> 画素値(0-255)
+    pix = np.interp(lum_np, lums, pixels)
+    g = np.clip(pix, 0, 255).astype(np.float64) / 255.0  # sRGB[0,1], R=G=B
+
+    lin = srgb_to_linear(g)                          # (H,W)
+    lin_rgb = np.stack([lin, lin, lin], axis=-1)     # (H,W,3)
+    lin_rgb_corr = lin_rgb @ color_matrix.T          # 線形RGB空間でCを適用
+    srgb_corr = linear_to_srgb(lin_rgb_corr)         # 内部で[0,1]クリップ
+    out = np.clip(srgb_corr * 255.0, 0, 255).astype(np.uint8)  # (H,W,3)
+    return ImageTk.PhotoImage(Image.fromarray(out, mode='RGB'))
+
 def calculate_defocus_blur_parameters(D, pd_mm, pixels_per_deg):
     """
     デフォーカスブラーのパラメータを計算
@@ -578,54 +691,190 @@ def create_block_trials(param_dict, num_repetitions, shuffle=True):
     return trials
 
 
-def lum_to_photo(lum_np, lums, pixels):
+def lum_to_photo(lum_np, lums, pixels, color_matrix=None):
     """
     輝度配列をピクセル値に変換して ImageTk.PhotoImage を返す
+    
+    色補正行列が指定された場合、色補正を行いつつ輝度ドリフトを補正する
+    （色補正行列による輝度変化を補正し、元の物理輝度を保持）
 
     Args:
         lum_np: 輝度配列 (numpy float)
         lums: 参照ルミナンス配列
         pixels: 参照ピクセル値配列
+        color_matrix: (optional) 3x3 の色補正行列 (numpy array)
+                      グレースケール(G,G,G) に適用される
 
     Returns:
-        ImageTk.PhotoImage
+        ImageTk.PhotoImage (グレースケール or RGB)
     """
-    pix = np.interp(lum_np, lums, pixels).astype(np.uint8)
-    img = Image.fromarray(pix, mode='L')
+    pix = np.interp(lum_np, lums, pixels)
+    img = Image.fromarray(pix.astype(np.uint8), mode='L')
+    
+    if color_matrix is not None:
+        img = apply_color_matrix_preserve_luminance(img, color_matrix)
+        img = scale_image_to_target_luminance(img, lum_np, lums=lums, pixels=pixels)
+
     return ImageTk.PhotoImage(img)
+
+
+def apply_color_matrix_preserve_luminance(img, color_matrix, luma_weights=(0.2126, 0.7152, 0.0722)):
+    """
+    Apply a 3x3 color matrix to a PIL image while preserving luminance.
+
+    Args:
+        img: PIL.Image (RGB or L)
+        color_matrix: numpy array shape (3, 3)
+        luma_weights: weights for luminance calculation
+
+    Returns:
+        PIL.Image in RGB mode
+    """
+    img_rgb = img.convert('RGB')
+    arr = np.asarray(img_rgb, dtype=np.float32)
+    corrected = np.dot(arr, color_matrix.T)
+    luma = np.array(luma_weights, dtype=np.float32)
+    original_luminance = np.dot(arr, luma)
+    corrected_luminance = np.dot(corrected, luma)
+    scale = np.where(corrected_luminance > 1e-6,
+                    original_luminance / corrected_luminance,
+                    1.0)
+    corrected_scaled = corrected * scale[:, :, np.newaxis]
+    corrected_scaled = np.clip(corrected_scaled, 0, 255).astype(np.uint8)
+    return Image.fromarray(corrected_scaled, mode='RGB')
+
+
+def scale_image_to_target_luminance(img, target_lum, lums=None, pixels=None, luma_weights=(0.2126, 0.7152, 0.0722)):
+    """
+    Scale an image so its mean luminance becomes target_lum (cd/m2).
+
+    If calibration data are available, map pixel values to luminance using the provided
+    (lums, pixels) pair and then convert the scaled luminance back to pixel values.
+    Otherwise use grayscale image mean as a proxy.
+    """
+    img_rgb = img.convert('RGB')
+    arr = np.asarray(img_rgb, dtype=np.float32)
+    luma_weights = np.array(luma_weights, dtype=np.float32)
+
+    gray = np.dot(arr, luma_weights)
+    if lums is not None and pixels is not None and len(lums) > 1 and len(pixels) > 1:
+        # Map grayscale intensity through calibration curve to cd/m2
+        lum_map = np.interp(gray, pixels, lums)
+        target_lum_arr = np.asarray(target_lum, dtype=np.float32)
+
+        if target_lum_arr.ndim == 0:
+            mean_lum = float(np.mean(lum_map))
+            if mean_lum <= 1e-6:
+                return img_rgb
+
+            target_lum_map = lum_map * float(target_lum) / mean_lum
+            scaled_gray = np.interp(target_lum_map, lums, pixels)
+            ratio = np.where(gray > 1e-6, scaled_gray / gray, 0.0)
+        else:
+            if target_lum_arr.shape != gray.shape:
+                target_lum_arr = np.broadcast_to(target_lum_arr, gray.shape)
+            scaled_gray = np.interp(target_lum_arr, lums, pixels)
+            ratio = np.where(gray > 1e-6, scaled_gray / gray, 0.0)
+
+        scaled_arr = np.clip(arr * ratio[:, :, np.newaxis], 0, 255).astype(np.uint8)
+        return Image.fromarray(scaled_arr, mode='RGB')
+    else:
+        mean_lum = float(np.mean(gray))
+        if mean_lum <= 1e-6:
+            return img_rgb
+
+        scale = float(target_lum) / mean_lum
+        scaled = np.clip(arr * scale, 0, 255).astype(np.uint8)
+        return Image.fromarray(scaled, mode='RGB')
 
 
 def lum_to_pil(lum_np, lums, pixels):
     """
-    輝度配列を PIL.Image に変換して返す（保存や加工に使用）
+    輝度配列を PIL.Image (Lモード) に変換して返す（保存や加工に使用）
     """
     pix = np.interp(lum_np, lums, pixels).astype(np.uint8)
     return Image.fromarray(pix, mode='L')
 
 
-def generate_matching_photos(gabor_base, cached_lum_noise, fg_lums, fg_pixels, bg_lums, bg_pixels,
-                             L_fg=35.0, L_bg=15.0, L_ref=50.0, c_test=0.4, ref_c=0.2, cond='Single plane'):
+def lum_to_pil_window2(lum_np, lums, pixels, color_matrix):
+    """
+    Window2プレビュー保存用。
+    lum_to_photo_window2() と同じ処理を行うが、
+    ImageTk.PhotoImage ではなく PIL.Image を返す。
+    """
+    pix = np.interp(lum_np, lums, pixels)
+    g = np.clip(pix, 0, 255).astype(np.float64) / 255.0
+
+    if color_matrix is None:
+        gray = np.clip(g * 255.0, 0, 255).astype(np.uint8)
+        return Image.fromarray(gray, mode='L')
+
+    lin = srgb_to_linear(g)
+    lin_rgb = np.stack([lin, lin, lin], axis=-1)
+    lin_rgb_corr = lin_rgb @ color_matrix.T
+    srgb_corr = linear_to_srgb(lin_rgb_corr)
+    out = np.clip(srgb_corr * 255.0, 0, 255).astype(np.uint8)
+    return Image.fromarray(out, mode='RGB')
+
+
+def lum_to_pil_singleplane(lum_np, Y_grid, px_grid):
+    """Single Plane用（保存用）。lum_to_photo_singleplane と同処理だが PIL.Image を返す。"""
+    lum = np.asarray(lum_np, dtype=np.float64)
+    out = np.empty(lum.shape + (3,), dtype=np.float64)
+    for c in range(3):
+        out[..., c] = np.interp(lum, Y_grid, px_grid[:, c])  # 端点クランプはinterp既定
+    out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
+    return Image.fromarray(out, mode="RGB")
+
+
+def generate_matching_photos(gabor_base, cached_lum_noise,
+                             fg_lums, fg_pixels, bg_lums, bg_pixels,
+                             L_fg, L_bg, L_ref, c_test, ref_c, cond,
+                             color_matrix, gamma_bg, gamma_fg, Y_grid, px_grid):
     """
     gabor_base とノイズ基盤から、表示に使う PhotoImage を生成するヘルパ。
-    返り値は辞書で、キーに必要な PhotoImage を格納する。
-    この関数は表示のための変換ロジックを一箇所にまとめる。
+    条件に応じて適切な色変換（C適用 or LUT）をディスパッチする。
     """
     out = {}
-
-    # 参照 (reference)
     lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
-    out['photo_ref_fg'] = lum_to_photo(lum_ref_fg, fg_lums, fg_pixels)
 
     if cond in ["Dual plane", "Dual plane flat"]:
+        # --- Dual plane系 ---
+        # 参照刺激 (Window2 上側): 前景C経路は前景プレーンの再現上限が低く高輝度で
+        # クリップするため、test とは別に Single plane と同じ拡張輝度LUT(最大60cd/m²)で変換する。
+        if Y_grid is not None and px_grid is not None:
+            out['photo_ref_fg'] = lum_to_photo_singleplane(lum_ref_fg, Y_grid, px_grid)
+        else:
+            # LUT未整備時のフォールバック: 従来どおりC経路
+            out['photo_ref_fg'] = lum_to_photo_window2(
+                lum_ref_fg, bg_lums, bg_pixels, color_matrix,
+                gamma_bg, gamma_fg, cond=cond
+            )
+        # Window2 下側: 前景テスト刺激（チャンネル別fitガンマでC適用）
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
-        out['photo_test_fg'] = lum_to_photo(lum_test_fg, fg_lums, fg_pixels)
+        out['photo_test_fg'] = lum_to_photo_window2(
+            lum_test_fg, bg_lums, bg_pixels, color_matrix,
+            gamma_bg, gamma_fg, cond=cond
+        )
 
+        # Window1: 背景刺激。補正なし。
         lum_noise_bg = cached_lum_noise
-        out['photo_noise_bg'] = lum_to_photo(lum_noise_bg, bg_lums, bg_pixels)
+        out['photo_noise_bg'] = lum_to_photo(lum_noise_bg, bg_lums, bg_pixels, None)
+
     else:
+        # --- Single plane系: 拡張輝度LUT適用 ---
+        # 参照刺激 (Window2 上側)
+        out['photo_ref_fg'] = lum_to_photo_window2(
+            lum_ref_fg, bg_lums, bg_pixels, color_matrix,
+            Y_grid=Y_grid, px_grid=px_grid, cond=cond
+        )
+        # Window2 下側: 合成刺激
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         lum_noise = cached_lum_noise
         lum_test_total = lum_noise + lum_test_fg
-        out['photo_test'] = lum_to_photo(lum_test_total, fg_lums, fg_pixels)
+        out['photo_test'] = lum_to_photo_window2(
+            lum_test_total, bg_lums, bg_pixels, color_matrix,
+            Y_grid=Y_grid, px_grid=px_grid, cond=cond
+        )
 
     return out

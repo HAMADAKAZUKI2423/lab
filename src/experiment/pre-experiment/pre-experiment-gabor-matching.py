@@ -16,6 +16,7 @@ import math
 import numpy as np
 import glob
 from PIL import Image, ImageTk
+import json
 
 # 基盤クラスと共通ユーティリティをインポート
 from experiment_base_ui import ExperimentBaseUI
@@ -31,9 +32,22 @@ VISUAL_ANGLE_DEG = 7.9
 NUM_REPETITIONS = 5
 SPATIAL_FREQ = 4  # Spatial frequency in cpd
 PUPIL_DIAMETER_MM = 4.0
+# Dual plane / Dual plane flat の背景(window1)の横幅拡張に使う倍率。
+#   - binocular: 長い側 + 短い側 = 1.3 + 0.7 = 2.0倍（優位眼依存の左右非対称）。
+#   - monocular: 1.3 × 2 = 2.6倍（左右対称・中央）。
+ASYM_WIDTH_FACTOR_LARGE = 1.3
+ASYM_WIDTH_FACTOR_SMALL = 0.7
+
+# Window2(canvas2)に表示する前景(ref/test)の左右対称拡張倍率。
+# 中心から片側 = 元画像幅の1.3倍 → 左右合計2.6倍。
+WIN2_HALF_WIDTH_FACTOR = 1.3
+WIN2_TOTAL_WIDTH_FACTOR = WIN2_HALF_WIDTH_FACTOR * 2  # = 2.6
+
+
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+DISPLAY_DIR = os.path.join(lab_root, "results", "tables", "DisplayBrightness")
 
 RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-matching")
 FIGURE_DIR = os.path.join(lab_root, "results", "figures", "pre-experiment-matching")
@@ -46,6 +60,43 @@ for dir_path in [RESULT_DIR, FIGURE_DIR, PARTICIPANT_DATA_DIR]:
 BG_COLOR = 'black'
 WIN1_MARKER_COLOR = 'red'
 WIN2_MARKER_COLOR = 'white'
+
+# Load experiment config (falls back to defaults)
+import sys
+sys.path.insert(0, os.path.join(lab_root, 'src', 'experiment'))
+try:
+    import experiment_config
+    CFG = experiment_config.get_config()
+except Exception:
+    CFG = {}
+
+BG_COLOR = CFG.get('BG_COLOR', BG_COLOR)
+
+def load_matrix_csv(name):
+    try:
+        return np.loadtxt(os.path.join(DISPLAY_DIR, f"{name}.csv"), delimiter=",")
+    except IOError:
+        print(f"WARN: {name}.csv not found. Using fallback.")
+        return None
+
+def load_gamma_params(path):
+    """channel,gamma CSV -> {"R": gamma_R, "G": gamma_G, "B": gamma_B}."""
+    import csv
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        gamma = {r["channel"].upper(): float(r["gamma"]) for r in rows}
+        missing = set(("R", "G", "B")) - set(gamma)
+        if missing:
+            raise ValueError(f"missing gamma channels: {sorted(missing)}")
+        return gamma
+    except (IOError, KeyError, ValueError) as e:
+        print(f"WARN: gamma parameter file could not be loaded: {path} ({e})")
+        return None
+
+def load_ext_lum_lut(path):
+    arr = np.loadtxt(path, delimiter=",", skiprows=1)
+    return arr[:,0], arr[:,1:4]   # Y_grid(N,), px_grid(N,3)
 
 
 class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
@@ -70,7 +121,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         # matching固有の変数
         self.distance1 = 50  # Foreground distance (cm)
-        self.distance2 = 100  # Background distance (cm)
+        self.distance2 = 150  # Background distance (cm)
         self.spatial_freq = SPATIAL_FREQ
         self.pupil_diameter_val = tk.DoubleVar(value=4.0)
         
@@ -92,15 +143,41 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         fg_calib_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "fg_calibration_log")
         bg_calib_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "bg_calibration_log")
         
-        self.fg_lums, self.fg_pixels = stimuli_utils.load_calibration_data(fg_calib_dir)
+        # 前景補正は背景校正(bg)から得た画素値に C を掛けて行うため、fg校正は使用しない。
+        # self.fg_lums, self.fg_pixels = stimuli_utils.load_calibration_data(fg_calib_dir)
+        self.color_matrix = load_matrix_csv("C")
+        if self.color_matrix is None:
+            print("WARN: C.csv not found. Using hardcoded fallback matrix.")
+            self.color_matrix = np.array([
+                [ 0.385676, -0.029594,  0.007298],
+                [ 0.002786,  0.485416, -0.011852],
+                [ 0.005025,  0.003184,  0.601995],
+            ], dtype=np.float64)
+
+        self.gamma_bg = load_gamma_params(os.path.join(DISPLAY_DIR, "gamma_bg.csv"))
+        self.gamma_fg = load_gamma_params(os.path.join(DISPLAY_DIR, "gamma_fg.csv"))
+        try:
+            self.ext_lum_Y, self.ext_lum_px = load_ext_lum_lut(os.path.join(DISPLAY_DIR, "ext_lum_lut.csv"))
+        except (IOError, ValueError):
+            print("WARN: ext_lum_lut.csv not found or invalid. Single plane will not work correctly.")
+            self.ext_lum_Y, self.ext_lum_px = None, None
+
         self.bg_lums, self.bg_pixels = stimuli_utils.load_calibration_data(bg_calib_dir)
         
-        if self.fg_lums is None or self.bg_lums is None:
+        if self.bg_lums is None:
             print("Warning: Calibration data not found. Linear mapping will be used.")
-            self.fg_lums = np.array([0.0, 100.0])
-            self.fg_pixels = np.array([0, 255])
             self.bg_lums = np.array([0.0, 100.0])
             self.bg_pixels = np.array([0, 255])
+
+        self.fg_lums, self.fg_pixels = self.bg_lums, self.bg_pixels
+
+        # Apply config overrides
+        self.config = CFG or {}
+        self.L_fg = float(self.config.get('L_fg', 15.0))
+        self.L_bg = float(self.config.get('L_bg', 15.0))
+        self.L_ref = float(self.config.get('L_ref', 30.0))
+        self.distance1 = int(self.config.get('DISTANCE_FG', self.distance1))
+        self.distance2 = int(self.config.get('DISTANCE_BG', self.distance2))
         
         # Window1とcanvasのセットアップ
         screen_w = self.root.winfo_screenwidth()
@@ -255,18 +332,6 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.calib_results = {}
         self.start_eye_calibration()
 
-    def start_eye_calibration(self):
-        if self.current_calib_eye_idx >= len(self.calibration_eyes):
-            self.setup_experiment_blocks()
-            return
-            
-        current_eye = self.calibration_eyes[self.current_calib_eye_idx]
-        messagebox.showinfo("Calibration", f"Next: Calibration for {current_eye} Eye.\nPlease cover the other eye.")
-        self.offset_x.set(0)
-        self.offset_y.set(0)
-        self.pupil_diameter_val.set(4.0)
-        self.setup_calibration_ui(is_new_eye=True)
-    
     def on_participant_confirmed(self):
         """参加者確認後、キャリブレーション開始"""
         self.win1.update_idletasks()
@@ -305,16 +370,21 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         L_ref = 30.0
         
         # Reference Gabor patches
-        for ref_c in [0.2, 0.4]:
+        # 実表示(generate_matching_photos)と同様、refは前景C経路の再現上限クリップを避けるため
+        # Single planeと同じ拡張輝度LUTで変換する（LUT未整備時のみ従来のC経路にフォールバック）。
+        for ref_c in [0.0,0.2, 0.4]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
-            pil_ref = stimuli_utils.lum_to_pil(lum_ref_fg, self.fg_lums, self.fg_pixels)
-            pil_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
+            if self.ext_lum_Y is not None and self.ext_lum_px is not None:
+                img_ref = stimuli_utils.lum_to_pil_singleplane(lum_ref_fg, self.ext_lum_Y, self.ext_lum_px)
+            else:
+                img_ref = stimuli_utils.lum_to_pil_window2(lum_ref_fg, self.bg_lums, self.bg_pixels, self.color_matrix)
+            img_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
             
         # Single plane stimulus
-        c_test = 0.4
+        c_test = 0.0
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
-        pil_test_fg = stimuli_utils.lum_to_pil(lum_test_fg, self.fg_lums, self.fg_pixels)
-        pil_test_fg.save(os.path.join(save_dir, "single_plane_foreground.png"))
+        img_test_fg = stimuli_utils.lum_to_pil_window2(lum_test_fg, self.bg_lums, self.bg_pixels, getattr(self, 'color_matrix_xyz', None))
+        img_test_fg.save(os.path.join(save_dir, "single_plane_foreground.png"))
 
         lum_noise = L_bg * (1.0 + C_bg * noise_base)
         pil_noise = stimuli_utils.lum_to_pil(lum_noise, self.fg_lums, self.fg_pixels)
@@ -490,14 +560,11 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         # デフォーカスマッチング
         defocus_matching.setup_defocus_matching_ui(self)
-    
-    def setup_experiment_blocks(self):
-        """実験ブロック構成を設定
 
-        - 各眼性（binocular / monocular）を1つのブロックとする
-        - 各ブロック内の条件順をシャッフルする
-        - どちらのブロックが先かもランダム化する
-        """
+    def setup_experiment_blocks(self):
+        """実験ブロック構成を設定"""
+        self.avg_color_match_results = []
+
         dom_eye = self.participant_dominance.get()
         if dom_eye not in self.calib_results:
             dom_eye = "Right"
@@ -554,69 +621,6 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.current_block_index = 0
         self.current_trial_in_experiment = 0
         self.start_block()
-    
-    def save_preview_images(self):
-        """プレビュー画像を保存"""
-        now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d_%H%M%S")
-        p_id = self.participant_id.get()
-        save_dir = os.path.join(FIGURE_DIR, f"{p_id}_{date_str}", "stimulis")
-        
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        
-        d_fg = self.distance1
-        ppd_fg = stimuli_utils.get_size_for_visual_angle(d_fg, 1.0)
-        
-        width_deg = 7.9
-        height_deg = 3.95
-        width_fg = int(width_deg * ppd_fg)
-        height_fg = int(height_deg * ppd_fg)
-        
-        ori = 0
-        gabor_base = stimuli_utils.create_cosine_windowed_grating_base(width_fg, height_fg, ppd_fg, 
-                                                                       self.spatial_freq, orientation=ori)
-        noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, 
-                                                     self.spatial_freq)
-        
-        L_fg = 15.0
-        L_bg = 15.0
-        C_bg = 1.0
-        L_ref = 30.0
-        
-        for ref_c in [0.2, 0.4]:
-            lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
-            pix_ref_fg = np.interp(lum_ref_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
-            Image.fromarray(pix_ref_fg, mode='L').save(
-                os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png")
-            )
-        
-        c_test = 0.4
-        lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
-        pix_test_fg = np.interp(lum_test_fg, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_test_fg, mode='L').save(
-            os.path.join(save_dir, "single_plane_foreground.png")
-        )
-        
-        lum_noise = L_bg * (1.0 + C_bg * noise_base)
-        pix_noise = np.interp(lum_noise, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_noise, mode='L').save(
-            os.path.join(save_dir, "single_plane_background.png")
-        )
-        
-        lum_total = lum_noise + lum_test_fg
-        pix_total = np.interp(lum_total, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_total, mode='L').save(os.path.join(save_dir, "single_plane_combined.png"))
-        
-        D = abs(1/(self.distance1/100.0) - 1/(self.distance2/100.0))
-        pd_mm = self.current_pd_mean if self.current_pd_mean > 0 else 4.0
-        lum_noise_defocus = stimuli_utils.apply_torch_fft_blur_luminance(lum_noise, D, pd_mm, ppd_fg)
-        pix_noise_defocus = np.interp(lum_noise_defocus, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_noise_defocus, mode='L').save(os.path.join(save_dir, "single_plane_defocus_background.png"))
-        
-        lum_total_defocus = lum_noise_defocus + lum_test_fg
-        pix_total_defocus = np.interp(lum_total_defocus, self.fg_lums, self.fg_pixels).astype(np.uint8)
-        Image.fromarray(pix_total_defocus, mode='L').save(os.path.join(save_dir, "single_plane_defocus_combined.png"))
     
     def start_block(self):
         """ブロック開始"""
@@ -699,41 +703,71 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         width_deg = 7.9
         height_deg = 3.95
-        width_fg = int(width_deg * ppd_fg)
+        # 元画像（1枚・約7.9deg）の前景幅。背景の非対称化はこの基準幅では使わないが、
+        # 「2.6倍前」の基準として保持する。
+        width_fg_base = int(width_deg * ppd_fg)
         height_fg = int(height_deg * ppd_fg)
-        width_bg = int(width_deg * ppd_bg)
+        width_bg = int(width_deg * ppd_bg)   # 背景(window1)の元幅。非対称化の基準（変更しない）
         height_bg = int(height_deg * ppd_bg)
+        # Window2(ref/test)はデフォルトで左右対称2.6倍幅にする（毎回paddingしない）
+        width_fg = int(width_fg_base * WIN2_TOTAL_WIDTH_FACTOR)
         
         ori = trial["orientation"]
         
         self.gabor_base = stimuli_utils.create_cosine_windowed_grating_base(width_fg, height_fg, ppd_fg, 
                                                                             self.spatial_freq, orientation=ori)
         
-        L_bg = 15.0
+        L_bg = self.L_bg
+        
+        # === 背景(window1)の横幅設定 ===
+        # Dual plane / Dual plane flat では、monocular・binocular の両方で背景の総横幅を
+        # 「合計2.0倍（= 1.3 + 0.7）」に統一する。
+        #   - binocular: 優位眼依存の左右非対称(1.3 / 0.7)オフセットを与える（従来どおり）。
+        #   - monocular: 横幅は binocular と同じだが、左右対称（中央配置・オフセット0）。
+        ocularity = self.current_block_cond["ocularity"]
+        dom_eye = self.participant_dominance.get()
+        is_dual = cond in ["Dual plane", "Dual plane flat"]
+        
+        if is_dual:
+            if ocularity == "binocular":
+                # 背景は合計2.0倍（1.3 + 0.7）・優位眼依存の非対称（従来どおり）
+                width_bg_expanded = int(width_bg * (ASYM_WIDTH_FACTOR_LARGE + ASYM_WIDTH_FACTOR_SMALL))  # = 2.0
+                if dom_eye == "Right":
+                    bg_left_factor = ASYM_WIDTH_FACTOR_SMALL   # 0.7
+                    bg_right_factor = ASYM_WIDTH_FACTOR_LARGE  # 1.3
+                else:  # "Left"
+                    bg_left_factor = ASYM_WIDTH_FACTOR_LARGE   # 1.3
+                    bg_right_factor = ASYM_WIDTH_FACTOR_SMALL  # 0.7
+                # 提示中央(cx1)に対する背景の描画オフセット（右が大きいほど +x 側へ）
+                self.bg_center_offset_x = int(width_bg * (bg_right_factor - bg_left_factor) / 2.0)
+            else:
+                # monocular：左右とも1.3倍＝合計2.6倍・左右対称（中央配置）
+                width_bg_expanded = int(width_bg * (ASYM_WIDTH_FACTOR_LARGE * 2))  # = 2.6
+                self.bg_center_offset_x = 0
+        else:
+            # Single plane 系：window1 背景は単独表示しない（等倍・中央）
+            width_bg_expanded = width_bg
+            self.bg_center_offset_x = 0
+        # ============================================================================
         
         if cond == "Dual plane flat":
             # コントラスト0の場合、重いFFTノイズ生成処理をスキップ
-            width_bg_expanded = int(width_bg * 2.5)
-            self.noise_base = None
             lum_noise_temp = np.full((height_bg, width_bg_expanded), L_bg, dtype=np.float32)
         else:
             if cond == "Dual plane":
-                width_bg_expanded = int(width_bg * 2.5)
                 self.noise_base = stimuli_utils.create_noise_base(width_bg_expanded, height_bg, ppd_bg, self.spatial_freq)
             else:
                 self.noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
             
             lum_noise_temp = L_bg * (1.0 + self.noise_base)
         
-        cond = self.current_block_cond["condition"]
         if cond == "Single plane + defocus simulation":
             D = abs(1/(self.distance1/100.0) - 1/(self.distance2/100.0))
             self.cached_lum_noise = stimuli_utils.apply_torch_fft_blur_luminance(
                 lum_noise_temp, D, self.current_pd_mean, ppd_fg
             )
         else:
-            self.cached_lum_noise = lum_noise_temp
-        
+            self.cached_lum_noise = lum_noise_temp  
         self.setup_contrast_matching_ui()
     
     def setup_contrast_matching_ui(self):
@@ -807,7 +841,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         cx1, cy1 = self.width//2 + self.offset_x.get(), self.height//2 + self.offset_y.get()
         cx2, cy2 = self.canvas2.winfo_width()//2, self.canvas2.winfo_height()//2
-    
+        
         L_fg = 15.0
         L_bg = 15.0
         L_ref = 30.0
@@ -816,7 +850,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         photos = stimuli_utils.generate_matching_photos(
             self.gabor_base, self.cached_lum_noise,
             self.fg_lums, self.fg_pixels, self.bg_lums, self.bg_pixels,
-            L_fg=L_fg, L_bg=L_bg, L_ref=L_ref, c_test=c_test, ref_c=ref_c, cond=cond
+            L_fg=L_fg, L_bg=L_bg, L_ref=L_ref, c_test=c_test, ref_c=ref_c, 
+            cond=cond, color_matrix=self.color_matrix,
+            gamma_bg=self.gamma_bg, gamma_fg=self.gamma_fg,
+            Y_grid=self.ext_lum_Y, px_grid=self.ext_lum_px
         )
 
         self.photo_ref_fg = photos.get('photo_ref_fg')
@@ -824,8 +861,13 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.photo_test_fg = photos.get('photo_test_fg')
             self.photo_noise_bg = photos.get('photo_noise_bg')
 
-            self.canvas2.create_image(cx2, cy2 - gap_y_fg, image=self.photo_ref_fg, anchor='center', tags="stim")
-            self.canvas1.create_image(cx1, cy1 + gap_y_bg, image=self.photo_noise_bg, anchor='center', tags="stim")
+            # ref/test は width_fg(=2.6倍) で生成済みのため、左右対称・中央配置でよい。
+            # 旧実装では binocular 時に ref のみ非対称paddingしていたが、本変更で廃止する。
+            # 背景(window1)の「合計2倍・非対称」は bg_center_offset_x として引き続き維持する。
+            ref_offset_x = 0
+            bg_offset_x = getattr(self, 'bg_center_offset_x', 0)
+            self.canvas2.create_image(cx2 + ref_offset_x, cy2 - gap_y_fg, image=self.photo_ref_fg, anchor='center', tags="stim")
+            self.canvas1.create_image(cx1 + bg_offset_x, cy1 + gap_y_bg, image=self.photo_noise_bg, anchor='center', tags="stim")
             self.canvas2.create_image(cx2, cy2 + gap_y_fg, image=self.photo_test_fg, anchor='center', tags="stim")
         else:
             self.photo_test = photos.get('photo_test')
@@ -859,6 +901,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             "Orientation": trial["orientation"],
             "Ref_Contrast": trial["ref_contrast"],
             "Matched_Contrast": round(c_test, 4),
+            "L_fg": self.L_fg,
+            "L_bg": self.L_bg,
+            "L_ref": self.L_ref,
+            "Config_JSON": json.dumps(self.config if getattr(self, 'config', None) is not None else {}),
             "PD_Right": right_res["pd_mean"],
             "OffsetX_Right": right_res["offset_x"],
             "OffsetY_Right": right_res["offset_y"],
@@ -887,7 +933,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.ctrl_frame.destroy()
         
         # 試行リストを生成
-        ref_contrasts = [0.1, 0.2, 0.3]
+        ref_contrasts = [0.0, 0.2, 0.4]
         orientations = [0]
         
         self.trial_list = []
@@ -928,6 +974,13 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
                 writer = csv.DictWriter(f, fieldnames=self.results[0].keys())
                 writer.writeheader()
                 writer.writerows(self.results)
+            # Save the config used for this experiment run into the results folder
+            try:
+                cfg_to_save = getattr(self, 'config', None) or {}
+                with open(os.path.join(save_folder, 'used_experiment_config.json'), 'w', encoding='utf-8') as cf:
+                    json.dump(cfg_to_save, cf, indent=2)
+            except Exception:
+                pass
         
         tk.messagebox.showinfo("Completed", 
                               f"Experiment finished.\nData saved to: {filename}")
