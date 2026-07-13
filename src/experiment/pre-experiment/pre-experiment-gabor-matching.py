@@ -25,15 +25,6 @@ import stimuli_utils
 import defocus_matching
 
 
-# 前景(Window2)に適用する色補正行列 C（線形RGB空間で適用）
-# 関連スクリプト1で求めた行列を、C = inv(R') @ T' と同様に線形RGB空間で使う
-COLOR_MATRIX = np.array([
-    [ 0.385676, -0.029594,  0.007298],
-    [ 0.002786,  0.485416, -0.011852],
-    [ 0.005025,  0.003184,  0.601995],
-], dtype=np.float64)
-
-
 # ==========================================
 # 定数設定エリア (実験条件やデザインはここを変更)
 # ==========================================
@@ -56,6 +47,7 @@ WIN2_TOTAL_WIDTH_FACTOR = WIN2_HALF_WIDTH_FACTOR * 2  # = 2.6
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+DISPLAY_DIR = os.path.join(lab_root, "results", "tables", "DisplayBrightness")
 
 RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-matching")
 FIGURE_DIR = os.path.join(lab_root, "results", "figures", "pre-experiment-matching")
@@ -79,6 +71,32 @@ except Exception:
     CFG = {}
 
 BG_COLOR = CFG.get('BG_COLOR', BG_COLOR)
+
+def load_matrix_csv(name):
+    try:
+        return np.loadtxt(os.path.join(DISPLAY_DIR, f"{name}.csv"), delimiter=",")
+    except IOError:
+        print(f"WARN: {name}.csv not found. Using fallback.")
+        return None
+
+def load_gamma_params(path):
+    """channel,gamma CSV -> {"R": gamma_R, "G": gamma_G, "B": gamma_B}."""
+    import csv
+    try:
+        with open(path, newline="", encoding="utf-8") as f:
+            rows = list(csv.DictReader(f))
+        gamma = {r["channel"].upper(): float(r["gamma"]) for r in rows}
+        missing = set(("R", "G", "B")) - set(gamma)
+        if missing:
+            raise ValueError(f"missing gamma channels: {sorted(missing)}")
+        return gamma
+    except (IOError, KeyError, ValueError) as e:
+        print(f"WARN: gamma parameter file could not be loaded: {path} ({e})")
+        return None
+
+def load_ext_lum_lut(path):
+    arr = np.loadtxt(path, delimiter=",", skiprows=1)
+    return arr[:,0], arr[:,1:4]   # Y_grid(N,), px_grid(N,3)
 
 
 class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
@@ -127,13 +145,30 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         
         # 前景補正は背景校正(bg)から得た画素値に C を掛けて行うため、fg校正は使用しない。
         # self.fg_lums, self.fg_pixels = stimuli_utils.load_calibration_data(fg_calib_dir)
+        self.color_matrix = load_matrix_csv("C")
+        if self.color_matrix is None:
+            print("WARN: C.csv not found. Using hardcoded fallback matrix.")
+            self.color_matrix = np.array([
+                [ 0.385676, -0.029594,  0.007298],
+                [ 0.002786,  0.485416, -0.011852],
+                [ 0.005025,  0.003184,  0.601995],
+            ], dtype=np.float64)
+
+        self.gamma_bg = load_gamma_params(os.path.join(DISPLAY_DIR, "gamma_bg.csv"))
+        self.gamma_fg = load_gamma_params(os.path.join(DISPLAY_DIR, "gamma_fg.csv"))
+        try:
+            self.ext_lum_Y, self.ext_lum_px = load_ext_lum_lut(os.path.join(DISPLAY_DIR, "ext_lum_lut.csv"))
+        except (IOError, ValueError):
+            print("WARN: ext_lum_lut.csv not found or invalid. Single plane will not work correctly.")
+            self.ext_lum_Y, self.ext_lum_px = None, None
+
         self.bg_lums, self.bg_pixels = stimuli_utils.load_calibration_data(bg_calib_dir)
-        self.color_matrix = COLOR_MATRIX
         
         if self.bg_lums is None:
             print("Warning: Calibration data not found. Linear mapping will be used.")
             self.bg_lums = np.array([0.0, 100.0])
             self.bg_pixels = np.array([0, 255])
+
         self.fg_lums, self.fg_pixels = self.bg_lums, self.bg_pixels
 
         # Apply config overrides
@@ -335,9 +370,14 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         L_ref = 30.0
         
         # Reference Gabor patches
+        # 実表示(generate_matching_photos)と同様、refは前景C経路の再現上限クリップを避けるため
+        # Single planeと同じ拡張輝度LUTで変換する（LUT未整備時のみ従来のC経路にフォールバック）。
         for ref_c in [0.0,0.2, 0.4]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
-            img_ref = stimuli_utils.lum_to_pil_window2(lum_ref_fg, self.bg_lums, self.bg_pixels, getattr(self, 'color_matrix_xyz', None))
+            if self.ext_lum_Y is not None and self.ext_lum_px is not None:
+                img_ref = stimuli_utils.lum_to_pil_singleplane(lum_ref_fg, self.ext_lum_Y, self.ext_lum_px)
+            else:
+                img_ref = stimuli_utils.lum_to_pil_window2(lum_ref_fg, self.bg_lums, self.bg_pixels, self.color_matrix)
             img_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
             
         # Single plane stimulus
@@ -810,8 +850,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         photos = stimuli_utils.generate_matching_photos(
             self.gabor_base, self.cached_lum_noise,
             self.fg_lums, self.fg_pixels, self.bg_lums, self.bg_pixels,
-            L_fg=L_fg, L_bg=L_bg, L_ref=L_ref, c_test=c_test, ref_c=ref_c, cond=cond,
-            color_matrix=getattr(self, 'color_matrix', None)
+            L_fg=L_fg, L_bg=L_bg, L_ref=L_ref, c_test=c_test, ref_c=ref_c, 
+            cond=cond, color_matrix=self.color_matrix,
+            gamma_bg=self.gamma_bg, gamma_fg=self.gamma_fg,
+            Y_grid=self.ext_lum_Y, px_grid=self.ext_lum_px
         )
 
         self.photo_ref_fg = photos.get('photo_ref_fg')
