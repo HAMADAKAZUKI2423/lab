@@ -179,6 +179,14 @@ def analyze_gamma(name, ramp_channel,
     ※ モデル選択は行わない（EOTF は常に個別EOTF＝線形補完）。
     """
     v, yn, Y0 = _prep_ramp(ramp_channel)
+    # 非線形空間のプロット用に、正規化前の実測輝度 [cd/m^2] も保持する
+    pts_raw = sorted(
+        [(p[0] / 255.0, p[1]) for p in ramp_channel if p[1] is not None],
+        key=lambda t: t[0]
+    )
+    Y_meas = np.array([p[1] for p in pts_raw], dtype=float)
+    Ymax = Y_meas[-1]
+    Yrange = (Ymax - Y0) if (Ymax - Y0) != 0 else 1.0
     # ---- (1) gamma=2.2 からのズレ: 画素値^2.2 を横軸、測定輝度を縦軸に ----
     x_22     = v ** target_gamma      # 横軸: 画素値を2.2乗
     resid_22 = yn - x_22              # 直線 y=x からの残差（測定輝度基準）
@@ -232,10 +240,38 @@ def analyze_gamma(name, ramp_channel,
         path = os.path.join(plot_dir, f"gamma_analysis_{name}.png")
         fig.savefig(path, dpi=120); plt.close(fig)
         print(f"  [plot] {path}")
+
+        # ---- 非線形空間: 横軸=画素値、縦軸=実測輝度 [cd/m^2] ----
+        # 黒レベルと最大輝度を実測値に合わせたガンマ曲線と比較する
+        Y_model_22  = Y0 + Yrange * (v ** target_gamma)
+        Y_model_fit = Y0 + Yrange * (v ** gamma)
+
+        fig_nl, ax_nl = plt.subplots(1, 2, figsize=(12, 4.5))
+
+        ax_nl[0].plot(v, Y_meas, "o-", label="measured")
+        ax_nl[0].plot(v, Y_model_22, "k--", lw=2,
+                      label=f"gamma curve (γ={target_gamma})")
+        ax_nl[0].set_title(f"[{name}] nonlinear space: measured vs γ={target_gamma}")
+        ax_nl[0].set_xlabel("pixel value v (0-1)")
+        ax_nl[0].set_ylabel("luminance Y [cd/m²]")
+        ax_nl[0].legend(); ax_nl[0].grid(True, alpha=.3)
+
+        ax_nl[1].plot(v, Y_meas, "o-", label="measured")
+        ax_nl[1].plot(v, Y_model_fit, "k--", lw=2,
+                      label=f"fitted gamma curve (γ={gamma:.3f})")
+        ax_nl[1].set_title(f"[{name}] nonlinear space: measured vs fitted gamma")
+        ax_nl[1].set_xlabel("pixel value v (0-1)")
+        ax_nl[1].set_ylabel("luminance Y [cd/m²]")
+        ax_nl[1].legend(); ax_nl[1].grid(True, alpha=.3)
+
+        fig_nl.tight_layout()
+        path_nl = os.path.join(plot_dir, f"gamma_nonlinear_{name}.png")
+        fig_nl.savefig(path_nl, dpi=120); plt.close(fig_nl)
+        print(f"  [plot] {path_nl}")
     return {
         "name": name, "gamma": float(gamma),
         "r2": float(r2), "rms_resid": rms_resid,
-        "v": v, "yn": yn, "Y0": float(Y0),
+        "v": v, "yn": yn, "Y": Y_meas, "Y0": float(Y0),
         "resid_22": resid_22, "resid_fit": resid_fit,
     }
 
