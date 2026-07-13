@@ -372,7 +372,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         # Reference Gabor patches
         # 実表示(generate_matching_photos)と同様、refは前景C経路の再現上限クリップを避けるため
         # Single planeと同じ拡張輝度LUTで変換する（LUT未整備時のみ従来のC経路にフォールバック）。
-        for ref_c in [0.0,0.2, 0.4]:
+        for ref_c in [0.1, 0.2]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
             if self.ext_lum_Y is not None and self.ext_lum_px is not None:
                 img_ref = stimuli_utils.lum_to_pil_singleplane(lum_ref_fg, self.ext_lum_Y, self.ext_lum_px)
@@ -933,7 +933,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.ctrl_frame.destroy()
         
         # 試行リストを生成
-        ref_contrasts = [0.0, 0.2, 0.4]
+        ref_contrasts = [0.1, 0.2]
         orientations = [0]
         
         self.trial_list = []
