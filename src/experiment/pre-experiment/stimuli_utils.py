@@ -562,25 +562,29 @@ def apply_torch_fft_blur_luminance(lum_np, D, pd_mm, pixels_per_deg):
     return blur_tensor.cpu().numpy()
 
 
-def _apply_eotf(eotf, ch, vals, inverse=False):
-    v, yn = eotf[ch]
-    if inverse:            # 線形 -> 画素
-        return np.interp(vals, yn, v)
-    return np.interp(vals, v, yn)   # 画素 -> 線形
+def _apply_gamma(gamma_by_channel, ch, vals, inverse=False):
+    """Fitted channel gamma: pixel drive <-> normalized linear light."""
+    gamma = float(gamma_by_channel[ch])
+    if not np.isfinite(gamma) or gamma <= 0:
+        raise ValueError(f"invalid gamma for {ch}: {gamma}")
+    x = np.asarray(vals, dtype=np.float64)
+    if inverse:            # normalized linear -> pixel drive
+        return np.power(np.clip(x, 0.0, None), 1.0 / gamma)
+    return np.power(np.clip(x, 0.0, 1.0), gamma)  # pixel drive -> normalized linear
 
-def lum_to_photo_dualplane_fg(lum_np, bg_lums, bg_pixels, C, eotf_bg, eotf_fg):
-    """Dual Planeの前景用。実測EOTFでCを適用。"""
+def lum_to_photo_dualplane_fg(lum_np, bg_lums, bg_pixels, C, gamma_bg, gamma_fg):
+    """Dual Planeの前景用。チャンネル別fitガンマで線形化・逆線形化してCを適用。"""
     # 1) 目標輝度 -> 背景画素(0-1) （背景校正）
     pix = np.clip(np.interp(lum_np, bg_lums, bg_pixels), 0, 255) / 255.0
     # 2) g_b で背景線形へ（グレースケールなのでR=G=B=pix）
-    lin_bg = np.stack([_apply_eotf(eotf_bg, ch, pix) for ch in ("R","G","B")], axis=-1)
+    lin_bg = np.stack([_apply_gamma(gamma_bg, ch, pix) for ch in ("R","G","B")], axis=-1)
     # 3) 線形空間でC適用（背景線形 -> 前景線形）
     lin_fg = lin_bg @ C.T
     lin_fg = np.clip(lin_fg, 0.0, None)
     # 4) g_f_inv で前景画素へ
     out = np.empty_like(lin_fg)
     for i, ch in enumerate(("R","G","B")):
-        out[..., i] = _apply_eotf(eotf_fg, ch, lin_fg[..., i], inverse=True)
+        out[..., i] = _apply_gamma(gamma_fg, ch, lin_fg[..., i], inverse=True)
     out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
     return ImageTk.PhotoImage(Image.fromarray(out, mode="RGB"))
 
@@ -594,15 +598,15 @@ def lum_to_photo_singleplane(lum_np, Y_grid, px_grid):
     return ImageTk.PhotoImage(Image.fromarray(out, mode="RGB"))
 
 
-def lum_to_photo_window2(lum_np, lums, pixels, color_matrix, eotf_bg=None, eotf_fg=None, Y_grid=None, px_grid=None, cond=""):
+def lum_to_photo_window2(lum_np, lums, pixels, color_matrix, gamma_bg=None, gamma_fg=None, Y_grid=None, px_grid=None, cond=""):
     """
     Window2用の刺激を生成するディスパッチャ。
     条件に応じて、C適用 or LUT適用を切り替える。
     フォールバックとして、EOTF/LUTがない場合は従来のsRGB近似でCを適用する。
     """
     # --- 新しい方式：EOTF/LUTが利用可能な場合 ---
-    if cond in ["Dual plane", "Dual plane flat"] and eotf_bg and eotf_fg and color_matrix is not None:
-        return lum_to_photo_dualplane_fg(lum_np, lums, pixels, color_matrix, eotf_bg, eotf_fg)
+    if cond in ["Dual plane", "Dual plane flat"] and gamma_bg and gamma_fg and color_matrix is not None:
+        return lum_to_photo_dualplane_fg(lum_np, lums, pixels, color_matrix, gamma_bg, gamma_fg)
     
     if cond.startswith("Single plane") and Y_grid is not None and px_grid is not None:
         return lum_to_photo_singleplane(lum_np, Y_grid, px_grid)
@@ -826,7 +830,7 @@ def lum_to_pil_singleplane(lum_np, Y_grid, px_grid):
 def generate_matching_photos(gabor_base, cached_lum_noise,
                              fg_lums, fg_pixels, bg_lums, bg_pixels,
                              L_fg, L_bg, L_ref, c_test, ref_c, cond,
-                             color_matrix, eotf_bg, eotf_fg, Y_grid, px_grid):
+                             color_matrix, gamma_bg, gamma_fg, Y_grid, px_grid):
     """
     gabor_base とノイズ基盤から、表示に使う PhotoImage を生成するヘルパ。
     条件に応じて適切な色変換（C適用 or LUT）をディスパッチする。
@@ -844,13 +848,13 @@ def generate_matching_photos(gabor_base, cached_lum_noise,
             # LUT未整備時のフォールバック: 従来どおりC経路
             out['photo_ref_fg'] = lum_to_photo_window2(
                 lum_ref_fg, bg_lums, bg_pixels, color_matrix,
-                eotf_bg, eotf_fg, cond=cond
+                gamma_bg, gamma_fg, cond=cond
             )
-        # Window2 下側: 前景テスト刺激（従来どおりC適用）
+        # Window2 下側: 前景テスト刺激（チャンネル別fitガンマでC適用）
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
         out['photo_test_fg'] = lum_to_photo_window2(
             lum_test_fg, bg_lums, bg_pixels, color_matrix,
-            eotf_bg, eotf_fg, cond=cond
+            gamma_bg, gamma_fg, cond=cond
         )
 
         # Window1: 背景刺激。補正なし。

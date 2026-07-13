@@ -79,18 +79,19 @@ def load_matrix_csv(name):
         print(f"WARN: {name}.csv not found. Using fallback.")
         return None
 
-def load_eotf(path):
-    # channel,v,yn -> {ch: (v_array, yn_array)}
+def load_gamma_params(path):
+    """channel,gamma CSV -> {"R": gamma_R, "G": gamma_G, "B": gamma_B}."""
     import csv
-    d = {}
     try:
         with open(path, newline="", encoding="utf-8") as f:
-            for r in csv.DictReader(f):
-                ch = r["channel"].upper()
-                d.setdefault(ch, ([], []))
-                d[ch][0].append(float(r["v"])); d[ch][1].append(float(r["yn"]))
-        return {ch: (np.array(v), np.array(y)) for ch,(v,y) in d.items()}
-    except IOError:
+            rows = list(csv.DictReader(f))
+        gamma = {r["channel"].upper(): float(r["gamma"]) for r in rows}
+        missing = set(("R", "G", "B")) - set(gamma)
+        if missing:
+            raise ValueError(f"missing gamma channels: {sorted(missing)}")
+        return gamma
+    except (IOError, KeyError, ValueError) as e:
+        print(f"WARN: gamma parameter file could not be loaded: {path} ({e})")
         return None
 
 def load_ext_lum_lut(path):
@@ -153,8 +154,8 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
                 [ 0.005025,  0.003184,  0.601995],
             ], dtype=np.float64)
 
-        self.eotf_bg = load_eotf(os.path.join(DISPLAY_DIR, "eotf_bg.csv"))
-        self.eotf_fg = load_eotf(os.path.join(DISPLAY_DIR, "eotf_fg.csv"))
+        self.gamma_bg = load_gamma_params(os.path.join(DISPLAY_DIR, "gamma_bg.csv"))
+        self.gamma_fg = load_gamma_params(os.path.join(DISPLAY_DIR, "gamma_fg.csv"))
         try:
             self.ext_lum_Y, self.ext_lum_px = load_ext_lum_lut(os.path.join(DISPLAY_DIR, "ext_lum_lut.csv"))
         except (IOError, ValueError):
@@ -371,7 +372,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         # Reference Gabor patches
         # 実表示(generate_matching_photos)と同様、refは前景C経路の再現上限クリップを避けるため
         # Single planeと同じ拡張輝度LUTで変換する（LUT未整備時のみ従来のC経路にフォールバック）。
-        for ref_c in [0.1, 0.2]:
+        for ref_c in [0.0,0.2, 0.4]:
             lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
             if self.ext_lum_Y is not None and self.ext_lum_px is not None:
                 img_ref = stimuli_utils.lum_to_pil_singleplane(lum_ref_fg, self.ext_lum_Y, self.ext_lum_px)
@@ -851,7 +852,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.fg_lums, self.fg_pixels, self.bg_lums, self.bg_pixels,
             L_fg=L_fg, L_bg=L_bg, L_ref=L_ref, c_test=c_test, ref_c=ref_c, 
             cond=cond, color_matrix=self.color_matrix,
-            eotf_bg=self.eotf_bg, eotf_fg=self.eotf_fg,
+            gamma_bg=self.gamma_bg, gamma_fg=self.gamma_fg,
             Y_grid=self.ext_lum_Y, px_grid=self.ext_lum_px
         )
 
@@ -932,7 +933,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             self.ctrl_frame.destroy()
         
         # 試行リストを生成
-        ref_contrasts = [0.1, 0.2]
+        ref_contrasts = [0.0, 0.2, 0.4]
         orientations = [0]
         
         self.trial_list = []

@@ -306,15 +306,15 @@ def update_defocus_view(app):
     lum_fg = MATCH_MEAN_LUM * (1.0 + MATCH_CONTRAST * (2.0 * base_fg - 1.0))
 
     color_matrix = getattr(app, 'color_matrix', None)
-    eotf_bg = getattr(app, 'eotf_bg', None)
-    eotf_fg = getattr(app, 'eotf_fg', None)
-    if color_matrix is not None and eotf_bg is not None and eotf_fg is not None:
+    gamma_bg = getattr(app, 'gamma_bg', None)
+    gamma_fg = getattr(app, 'gamma_fg', None)
+    if color_matrix is not None and gamma_bg is not None and gamma_fg is not None:
         # 目標輝度→背景画素→g_b→C→g_f_inv→前景画素（test/ref と同一）
         app.photo_match_fg = stimuli_utils.lum_to_photo_dualplane_fg(
-            lum_fg, app.bg_lums, app.bg_pixels, color_matrix, eotf_bg, eotf_fg
+            lum_fg, app.bg_lums, app.bg_pixels, color_matrix, gamma_bg, gamma_fg
         )
     else:
-        # フォールバック: C/EOTF未整備時は背景校正で前景画素へ変換
+        # フォールバック: C/ガンマパラメータ未整備時は背景校正で前景画素へ変換
         img_fg = stimuli_utils.lum_to_pil(lum_fg, app.bg_lums, app.bg_pixels)
         app.photo_match_fg = ImageTk.PhotoImage(img_fg)
 

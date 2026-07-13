@@ -152,8 +152,8 @@ for _side, _ramp in (("BG", RAMP_BG), ("FG", RAMP_FG)):
 #   (2) 最小二乗(log-log)で実ガンマをフィット
 #         log(yn) = gamma*log(v)  の傾き=gamma / 決定係数 R^2
 #         → フィットしたガンマとの残差(yn - v^gamma)プロット
-#   ※ EOTF は常に個別EOTF（線形補完）を用いるため、残差からの
-#      モデル自動選択は行わない（直線性チェックは把握用のプロット）。
+#   ※ 解析でfitしたチャンネル別ガンマをEOTFとして採用する。
+#      プロット構成は変更せず、fit品質の確認に用いる。
 # =============================================================
 
 def _prep_ramp(ramp_channel, remove_black=True):
@@ -176,7 +176,7 @@ def analyze_gamma(name, ramp_channel,
                   plot_dir=None):
     """1チャネルの (1)直線性チェック (2)ガンマ推定 を実行し、プロットを出力する。
     戻り値 dict: gamma, r2, rms_resid, v, yn, Y0, resid_22, resid_fit
-    ※ モデル選択は行わない（EOTF は常に個別EOTF＝線形補完）。
+    ※ モデル選択は行わず、算出したfitガンマを各チャンネルのEOTFに採用する。
     """
     v, yn, Y0 = _prep_ramp(ramp_channel)
     # 非線形空間のプロット用に、正規化前の実測輝度 [cd/m^2] も保持する
@@ -276,18 +276,22 @@ def analyze_gamma(name, ramp_channel,
     }
 
 def build_eotf_auto(ramp_channel, analysis=None, **kwargs):
-    """解析結果(v, yn)から個別EOTF（線形補完）を構築して (g, g_inv, info) を返す。
-    g(v)  = np.interp(v, v_samples, yn)   画素値 -> 正規化線形
-    g_inv = np.interp(y, yn, v_samples)   正規化線形 -> 画素値
-    g(1)=1 に正規化。既存 _gb/_gf の代わりに使える。
+    """fitしたチャンネル別ガンマから (g, g_inv, info) を構築する。
+    g(v)  = v ** gamma          画素値 -> 正規化線形
+    g_inv = linear ** (1/gamma) 正規化線形 -> 画素値
     """
     if analysis is None:
         name = kwargs.pop("name", "(auto)")
         analysis = analyze_gamma(name, ramp_channel, **kwargs)
-    v, yn = analysis["v"], analysis["yn"]
-    # 個別EOTF（実測点の線形補完）。yn は単調前提で np.interp。
-    g     = lambda val: np.interp(np.asarray(val, dtype=float), v, yn)
-    g_inv = lambda y:   np.interp(np.asarray(y,   dtype=float), yn, v)
+    gamma = float(analysis["gamma"])
+    if not np.isfinite(gamma) or gamma <= 0:
+        raise ValueError(f"invalid fitted gamma: {gamma}")
+    g = lambda val: np.power(
+        np.clip(np.asarray(val, dtype=float), 0.0, 1.0), gamma
+    )
+    g_inv = lambda linear: np.power(
+        np.clip(np.asarray(linear, dtype=float), 0.0, None), 1.0 / gamma
+    )
     return g, g_inv, analysis
 
 # ---- 図の出力先 ----
@@ -298,12 +302,18 @@ _date          = datetime.datetime.now().strftime("%Y-%m-%d")
 GAMMA_PLOT_DIR = os.path.join(RAMP_FIG_DIR, _date)
 
 def _build_eotf_set(ramp, tag):
-    """各チャネルの EOTF (g, g_inv) を {ch: (g, g_inv)} で構築する。"""
-    return {c: build_eotf_auto(ramp[c], name=f"{tag}_{c}", plot_dir=GAMMA_PLOT_DIR)[:2]
-            for c in CHANNELS}
+    """各チャネルのfitガンマ関数と解析情報を構築する。"""
+    funcs, infos = {}, {}
+    for c in CHANNELS:
+        g, g_inv, info = build_eotf_auto(
+            ramp[c], name=f"{tag}_{c}", plot_dir=GAMMA_PLOT_DIR
+        )
+        funcs[c] = (g, g_inv)
+        infos[c] = info
+    return funcs, infos
 
-_gb = _build_eotf_set(RAMP_BG, "BG")
-_gf = _build_eotf_set(RAMP_FG, "FG")
+_gb, _gamma_info_bg = _build_eotf_set(RAMP_BG, "BG")
+_gf, _gamma_info_fg = _build_eotf_set(RAMP_FG, "FG")
 
 def _apply(funcs, arr, idx):
     arr = np.asarray(arr, dtype=float)
@@ -382,25 +392,24 @@ for _p in _saved:
     print("  ", _p)
 
 # =============================================================
-# EOTF と 拡張輝度LUT をCSV保存
+# fitしたチャンネル別ガンマと拡張輝度LUTをCSV保存
 # =============================================================
-def save_eotf_csv(ramp_data, name):
+def save_gamma_csv(gamma_info, name):
+    """channel,gamma を保存。実験プログラムはこの値でべき乗変換する。"""
     path = os.path.join(TABLE_DIR, f"{name}.csv")
     with open(path, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow(["channel", "v", "yn"])
-        for ch, ramp_channel in ramp_data.items():
-            v, yn, _ = _prep_ramp(ramp_channel)
-            for val_v, val_yn in zip(v, yn):
-                writer.writerow([ch, val_v, val_yn])
+        writer.writerow(["channel", "gamma"])
+        for ch in CHANNELS:
+            writer.writerow([ch, f"{float(gamma_info[ch]['gamma']):.10g}"])
     return path
 
-_saved_eotf = [
-    save_eotf_csv(RAMP_BG, "eotf_bg"),
-    save_eotf_csv(RAMP_FG, "eotf_fg"),
+_saved_gamma = [
+    save_gamma_csv(_gamma_info_bg, "gamma_bg"),
+    save_gamma_csv(_gamma_info_fg, "gamma_fg"),
 ]
-print("\n[CSV保存] EOTFデータを保存しました ->", os.path.abspath(TABLE_DIR))
-for _p in _saved_eotf:
+print("\n[CSV保存] チャンネル別fitガンマを保存しました ->", os.path.abspath(TABLE_DIR))
+for _p in _saved_gamma:
     print("  ", _p)
 
 # =============================================================
