@@ -47,9 +47,9 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 DISPLAY_DIR = os.path.join(lab_root, "results", "tables", "DisplayBrightness")
 
-# 本実験の結果と混ざらないtraining専用保存先
-RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-matching-train")
-FIGURE_DIR = os.path.join(lab_root, "results", "figures", "pre-experiment-matching-train")
+# 同じ実験ルート内のtraining専用保存先
+RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-matching", "training")
+FIGURE_DIR = os.path.join(lab_root, "results", "figures", "pre-experiment-matching", "training")
 PARTICIPANT_DATA_DIR = os.path.join(lab_root, "data", "processed", "tables", "pre-experiment-matching-train")
 
 for dir_path in [RESULT_DIR, FIGURE_DIR, PARTICIPANT_DATA_DIR]:
@@ -162,14 +162,10 @@ def start_training_experiment_block(app):
 
 
 def save_training_results_and_finish(app):
-    """contrast matching結果をtraining表記付きで保存する。"""
-    os.makedirs(RESULT_DIR, exist_ok=True)
-    p_id = app.participant_id.get()
-    now = datetime.datetime.now()
-    date_str = now.strftime("%Y%m%d_%H%M%S")
-    save_folder = os.path.join(RESULT_DIR, f"training_{p_id}_{date_str}")
+    """contrast matching結果を共通のtraining実行フォルダへ保存する。"""
+    save_folder = getattr(app, 'result_dir', RESULT_DIR)
     os.makedirs(save_folder, exist_ok=True)
-    filename = os.path.join(save_folder, f"training_result_{p_id}_{date_str}.csv")
+    filename = os.path.join(save_folder, "contrast_matching_training.csv")
 
     if app.results:
         training_results = [dict(row, Session="training") for row in app.results]
@@ -177,7 +173,7 @@ def save_training_results_and_finish(app):
             writer = csv.DictWriter(f, fieldnames=training_results[0].keys())
             writer.writeheader()
             writer.writerows(training_results)
-        with open(os.path.join(save_folder, 'used_training_experiment_config.json'), 'w', encoding='utf-8') as cf:
+        with open(os.path.join(save_folder, 'used_experiment_config.json'), 'w', encoding='utf-8') as cf:
             json.dump(app.config if getattr(app, 'config', None) is not None else {}, cf, indent=2)
 
     tk.messagebox.showinfo("Training Completed", f"Training finished.\nData saved to: {filename}")
@@ -410,6 +406,12 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.win1.update_idletasks()
         self.width = self.win1.winfo_width()
         self.height = self.win1.winfo_height()
+
+        # 1回の実行でdefocus / contrast / configが同じフォルダを共有する。
+        p_id = self.participant_id.get().strip() or "participant"
+        session_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.result_dir = os.path.join(RESULT_DIR, f"{p_id}_{session_timestamp}")
+        os.makedirs(self.result_dir, exist_ok=True)
 
         self.calibration_eyes = ["Right", "Left"]
         self.current_calib_eye_idx = 0
@@ -1039,19 +1041,12 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
     
     def _save_results_and_finish(self):
         """結果を保存して終了"""
-        if not os.path.exists(RESULT_DIR):
-            os.makedirs(RESULT_DIR)
-        
-        p_id = self.participant_id.get()
-        now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d_%H%M%S")
-        save_folder = os.path.join(RESULT_DIR, f"{p_id}_{date_str}")
-        
-        if not os.path.exists(save_folder):
-            os.makedirs(save_folder)
-        
-        filename = os.path.join(save_folder, 
-                               f"result_{p_id}_{date_str}.csv")
+        save_folder = getattr(self, 'result_dir', RESULT_DIR)
+        os.makedirs(save_folder, exist_ok=True)
+
+        is_training = getattr(self, 'session_type', 'experiment') == 'training'
+        result_filename = "contrast_matching_training.csv" if is_training else "contrast_matching.csv"
+        filename = os.path.join(save_folder, result_filename)
         
         if self.results:
             with open(filename, 'w', newline='', encoding='utf-8') as f:

@@ -203,16 +203,16 @@ def finish_eye_defocus_matching(app):
     # すべての目 (左右) のデフォーカスマッチングが終わったらCSVに保存する
     if app.current_calib_eye_idx >= len(app.calibration_eyes):
         if hasattr(app, 'detailed_defocus_results') and app.detailed_defocus_results:
-            p_id = app.participant_id.get() if hasattr(app, 'participant_id') else "Unknown"
-            now = datetime.datetime.now()
-            date_str = now.strftime("%Y%m%d")
-            
-            result_dir = getattr(app, 'result_dir', os.path.join(lab_root, "results", "tables", "pre-experiment-matching"))
-            save_folder = os.path.join(result_dir, f"{p_id}_{date_str}")
-            if not os.path.exists(save_folder):
-                os.makedirs(save_folder)
-                
-            filename = os.path.join(save_folder, f"defocus_matching_{p_id}_{now.strftime('%Y%m%d_%H%M%S')}.csv")
+            save_folder = getattr(
+                app,
+                'result_dir',
+                os.path.join(lab_root, "results", "tables", "pre-experiment-matching", "experiment")
+            )
+            os.makedirs(save_folder, exist_ok=True)
+
+            is_training = getattr(app, 'session_type', 'experiment') == 'training'
+            result_filename = "defocus_matching_training.csv" if is_training else "defocus_matching.csv"
+            filename = os.path.join(save_folder, result_filename)
             with open(filename, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.DictWriter(f, fieldnames=["ID", "Eye", "Pattern", "Spatial_Freq(cpd)", "Matched_PD(mm)"])
                 writer.writeheader()

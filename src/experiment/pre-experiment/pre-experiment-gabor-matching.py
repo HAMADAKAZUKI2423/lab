@@ -49,7 +49,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 DISPLAY_DIR = os.path.join(lab_root, "results", "tables", "DisplayBrightness")
 
-RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-matching")
+RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-matching", "experiment")
 FIGURE_DIR = os.path.join(lab_root, "results", "figures", "pre-experiment-matching")
 PARTICIPANT_DATA_DIR = os.path.join(lab_root, "data", "processed", "tables", "pre-experiment-matching")
 
@@ -326,6 +326,12 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.win1.update_idletasks()
         self.width = self.win1.winfo_width()
         self.height = self.win1.winfo_height()
+
+        # 1回の実行でdefocus / contrast / configが同じフォルダを共有する。
+        p_id = self.participant_id.get().strip() or "participant"
+        session_timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        self.result_dir = os.path.join(RESULT_DIR, f"{p_id}_{session_timestamp}")
+        os.makedirs(self.result_dir, exist_ok=True)
 
         self.calibration_eyes = ["Right", "Left"]
         self.current_calib_eye_idx = 0
@@ -955,19 +961,12 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
     
     def _save_results_and_finish(self):
         """結果を保存して終了"""
-        if not os.path.exists(RESULT_DIR):
-            os.makedirs(RESULT_DIR)
-        
-        p_id = self.participant_id.get()
-        now = datetime.datetime.now()
-        date_str = now.strftime("%Y%m%d_%H%M%S")
-        save_folder = os.path.join(RESULT_DIR, f"{p_id}_{date_str}")
-        
-        if not os.path.exists(save_folder):
-            os.makedirs(save_folder)
-        
-        filename = os.path.join(save_folder, 
-                               f"result_{p_id}_{date_str}.csv")
+        save_folder = getattr(self, 'result_dir', RESULT_DIR)
+        os.makedirs(save_folder, exist_ok=True)
+
+        is_training = getattr(self, 'session_type', 'experiment') == 'training'
+        result_filename = "contrast_matching_training.csv" if is_training else "contrast_matching.csv"
+        filename = os.path.join(save_folder, result_filename)
         
         if self.results:
             with open(filename, 'w', newline='', encoding='utf-8') as f:
