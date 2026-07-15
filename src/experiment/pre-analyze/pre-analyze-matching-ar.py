@@ -15,11 +15,11 @@ Defocus処理は実験と同じ stimuli_utils.apply_torch_fft_blur_luminance() �
 import argparse
 import glob
 import importlib.util
-import json
 import os
 import datetime
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
 import seaborn as sns
@@ -39,11 +39,20 @@ stimuli_utils = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(stimuli_utils)
 
 
-RESULT_ROOT = os.path.join(
+EXPERIMENT_RESULT_ROOT = os.path.join(
     LAB_ROOT, "results", "tables", "pre-experiment-matching", "experiment"
 )
-FIGURE_ROOT = os.path.join(
+TRAINING_RESULT_ROOT = os.path.join(
+    LAB_ROOT, "results", "tables", "pre-experiment-matching", "training"
+)
+EXPERIMENT_FIGURE_ROOT = os.path.join(
     LAB_ROOT, "results", "figures", "pre-experiment-matching", "experiment"
+)
+TRAINING_FIGURE_ROOT = os.path.join(
+    LAB_ROOT, "results", "figures", "pre-experiment-matching", "training"
+)
+COMBINED_FIGURE_ROOT = os.path.join(
+    LAB_ROOT, "results", "figures", "pre-experiment-matching", "combined"
 )
 
 VISUAL_ANGLE_WIDTH_DEG = 7.9
@@ -56,46 +65,72 @@ BACKGROUND_CONTRAST = 1.0
 REQUIRED_COLUMNS = [
     "ID", "Condition", "Ocularity", "Ref_Contrast", "Matched_Contrast",
     "L_fg", "L_bg", "L_ref", "Dominance", "PD_Right", "PD_Left",
+"Orientation",
 ]
 
 _blur_attenuation_cache = {}
 
 
+def matching_result_path(session_dir):
+    """sessionフォルダから本実験またはtrainingの結果CSVを判定する。"""
+    candidates = [
+        os.path.join(session_dir, "contrast_matching.csv"),
+        os.path.join(session_dir, "contrast_matching_training.csv"),
+    ]
+    existing = [path for path in candidates if os.path.isfile(path)]
+    if len(existing) > 1:
+        raise ValueError(f"本実験とtrainingのCSVが同じフォルダにあります: {session_dir}")
+    return existing[0] if existing else None
+
+
 def discover_session_dirs(explicit_dirs=None):
-    """実験側の参加者・日時フォルダ構造に従って解析対象を探索する。"""
+    """省略時は本実験、明示時は本実験・trainingの両方を受け付ける。"""
     if explicit_dirs:
         session_dirs = [os.path.abspath(path) for path in explicit_dirs]
     else:
         session_dirs = sorted(
-            path for path in glob.glob(os.path.join(RESULT_ROOT, "*"))
+            path for path in glob.glob(os.path.join(EXPERIMENT_RESULT_ROOT, "*"))
             if os.path.isdir(path)
         )
 
     valid_dirs = []
     for session_dir in session_dirs:
-        csv_path = os.path.join(session_dir, "contrast_matching.csv")
-        if os.path.isfile(csv_path):
+        csv_path = matching_result_path(session_dir)
+        if csv_path is not None:
             valid_dirs.append(session_dir)
         else:
-            print(f"WARN: contrast_matching.csv がないため除外: {session_dir}")
+            print(
+                "WARN: contrast_matching.csv / contrast_matching_training.csv "
+                f"がないため除外: {session_dir}"
+            )
     return valid_dirs
 
 
 def load_matching_results(session_dirs):
     frames = []
     for session_dir in session_dirs:
-        csv_path = os.path.join(session_dir, "contrast_matching.csv")
+        csv_path = matching_result_path(session_dir)
+        if csv_path is None:
+            continue
         df = pd.read_csv(csv_path, encoding="utf-8")
         missing = [column for column in REQUIRED_COLUMNS if column not in df.columns]
         if missing:
             raise ValueError(f"{csv_path}: 必須列が不足しています: {missing}")
+        session_type = (
+            "training"
+            if os.path.basename(csv_path) == "contrast_matching_training.csv"
+            else "experiment"
+        )
+        df["Session_Type"] = session_type
         df["Session_Dir"] = session_dir
+        df["Session_Ocularity"] = session_type + " / " + df["Ocularity"].astype(str)
         frames.append(df)
-        print(f"Loaded: {csv_path}")
+        print(f"Loaded ({session_type}): {csv_path}")
 
     if not frames:
         raise FileNotFoundError(
-            f"解析可能な contrast_matching.csv がありません: {RESULT_ROOT}"
+            "解析可能な contrast_matching.csv または "
+            "contrast_matching_training.csv がありません"
         )
     return pd.concat(frames, ignore_index=True)
 
@@ -174,6 +209,10 @@ def add_analysis_columns(df):
         analyzed["L_fg"] * analyzed["Matched_Contrast"]
         / (analyzed["L_fg"] + analyzed["L_bg"])
     )
+    analyzed["Matched_Contrast_Enhanced"] = (
+        analyzed["Matched_Contrast"] * analyzed["L_fg"]
+        + analyzed["Effective_BG_Contrast"] * analyzed["L_bg"]
+    ) / (analyzed["L_fg"] + analyzed["L_bg"])
     analyzed["Matching_Ratio"] = (
         analyzed["Matched_Contrast"] / analyzed["Ref_Contrast"]
     )
@@ -181,51 +220,138 @@ def add_analysis_columns(df):
 
 
 def save_outputs(df, output_dir):
+    """解析結果はグラフだけを保存する。"""
     os.makedirs(output_dir, exist_ok=True)
-    trial_path = os.path.join(output_dir, "matching_trials_analyzed.csv")
-    df.to_csv(trial_path, index=False, encoding="utf-8-sig")
-
-    group_columns = ["Condition", "Ocularity", "Ref_Contrast"]
-    summary = (
-        df.groupby(group_columns, dropna=False)
-        .agg(
-            n=("Matched_Contrast", "size"),
-            matched_mean=("Matched_Contrast", "mean"),
-            matched_std=("Matched_Contrast", "std"),
-            ar_matched_mean=("AR_Matched_Contrast", "mean"),
-            ar_matched_std=("AR_Matched_Contrast", "std"),
-            blur_attenuation_mean=("Blur_Attenuation", "mean"),
-        )
-        .reset_index()
-    )
-    summary.to_csv(
-        os.path.join(output_dir, "matching_summary.csv"),
-        index=False,
-        encoding="utf-8-sig",
-    )
-
     sns.set_theme(style="whitegrid")
-    for value_column, filename, ylabel in [
-        ("Matched_Contrast", "matched_contrast.png", "Matched contrast"),
-        ("AR_Matched_Contrast", "ar_matched_contrast.png", "AR matched contrast"),
-        ("Matching_Ratio", "matching_ratio.png", "Matched / reference contrast"),
-    ]:
-        plt.figure(figsize=(12, 6))
-        sns.pointplot(
-            data=df,
-            x="Condition",
-            y=value_column,
-            hue="Ocularity",
-            errorbar="sd",
-            dodge=True,
-            markers=["o", "s"],
+
+    # 旧版と同じ、Condition × Ocularityの棒グラフだけを出力する。
+    condition_order = [
+        "Single plane",
+        "Single plane + defocus simulation",
+        "Dual plane",
+        "Dual plane flat",
+    ]
+    ocularity_order = ["monocular", "binocular"]
+    bar_specs = [
+        ("Matched_Contrast", "raw", "Matched Contrast (Raw)"),
+        ("AR_Matched_Contrast", "ar", "Matched Contrast (AR Extended)"),
+        (
+            "Matched_Contrast_Enhanced",
+            "enhanced",
+            "Matched Contrast (Enhanced)",
+        ),
+    ]
+
+    for session_type in sorted(df["Session_Type"].dropna().unique()):
+        session_df = df[df["Session_Type"] == session_type]
+        ref_contrasts = sorted(
+            session_df["Ref_Contrast"].dropna().unique(), reverse=True
         )
-        plt.ylabel(ylabel)
-        plt.xlabel("Condition")
-        plt.xticks(rotation=20, ha="right")
-        plt.tight_layout()
-        plt.savefig(os.path.join(output_dir, filename), dpi=200)
-        plt.close()
+        orientations = sorted(session_df["Orientation"].dropna().unique())
+
+        for ref_contrast in ref_contrasts:
+            for orientation in orientations:
+                plot_df = session_df[
+                    (session_df["Ref_Contrast"] == ref_contrast)
+                    & (session_df["Orientation"] == orientation)
+                ]
+                if plot_df.empty:
+                    continue
+
+                for value_column, suffix, ylabel in bar_specs:
+                    fig, ax = plt.subplots(figsize=(11, 6))
+                    sns.barplot(
+                        data=plot_df,
+                        x="Condition",
+                        y=value_column,
+                        hue="Ocularity",
+                        order=condition_order,
+                        hue_order=ocularity_order,
+                        errorbar=("ci", 95),
+                        capsize=0.1,
+                        err_kws={"linewidth": 1.5},
+                        ax=ax,
+                    )
+                    ax.axhline(
+                        y=ref_contrast,
+                        color="red",
+                        linestyle="--",
+                        linewidth=2,
+                        label=f"Ref Contrast ({ref_contrast})",
+                    )
+
+                    # 各バーの足元に平均値(m)と標準偏差(d)を表示する。
+                    grouped = (
+                        plot_df.groupby(["Condition", "Ocularity"])[value_column]
+                        .agg(["mean", "std"])
+                    )
+                    for container_index, container in enumerate(ax.containers):
+                        if container_index >= len(ocularity_order):
+                            continue
+                        ocularity = ocularity_order[container_index]
+                        for condition_index, bar in enumerate(container):
+                            if condition_index >= len(condition_order):
+                                continue
+                            condition = condition_order[condition_index]
+                            key = (condition, ocularity)
+                            if key not in grouped.index:
+                                continue
+                            mean_value = grouped.loc[key, "mean"]
+                            std_value = grouped.loc[key, "std"]
+                            if not np.isfinite(mean_value):
+                                continue
+                            std_text = (
+                                "nan" if pd.isna(std_value) else f"{std_value:.2f}"
+                            )
+                            x_position = bar.get_x() + bar.get_width() / 2
+                            ax.text(
+                                x_position,
+                                0.055,
+                                f"m={mean_value:.2f}\nd={std_text}",
+                                ha="center",
+                                va="bottom",
+                                color="black",
+                                fontsize=9,
+                                bbox={
+                                    "facecolor": "white",
+                                    "alpha": 0.75,
+                                    "edgecolor": "none",
+                                    "pad": 1,
+                                },
+                                zorder=5,
+                            )
+
+                    ax.set_title(
+                        f"{session_type}: {ylabel} "
+                        f"(Ref={ref_contrast}, Ori={orientation}°)"
+                    )
+                    ax.set_ylabel(ylabel)
+                    ax.set_xlabel("Condition")
+                    ax.set_yscale("log")
+                    ax.set_ylim(0.05, 1.2)
+                    ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 1.0])
+                    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.2g"))
+                    ax.tick_params(axis="x", rotation=15)
+
+                    handles, legend_labels = ax.get_legend_handles_labels()
+                    unique_legend = dict(zip(legend_labels, handles))
+                    ax.legend(
+                        unique_legend.values(),
+                        unique_legend.keys(),
+                        loc="upper left",
+                    )
+                    plt.tight_layout()
+
+                    output_filename = (
+                        f"{session_type}_matched_{suffix}_contrast_"
+                        f"ref_{ref_contrast}_ori_{int(orientation)}.png"
+                    )
+                    plt.savefig(
+                        os.path.join(output_dir, output_filename),
+                        dpi=300,
+                    )
+                    plt.close(fig)
+                    print(f"Saved bar chart: {output_filename}")
 
     print(f"Saved analysis outputs: {output_dir}")
 
@@ -248,23 +374,26 @@ def main():
 
     session_dirs = discover_session_dirs(args.session_dirs)
     if not session_dirs:
-        raise FileNotFoundError(f"解析対象がありません: {RESULT_ROOT}")
-
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_dir = args.output_dir or os.path.join(
-        FIGURE_ROOT, f"analysis_{timestamp}"
-    )
+        raise FileNotFoundError(
+            f"解析対象がありません。既定探索先: {EXPERIMENT_RESULT_ROOT}"
+        )
 
     df = load_matching_results(session_dirs)
     analyzed = add_analysis_columns(df)
-    save_outputs(analyzed, output_dir)
 
-    with open(
-        os.path.join(output_dir, "source_sessions.json"),
-        "w",
-        encoding="utf-8",
-    ) as file:
-        json.dump(session_dirs, file, ensure_ascii=False, indent=2)
+    session_types = set(analyzed["Session_Type"].dropna().astype(str))
+    if session_types == {"training"}:
+        default_figure_root = TRAINING_FIGURE_ROOT
+    elif session_types == {"experiment"}:
+        default_figure_root = EXPERIMENT_FIGURE_ROOT
+    else:
+        default_figure_root = COMBINED_FIGURE_ROOT
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_dir = args.output_dir or os.path.join(
+        default_figure_root, f"analysis_{timestamp}"
+    )
+    save_outputs(analyzed, output_dir)
 
 
 if __name__ == "__main__":
