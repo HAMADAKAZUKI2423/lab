@@ -1,9 +1,10 @@
 """
-Gabor Matching 実験スクリプト（削減版）
+Gabor Matching トレーニングスクリプト
 
-前景と背景のコントラストマッチングを行う実験
-基盤クラス（ExperimentBaseUI, ExperimentTrialLoop）から共通処理を継承
-matching固有のロジックのみを実装
+本実験と同じく、位置合わせ → defocus matching → contrast matching の順で実施する。
+defocus matching は4 cpdのみ、contrast matching はSingle plane / Dual planeの
+ref contrast 0.2を単眼・両眼の各条件で5試行、計20試行に限定する。
+結果はtraining専用フォルダとtraining表記付きCSVへ保存する。
 """
 
 import tkinter as tk
@@ -14,7 +15,6 @@ import datetime
 import random
 import math
 import numpy as np
-import glob
 from PIL import Image, ImageTk
 import json
 
@@ -26,36 +26,34 @@ import defocus_matching
 
 
 # ==========================================
-# 定数設定エリア (実験条件やデザインはここを変更)
+# トレーニング条件
 # ==========================================
 VISUAL_ANGLE_DEG = 7.9
 NUM_REPETITIONS = 5
-SPATIAL_FREQ = 4  # Spatial frequency in cpd
+SPATIAL_FREQ = 4  # contrast / defocus matchingとも4 cpdのみ
+TRAINING_REF_CONTRAST = 0.2
 PUPIL_DIAMETER_MM = 4.0
-# Dual plane / Dual plane flat の背景(window1)の横幅拡張に使う倍率。
+# Dual planeの背景(window1)の横幅拡張に使う倍率。
 #   - binocular: 長い側 + 短い側 = 1.3 + 0.7 = 2.0倍（優位眼依存の左右非対称）。
 #   - monocular: 1.3 × 2 = 2.6倍（左右対称・中央）。
 ASYM_WIDTH_FACTOR_LARGE = 1.3
 ASYM_WIDTH_FACTOR_SMALL = 0.7
 
 # Window2(canvas2)に表示する前景(ref/test)の左右対称拡張倍率。
-# 中心から片側 = 元画像幅の1.3倍 → 左右合計2.6倍。
 WIN2_HALF_WIDTH_FACTOR = 1.3
 WIN2_TOTAL_WIDTH_FACTOR = WIN2_HALF_WIDTH_FACTOR * 2  # = 2.6
-
-
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 DISPLAY_DIR = os.path.join(lab_root, "results", "tables", "DisplayBrightness")
 
-RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-matching", "experiment")
-FIGURE_DIR = os.path.join(lab_root, "results", "figures", "pre-experiment-matching")
-PARTICIPANT_DATA_DIR = os.path.join(lab_root, "data", "processed", "tables", "pre-experiment-matching")
+# 同じ実験ルート内のtraining専用保存先
+RESULT_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-matching", "training")
+FIGURE_DIR = os.path.join(lab_root, "results", "figures", "pre-experiment-matching", "training")
+PARTICIPANT_DATA_DIR = os.path.join(lab_root, "data", "processed", "tables", "pre-experiment-matching-train")
 
 for dir_path in [RESULT_DIR, FIGURE_DIR, PARTICIPANT_DATA_DIR]:
-    if not os.path.exists(dir_path):
-        os.makedirs(dir_path)
+    os.makedirs(dir_path, exist_ok=True)
 
 BG_COLOR = 'black'
 WIN1_MARKER_COLOR = 'red'
@@ -81,7 +79,6 @@ def load_matrix_csv(name):
 
 def load_gamma_params(path):
     """channel,gamma CSV -> {"R": gamma_R, "G": gamma_G, "B": gamma_B}."""
-    import csv
     try:
         with open(path, newline="", encoding="utf-8") as f:
             rows = list(csv.DictReader(f))
@@ -99,24 +96,107 @@ def load_ext_lum_lut(path):
     return arr[:,0], arr[:,1:4]   # Y_grid(N,), px_grid(N,3)
 
 
+def setup_training_defocus_matching_ui(app):
+    """本実験と同じUIで、4 cpdの5パターンだけを実施する。"""
+    if hasattr(app, 'ctrl_frame') and app.ctrl_frame.winfo_exists():
+        app.ctrl_frame.destroy()
+    app.canvas1.delete("all")
+    app.canvas2.delete("all")
+
+    for key, binding_id in list(app.key_bindings.items()):
+        app.root.unbind(key, binding_id)
+    app.key_bindings.clear()
+
+    patterns = ["checker", "checker_45", "stripe", "border", "noise"]
+    app.defocus_match_patterns = [(pattern, SPATIAL_FREQ) for pattern in patterns]
+    random.shuffle(app.defocus_match_patterns)
+    app.current_match_idx = 0
+    app.match_pd_results = []
+    defocus_matching._show_defocus_matching_step(app)
+
+
+def setup_training_experiment_blocks(app):
+    """Single plane / Dual planeの2ブロックだけを準備する。"""
+    app.avg_color_match_results = []
+
+    dom_eye = app.participant_dominance.get()
+    if dom_eye not in app.calib_results:
+        dom_eye = "Right"
+    app.offset_x.set(app.calib_results[dom_eye]["offset_x"])
+    app.offset_y.set(app.calib_results[dom_eye]["offset_y"])
+    app.current_pd_mean = app.calib_results[dom_eye]["pd_mean"]
+
+    app.canvas1.delete("calib")
+    app.canvas2.delete("calib")
+
+    # trainingでは画像プレビュー保存を省略する。
+    conditions = ["Single plane", "Dual plane"]
+    ocularities = ["binocular", "monocular"]
+    app.blocks = [
+        {"condition": condition, "ocularity": ocularity}
+        for ocularity in ocularities
+        for condition in conditions
+    ]
+    random.shuffle(app.blocks)
+
+    app.current_block_index = 0
+    app.current_trial_in_experiment = 0
+    app.start_block()
+
+
+def start_training_experiment_block(app):
+    """ref contrast 0.2を単眼・両眼の各条件で5回、合計20試行実施する。"""
+    app.clear_key_bindings()
+    if hasattr(app, 'ctrl_frame') and app.ctrl_frame and app.ctrl_frame.winfo_exists():
+        app.ctrl_frame.destroy()
+
+    app.trial_list = [
+        {"ref_contrast": TRAINING_REF_CONTRAST, "orientation": 0}
+        for _ in range(NUM_REPETITIONS)
+    ]
+    random.shuffle(app.trial_list)
+    app.current_trial_in_block = 0
+    app.canvas1.delete("all")
+    app.canvas2.delete("all")
+    app.run_trial()
+
+
+def save_training_results_and_finish(app):
+    """contrast matching結果を共通のtraining実行フォルダへ保存する。"""
+    save_folder = getattr(app, 'result_dir', RESULT_DIR)
+    os.makedirs(save_folder, exist_ok=True)
+    filename = os.path.join(save_folder, "contrast_matching_training.csv")
+
+    if app.results:
+        training_results = [dict(row, Session="training") for row in app.results]
+        with open(filename, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=training_results[0].keys())
+            writer.writeheader()
+            writer.writerows(training_results)
+        with open(os.path.join(save_folder, 'used_experiment_config.json'), 'w', encoding='utf-8') as cf:
+            json.dump(app.config if getattr(app, 'config', None) is not None else {}, cf, indent=2)
+
+    tk.messagebox.showinfo("Training Completed", f"Training finished.\nData saved to: {filename}")
+    app.root.destroy()
+
+
 class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
-    """
-    Gabor Matching 実験
-    
-    基盤クラスから継承：
-    - ExperimentBaseUI: UI処理（参加者情報、キャリブレーション）
-    - ExperimentTrialLoop: 試行ループ（フェーズ管理、結果保存）
-    
-    matching固有の処理のみを実装
-    """
+    """Gabor Matchingの短縮トレーニング用アプリ。"""
     
     def __init__(self, root):
-        # 基盤クラスの初期化
         ExperimentBaseUI.__init__(self, root, PARTICIPANT_DATA_DIR)
         ExperimentTrialLoop.__init__(self)
         
+        self.session_type = "training"
+
+        # 既存の本実験フローを保ちつつ、training用の条件だけを差し替える。
+        defocus_matching.setup_defocus_matching_ui = setup_training_defocus_matching_ui
+        self.setup_experiment_blocks = lambda: setup_training_experiment_blocks(self)
+        self.start_experiment_block = lambda: start_training_experiment_block(self)
+        self._save_results_and_finish = lambda: save_training_results_and_finish(self)
+
         self.root = root
-        self.root.title("Gabor Matching Experiment - Controller (Window 2)")
+        self.root.title("Gabor Matching Training - Controller (Window 2)")
         self.root.configure(bg=BG_COLOR)
         
         # matching固有の変数
