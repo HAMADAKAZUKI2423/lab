@@ -350,55 +350,147 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.start_eye_calibration()
     
     def save_preview_images(self):
-        """デフォーカスの効き方などの確認用画像を保存する"""
+        """実表示と同じ生成・輝度変換経路で、指定した6枚だけを保存する。"""
         now = datetime.datetime.now()
         date_str = now.strftime("%Y%m%d_%H%M%S")
         p_id = self.participant_id.get()
         save_dir = os.path.join(FIGURE_DIR, f"{p_id}_{date_str}", "stimuli")
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-            
+        os.makedirs(save_dir, exist_ok=True)
+
         d_fg, d_bg = self.distance1, self.distance2
-        ppd_fg = stimuli_utils.PIXELS_PER_CM * d_fg * math.tan(math.radians(1.0))
-        
+        ppd_fg = stimuli_utils.get_size_for_visual_angle(d_fg, 1.0)
+        ppd_bg = stimuli_utils.get_size_for_visual_angle(d_bg, 1.0)
+
         width_deg = 7.9
         height_deg = 3.95
-        width_fg = int(width_deg * ppd_fg)
+        width_fg_base = int(width_deg * ppd_fg)
+        width_fg = int(width_fg_base * WIN2_TOTAL_WIDTH_FACTOR)
         height_fg = int(height_deg * ppd_fg)
-        
-        ori = 0
-        gabor_base = stimuli_utils.create_gabor_base(width_fg, height_fg, ppd_fg, self.spatial_freq, orientation=ori)
-        noise_base = stimuli_utils.create_noise_base(width_fg, height_fg, ppd_fg, self.spatial_freq)
-        
-        L_fg = 15.0
-        L_bg = 15.0
-        C_bg = 1.0
-        L_ref = 30.0
-        
-        # Reference Gabor patches
-        # 実表示(generate_matching_photos)と同様、refは前景C経路の再現上限クリップを避けるため
-        # Single planeと同じ拡張輝度LUTで変換する（LUT未整備時のみ従来のC経路にフォールバック）。
-        for ref_c in [0.1, 0.2]:
-            lum_ref_fg = L_ref * (1.0 + ref_c * gabor_base)
+        width_bg_base = int(width_deg * ppd_bg)
+        width_bg_dual = int(
+            width_bg_base * (ASYM_WIDTH_FACTOR_LARGE + ASYM_WIDTH_FACTOR_SMALL)
+        )
+        height_bg = int(height_deg * ppd_bg)
+
+        orientation = 0
+        c_test = 1.0
+        ref_contrast = 0.2
+        background_contrast = 1.0
+        L_fg = self.L_fg
+        L_bg = self.L_bg
+        L_ref = self.L_ref
+
+        gabor_base = stimuli_utils.create_cosine_windowed_grating_base(
+            width_fg,
+            height_fg,
+            ppd_fg,
+            self.spatial_freq,
+            orientation=orientation,
+        )
+
+        # プレビュー生成で実験試行の乱数系列を変えないよう、状態を復元する。
+        random_state = np.random.get_state()
+        np.random.seed(42)
+        try:
+            noise_single = stimuli_utils.create_noise_base(
+                width_fg, height_fg, ppd_fg, self.spatial_freq
+            )
+            noise_dual = stimuli_utils.create_noise_base(
+                width_bg_dual, height_bg, ppd_bg, self.spatial_freq
+            )
+        finally:
+            np.random.set_state(random_state)
+
+        def singleplane_to_pil(lum_np):
             if self.ext_lum_Y is not None and self.ext_lum_px is not None:
-                img_ref = stimuli_utils.lum_to_pil_singleplane(lum_ref_fg, self.ext_lum_Y, self.ext_lum_px)
-            else:
-                img_ref = stimuli_utils.lum_to_pil_window2(lum_ref_fg, self.bg_lums, self.bg_pixels, self.color_matrix)
-            img_ref.save(os.path.join(save_dir, f"ref_gabor_contrast_{ref_c}.png"))
-            
-        # Single plane stimulus
-        c_test = 0.0
+                return stimuli_utils.lum_to_pil_singleplane(
+                    lum_np, self.ext_lum_Y, self.ext_lum_px
+                )
+            return stimuli_utils.lum_to_pil_window2(
+                lum_np, self.bg_lums, self.bg_pixels, self.color_matrix
+            )
+
+        def dualplane_fg_to_pil(lum_np):
+            """lum_to_photo_dualplane_fgと同じ処理をPIL画像として返す。"""
+            if (
+                self.color_matrix is None
+                or self.gamma_bg is None
+                or self.gamma_fg is None
+            ):
+                return stimuli_utils.lum_to_pil_window2(
+                    lum_np, self.bg_lums, self.bg_pixels, self.color_matrix
+                )
+
+            pix = np.clip(
+                np.interp(lum_np, self.bg_lums, self.bg_pixels), 0, 255
+            ) / 255.0
+            lin_bg = np.stack(
+                [
+                    np.power(np.clip(pix, 0.0, 1.0), float(self.gamma_bg[ch]))
+                    for ch in ("R", "G", "B")
+                ],
+                axis=-1,
+            )
+            lin_fg = np.clip(lin_bg @ self.color_matrix.T, 0.0, None)
+            out = np.empty_like(lin_fg)
+            for channel_index, channel in enumerate(("R", "G", "B")):
+                gamma = float(self.gamma_fg[channel])
+                out[..., channel_index] = np.power(
+                    np.clip(lin_fg[..., channel_index], 0.0, None),
+                    1.0 / gamma,
+                )
+            out = np.clip(out * 255.0, 0, 255).astype(np.uint8)
+            return Image.fromarray(out, mode="RGB")
+
+        # 1. 全条件共通のreference（contrast 0.2）
+        lum_ref = L_ref * (1.0 + ref_contrast * gabor_base)
+        singleplane_to_pil(lum_ref).save(
+            os.path.join(save_dir, "ref_contrast_0.2.png")
+        )
+
+        # 2. Single plane test（前景contrast 1.0）
         lum_test_fg = L_fg * (1.0 + c_test * gabor_base)
-        img_test_fg = stimuli_utils.lum_to_pil_window2(lum_test_fg, self.bg_lums, self.bg_pixels, getattr(self, 'color_matrix_xyz', None))
-        img_test_fg.save(os.path.join(save_dir, "single_plane_foreground.png"))
+        lum_noise_single = L_bg * (
+            1.0 + background_contrast * noise_single
+        )
+        lum_single_total = lum_noise_single + lum_test_fg
+        singleplane_to_pil(lum_single_total).save(
+            os.path.join(save_dir, "single_plane_test.png")
+        )
 
-        lum_noise = L_bg * (1.0 + C_bg * noise_base)
-        pil_noise = stimuli_utils.lum_to_pil(lum_noise, self.fg_lums, self.fg_pixels)
-        pil_noise.save(os.path.join(save_dir, "single_plane_background.png"))
+        # 3. Single plane + defocus simulation test
+        diopter_difference = abs(
+            1.0 / (d_fg / 100.0) - 1.0 / (d_bg / 100.0)
+        )
+        lum_noise_defocused = stimuli_utils.apply_torch_fft_blur_luminance(
+            lum_noise_single,
+            diopter_difference,
+            self.current_pd_mean,
+            ppd_fg,
+        )
+        lum_single_defocus_total = lum_noise_defocused + lum_test_fg
+        singleplane_to_pil(lum_single_defocus_total).save(
+            os.path.join(save_dir, "single_plane_defocus_test.png")
+        )
 
-        lum_total = lum_noise + lum_test_fg
-        pil_total = stimuli_utils.lum_to_pil(lum_total, self.fg_lums, self.fg_pixels)
-        pil_total.save(os.path.join(save_dir, "single_plane_combined.png"))
+        # 4. Dual plane test foreground（前景contrast 1.0）
+        dualplane_fg_to_pil(lum_test_fg).save(
+            os.path.join(save_dir, "dual_plane_test_foreground.png")
+        )
+
+        # 5. Dual plane test background
+        lum_noise_dual = L_bg * (1.0 + background_contrast * noise_dual)
+        stimuli_utils.lum_to_pil(
+            lum_noise_dual, self.bg_lums, self.bg_pixels
+        ).save(os.path.join(save_dir, "dual_plane_test_background.png"))
+
+        # 6. Dual plane flat test background（前景はDual planeと共通）
+        lum_flat_dual = np.full(
+            (height_bg, width_bg_dual), L_bg, dtype=np.float32
+        )
+        stimuli_utils.lum_to_pil(
+            lum_flat_dual, self.bg_lums, self.bg_pixels
+        ).save(os.path.join(save_dir, "dual_plane_flat_test_background.png"))
 
     def setup_experiment_blocks(self):
         dom_eye = self.participant_dominance.get()
