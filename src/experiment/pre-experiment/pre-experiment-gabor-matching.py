@@ -140,8 +140,10 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.participant_dominance = tk.StringVar(value="Right")
         
         # キャリブレーションデータ
-        fg_calib_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "fg_calibration_log")
-        bg_calib_dir = os.path.join(lab_root, "results", "tables", "DisplayBrightness", "bg_calibration_log")
+        bg_lut_path = os.path.join(
+            lab_root, "results", "tables", "DisplayBrightness",
+            "bg_luminance_lut.csv"
+        )
         
         # 前景補正は背景校正(bg)から得た画素値に C を掛けて行うため、fg校正は使用しない。
         # self.fg_lums, self.fg_pixels = stimuli_utils.load_calibration_data(fg_calib_dir)
@@ -162,7 +164,7 @@ class ExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
             print("WARN: ext_lum_lut.csv not found or invalid. Single plane will not work correctly.")
             self.ext_lum_Y, self.ext_lum_px = None, None
 
-        self.bg_lums, self.bg_pixels = stimuli_utils.load_calibration_data(bg_calib_dir)
+        self.bg_lums, self.bg_pixels = stimuli_utils.load_calibration_data(bg_lut_path)
         
         if self.bg_lums is None:
             print("Warning: Calibration data not found. Linear mapping will be used.")

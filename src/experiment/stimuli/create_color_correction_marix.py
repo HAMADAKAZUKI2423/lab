@@ -413,6 +413,40 @@ for _p in _saved_gamma:
     print("  ", _p)
 
 # =============================================================
+# 背景Whiteランプの絶対輝度LUTを保存
+#   入力: background/ramps/*.csv の channel=W
+#   出力: bg_luminance_lut.csv
+#   実験プログラムはこのLUTを使って、目標輝度[cd/m²]を背景画素値へ変換する。
+# =============================================================
+def save_bg_luminance_lut(ramp_bg, table_dir):
+    white_ramp = ramp_bg.get("W")
+    if not white_ramp:
+        raise ValueError(
+            "背景ランプにWhiteチャンネル(W)がありません。"
+            "background/ramps/*.csv の channel=W を確認してください。"
+        )
+
+    # load_ramps_avg()で同一画素値の複数測定はすでにXYZ空間平均されている。
+    # np.interp用に実測輝度の昇順で保存する。
+    rows = sorted(white_ramp, key=lambda row: row[1])
+    path = os.path.join(table_dir, "bg_luminance_lut.csv")
+    with open(path, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow([
+            "Target_Luminance(cd/m2)", "Pixel_Value", "x", "y"
+        ])
+        for pixel, Y, x, y in rows:
+            writer.writerow([
+                f"{float(Y):.10g}", int(pixel),
+                f"{float(x):.10g}", f"{float(y):.10g}",
+            ])
+    return path
+
+_bg_lut_path = save_bg_luminance_lut(RAMP_BG, TABLE_DIR)
+print("\n[CSV保存] 背景Whiteランプの絶対輝度LUTを保存しました")
+print("  ", os.path.abspath(_bg_lut_path))
+
+# =============================================================
 # 単一プレーンLUT: 実測の加算結果から「前景1枚で目標輝度を再現」する画像を生成
 #   入力: results/tables/DisplayBrightness/foreground_add/*.csv （加算後の測定値 Y,x,y）
 #   方法: 加算後 Yxy -> XYZ -> inv(R') -> 前景線形 -> g_f_inv で前景画素値を求め、

@@ -368,26 +368,33 @@ def draw_center_cross(canvas, offset_x=0, offset_y=0, color='white', gap=0):
 # キャリブレーション・画像処理関数
 # ==========================================
 
-def load_calibration_data(log_dir):
+def load_calibration_data(path):
     """
-    DisplayBrightness キャリブレーション結果をCSVから読み込む
-    
+    DisplayBrightness キャリブレーション結果をCSVから読み込む。
+
+    ディレクトリを指定した場合は従来どおり配下のCSVを平均し、
+    CSVファイルを指定した場合はそのLUTだけを読み込む。
+
     Args:
-        log_dir: キャリブレーションログディレクトリ
-        
+        path: キャリブレーションログディレクトリ、または輝度LUTのCSVファイル
+
     Returns:
         tuple: (lums, pixels) - numpy配列
                lums: ルミナンス値の配列
                pixels: ピクセル値の配列
     """
-    csv_files = []
-    if not os.path.exists(log_dir):
+    if not os.path.exists(path):
         return None, None
-    
-    for file in os.listdir(log_dir):
-        if file.endswith('.csv'):
-            csv_files.append(os.path.join(log_dir, file))
-    
+
+    if os.path.isfile(path):
+        csv_files = [path] if path.endswith('.csv') else []
+    else:
+        csv_files = [
+            os.path.join(path, file)
+            for file in os.listdir(path)
+            if file.endswith('.csv')
+        ]
+
     if not csv_files:
         return None, None
     
