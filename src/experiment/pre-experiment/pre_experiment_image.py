@@ -1,4 +1,4 @@
-# py .\src\experiment\pre-experiment\pre-experiment-image.py
+# py .\src\experiment\pre-experiment\pre_experiment_image.py
 import tkinter as tk
 from tkinter import ttk, messagebox
 import os

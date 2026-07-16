@@ -388,11 +388,11 @@ def update_defocus_view(app):
 
 
 # ============================================================
-# pre-experiment-gabor.py 用の関数
+# pre_experiment_matching.py 用の関数
 # ============================================================
 
 def setup_defocus_matching_ui_gabor(app):
-    """pre-experiment-gabor.py 用デフォーカスマッチングUI"""
+    """pre_experiment_matching.py 用デフォーカスマッチングUI"""
     if hasattr(app, 'ctrl_frame') and app.ctrl_frame.winfo_exists():
         app.ctrl_frame.destroy()
     app.canvas1.delete("all")
@@ -499,7 +499,7 @@ def _handle_defocus_key_press_gabor(app, event):
     return "break"
 
 def update_defocus_view_gabor(app):
-    """pre-experiment-gabor.py 用デフォーカスマッチング画面更新"""
+    """pre_experiment_matching.py 用デフォーカスマッチング画面更新"""
     app.canvas1.delete("match")
     app.canvas2.delete("match")
     app.canvas2.delete("calib")
@@ -581,11 +581,11 @@ def update_defocus_view_gabor(app):
 
 
 # ============================================================
-# pre-experiment-image.py 用の関数
+# pre_experiment_image.py 用の関数
 # ============================================================
 
 def setup_defocus_matching_ui_image(app):
-    """pre-experiment-image.py 用デフォーカスマッチングUI (シングルスライダー)"""
+    """pre_experiment_image.py 用デフォーカスマッチングUI (シングルスライダー)"""
     if hasattr(app, 'ctrl_frame') and app.ctrl_frame.winfo_exists():
         app.ctrl_frame.destroy()
     app.canvas1.delete("all")
@@ -625,7 +625,7 @@ def setup_defocus_matching_ui_image(app):
     update_defocus_view_image(app)
 
 def _handle_defocus_key_press_image(app, event):
-    """pre-experiment-image.py 用キープレスハンドラ"""
+    """pre_experiment_image.py 用キープレスハンドラ"""
     step = 0.05
     current_defocus = app.defocus_val.get()
     min_val = 0.0
@@ -642,7 +642,7 @@ def _handle_defocus_key_press_image(app, event):
     return "break"
 
 def update_defocus_view_image(app):
-    """pre-experiment-image.py 用デフォーカスマッチング画面更新"""
+    """pre_experiment_image.py 用デフォーカスマッチング画面更新"""
     app.canvas1.delete("match")
     app.canvas2.delete("match")
     app.canvas2.delete("calib")

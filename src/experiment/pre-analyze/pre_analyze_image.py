@@ -1,4 +1,4 @@
-# py .\src\experiment\pre-analyze\pre-analyze-image.py
+# py .\src\experiment\pre-analyze\pre_analyze_image.py
 import pandas as pd
 import matplotlib.pyplot as plt
 import numpy as np
@@ -11,7 +11,7 @@ import argparse
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
 
-# 入力データのベースディレクトリ (pre-experiment-image.py の出力先)
+# 入力データのベースディレクトリ (pre_experiment_image.py の出力先)
 DATA_BASE_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-image")
 
 parser = argparse.ArgumentParser(description='Analyze Image experiment results.')

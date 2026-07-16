@@ -1,5 +1,5 @@
 """
-現行の pre-experiment-gabor-matching.py に対応した解析スクリプト。
+現行の pre_experiment_matching.py に対応した解析スクリプト。
 
 入力:
   results/tables/pre-experiment-matching/experiment/
