@@ -42,9 +42,6 @@ spec.loader.exec_module(stimuli_utils)
 EXPERIMENT_RESULT_ROOT = os.path.join(
     LAB_ROOT, "results", "tables", "pre-experiment-matching", "experiment"
 )
-TRAINING_RESULT_ROOT = os.path.join(
-    LAB_ROOT, "results", "tables", "pre-experiment-matching", "training"
-)
 EXPERIMENT_FIGURE_ROOT = os.path.join(
     LAB_ROOT, "results", "figures", "pre-experiment-matching", "experiment"
 )
@@ -122,8 +119,6 @@ def load_matching_results(session_dirs):
             else "experiment"
         )
         df["Session_Type"] = session_type
-        df["Session_Dir"] = session_dir
-        df["Session_Ocularity"] = session_type + " / " + df["Ocularity"].astype(str)
         frames.append(df)
         print(f"Loaded ({session_type}): {csv_path}")
 
@@ -213,9 +208,6 @@ def add_analysis_columns(df):
         analyzed["Matched_Contrast"] * analyzed["L_fg"]
         + analyzed["Effective_BG_Contrast"] * analyzed["L_bg"]
     ) / (analyzed["L_fg"] + analyzed["L_bg"])
-    analyzed["Matching_Ratio"] = (
-        analyzed["Matched_Contrast"] / analyzed["Ref_Contrast"]
-    )
     return analyzed
 
 
