@@ -7,6 +7,7 @@ import random
 import math
 import csv
 import datetime
+import importlib.util
 from PIL import Image, ImageTk, ImageFilter
 import stimuli_utils
 import numpy as np
@@ -20,6 +21,45 @@ MARKER_LINE_WIDTH = 5  # マーカーの線の太さ
 
 script_dir = os.path.dirname(os.path.abspath(__file__))
 lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
+
+# stimuliは兄弟ディレクトリなので、ファイルパスから生成モジュールを読み込む。
+defocus_stimuli_path = os.path.join(
+    lab_root, "src", "experiment", "stimuli", "defocus_stimuli.py"
+)
+defocus_stimuli_spec = importlib.util.spec_from_file_location(
+    "defocus_stimuli", defocus_stimuli_path
+)
+if defocus_stimuli_spec is None or defocus_stimuli_spec.loader is None:
+    raise ImportError(f"defocus_stimuli.pyを読み込めません: {defocus_stimuli_path}")
+defocus_stimuli = importlib.util.module_from_spec(defocus_stimuli_spec)
+defocus_stimuli_spec.loader.exec_module(defocus_stimuli)
+
+
+def _ensure_defocus_stimuli_for_app(app):
+    """現在のmatching条件に必要な刺激を、不足時だけ一度生成する。"""
+    conditions = tuple(sorted(set(app.defocus_match_patterns)))
+    cache_key = (float(app.distance1), float(app.distance2), conditions)
+    if getattr(app, "_prepared_defocus_stimuli_key", None) == cache_key:
+        return
+
+    patterns = tuple(dict.fromkeys(pattern for pattern, _ in conditions))
+    cpds = tuple(sorted(set(cpd for _, cpd in conditions)))
+    output_dir = os.path.join(
+        lab_root,
+        "data",
+        "processed",
+        "images",
+        "pre-experiment-matching",
+    )
+    defocus_stimuli.ensure_defocus_stimuli(
+        distance_fg=app.distance1,
+        distance_bg=app.distance2,
+        patterns=patterns,
+        cpds=cpds,
+        output_dir=output_dir,
+    )
+    app._prepared_defocus_stimuli_key = cache_key
+
 
 def apply_torch_fft_blur(img_pil, D, pd_mm, pixels_per_deg):
     """optics_model.pyに基づくFFTを用いたデフォーカスブラー適用関数"""
@@ -107,6 +147,8 @@ def setup_defocus_matching_ui(app):
     _show_defocus_matching_step(app)
 
 def _show_defocus_matching_step(app):
+    _ensure_defocus_stimuli_for_app(app)
+
     if hasattr(app, 'ctrl_frame') and app.ctrl_frame.winfo_exists():
         app.ctrl_frame.destroy()
     
@@ -273,21 +315,20 @@ def update_defocus_view(app):
 
     pattern_name, cpd = app.defocus_match_patterns[app.current_match_idx]
     
-    matching_dir = os.path.join(lab_root, "data", "processed", "images", "pre-experiment-matching", "defocus-matching")
-    fg_img_path = os.path.join(matching_dir, f"FG_{pattern_name}_{d_fg}cm_{cpd}cpd.png")
-    bg_img_path = os.path.join(matching_dir, f"BG_{pattern_name}_{d_bg}cm_{cpd}cpd.png")
+    matching_output_dir = os.path.join(
+        lab_root, "data", "processed", "images", "pre-experiment-matching"
+    )
+    fg_img_path = defocus_stimuli.get_stimulus_path(
+        matching_output_dir, "FG", pattern_name, d_fg, cpd
+    )
+    bg_img_path = defocus_stimuli.get_stimulus_path(
+        matching_output_dir, "BG", pattern_name, d_bg, cpd
+    )
 
-    try:
-        img_fg = Image.open(fg_img_path).convert('L')
-    except Exception as e:
-        img_fg = Image.new('L', (fg_size, fg_size // 2), 128)
-        print(f"Error loading matching FG image: {e}")
-
-    try:
-        img_bg = Image.open(bg_img_path).convert('L')
-    except Exception as e:
-        img_bg = Image.new('L', (bg_size, bg_size // 2), 128)
-        print(f"Error loading matching BG image: {e}")
+    with Image.open(fg_img_path) as source:
+        img_fg = source.convert('L')
+    with Image.open(bg_img_path) as source:
+        img_bg = source.convert('L')
 
     img_fg = img_fg.resize((fg_size, fg_size // 2), Image.LANCZOS)
     img_fg = apply_torch_fft_blur(img_fg, D, pd_mm, pixels_per_deg_fg)
