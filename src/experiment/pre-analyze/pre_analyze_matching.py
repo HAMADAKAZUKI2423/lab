@@ -9,12 +9,12 @@
   results/figures/pre-experiment-matching/experiment/
     analysis_YYYYMMDD_HHMMSS/
 
-Defocus処理は実験と同じ stimuli_utils.apply_torch_fft_blur_luminance() を使用する。
+Defocus処理は実験と同じcommon.opticsを使用する。
 """
 
 import argparse
 import glob
-import importlib.util
+import sys
 import os
 import datetime
 
@@ -28,15 +28,10 @@ import seaborn as sns
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 LAB_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, "..", "..", ".."))
 PRE_EXPERIMENT_DIR = os.path.join(LAB_ROOT, "src", "experiment", "pre-experiment")
-STIMULI_UTILS_PATH = os.path.join(PRE_EXPERIMENT_DIR, "stimuli_utils.py")
+if PRE_EXPERIMENT_DIR not in sys.path:
+    sys.path.insert(0, PRE_EXPERIMENT_DIR)
 
-# pre-analyze と pre-experiment は兄弟ディレクトリのため直接importしない。
-# ファイルパスから明示的に stimuli_utils.py をロードする。
-spec = importlib.util.spec_from_file_location("pre_experiment_stimuli_utils", STIMULI_UTILS_PATH)
-if spec is None or spec.loader is None:
-    raise ImportError(f"stimuli_utils.py をロードできません: {STIMULI_UTILS_PATH}")
-stimuli_utils = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(stimuli_utils)
+from common import geometry, optics, patterns
 
 
 EXPERIMENT_RESULT_ROOT = os.path.join(
@@ -154,7 +149,7 @@ def calculate_blur_attenuation_cached(
         _blur_attenuation_cache[key] = 1.0
         return 1.0
 
-    ppd_fg = stimuli_utils.get_size_for_visual_angle(d_fg, 1.0)
+    ppd_fg = geometry.get_size_for_visual_angle(d_fg, 1.0)
     width_base = int(VISUAL_ANGLE_WIDTH_DEG * ppd_fg)
     width_px = int(width_base * WIN2_TOTAL_WIDTH_FACTOR)
     height_px = int(VISUAL_ANGLE_HEIGHT_DEG * ppd_fg)
@@ -163,7 +158,7 @@ def calculate_blur_attenuation_cached(
     random_state = np.random.get_state()
     np.random.seed(42)
     try:
-        noise_base = stimuli_utils.create_noise_base(
+        noise_base = patterns.create_noise_base(
             width_px, height_px, ppd_fg, f_center_cpd
         )
     finally:
@@ -174,7 +169,7 @@ def calculate_blur_attenuation_cached(
     d_bg_m = d_bg / 100.0
     diopter_difference = abs(1.0 / d_fg_m - 1.0 / d_bg_m)
 
-    lum_blurred = stimuli_utils.apply_torch_fft_blur_luminance(
+    lum_blurred = optics.apply_defocus_blur_to_luminance(
         lum_original, diopter_difference, float(pd_mm), ppd_fg
     )
 

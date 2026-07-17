@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import csv
 import numpy as np
-import stimuli_utils
+from common.photometry import load_luminance_lut
 
 
 FALLBACK_COLOR_MATRIX = np.array(
@@ -62,7 +62,7 @@ def _load_extended_lut(path: Path):
 
 
 def load_display_calibration(display_dir: Path) -> DisplayCalibration:
-    bg_lums, bg_pixels = stimuli_utils.load_calibration_data(
+    bg_lums, bg_pixels = load_luminance_lut(
         str(display_dir / "bg_luminance_lut.csv")
     )
     if bg_lums is None or bg_pixels is None:

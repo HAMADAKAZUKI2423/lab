@@ -6,7 +6,7 @@ from pathlib import Path
 import random
 
 from PIL import Image
-import stimuli_utils
+from common import geometry
 
 from .config import ImageSessionConfig
 
@@ -56,13 +56,13 @@ def prepare_trial_stimulus(
     trial: ImageTrial,
     config: ImageSessionConfig,
 ) -> PreparedImageStimulus:
-    fg_size = stimuli_utils.get_size_for_visual_angle(
+    fg_size = geometry.get_size_for_visual_angle(
         config.distance_fg_cm, config.visual_angle_deg
     )
-    bg_height = stimuli_utils.get_size_for_visual_angle(
+    bg_height = geometry.get_size_for_visual_angle(
         config.distance_bg_cm, config.visual_angle_deg
     )
-    bg_width = stimuli_utils.get_size_for_visual_angle(
+    bg_width = geometry.get_size_for_visual_angle(
         config.distance_bg_cm, config.visual_angle_deg * 2.0
     )
 

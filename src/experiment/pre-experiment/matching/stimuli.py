@@ -5,7 +5,7 @@ from pathlib import Path
 import math
 import numpy as np
 from PIL import Image
-import stimuli_utils
+from common import geometry, optics, patterns, photometry
 
 from .calibration import DisplayCalibration
 from .config import MatchingSessionConfig
@@ -84,8 +84,8 @@ def prepare_trial_stimulus(
     pupil_diameter_mm: float,
     config: MatchingSessionConfig,
 ) -> PreparedTrialStimulus:
-    ppd_fg = stimuli_utils.get_size_for_visual_angle(config.distance_fg_cm, 1.0)
-    ppd_bg = stimuli_utils.get_size_for_visual_angle(config.distance_bg_cm, 1.0)
+    ppd_fg = geometry.get_size_for_visual_angle(config.distance_fg_cm, 1.0)
+    ppd_bg = geometry.get_size_for_visual_angle(config.distance_bg_cm, 1.0)
     width_fg = int(
         config.visual_angle_width_deg * ppd_fg * config.win2_total_width_factor
     )
@@ -96,7 +96,7 @@ def prepare_trial_stimulus(
         width_bg_base, condition, ocularity, dominant_eye, config
     )
 
-    gabor = stimuli_utils.create_cosine_windowed_grating_base(
+    gabor = patterns.create_cosine_windowed_grating_base(
         width_fg, height_fg, ppd_fg, config.spatial_frequency,
         orientation=orientation,
     )
@@ -104,11 +104,11 @@ def prepare_trial_stimulus(
         background = np.full((height_bg, width_bg), config.l_bg, dtype=np.float32)
     else:
         if condition == "Dual plane":
-            noise = stimuli_utils.create_noise_base(
+            noise = patterns.create_noise_base(
                 width_bg, height_bg, ppd_bg, config.spatial_frequency
             )
         else:
-            noise = stimuli_utils.create_noise_base(
+            noise = patterns.create_noise_base(
                 width_fg, height_fg, ppd_fg, config.spatial_frequency
             )
         background = config.l_bg * (1.0 + noise)
@@ -117,7 +117,7 @@ def prepare_trial_stimulus(
         d_fg_m = config.distance_fg_cm / 100.0
         d_bg_m = config.distance_bg_cm / 100.0
         diopter_difference = abs(1.0 / d_fg_m - 1.0 / d_bg_m)
-        background = stimuli_utils.apply_torch_fft_blur_luminance(
+        background = optics.apply_defocus_blur_to_luminance(
             background, diopter_difference, pupil_diameter_mm, ppd_fg
         )
 
@@ -133,25 +133,71 @@ def generate_trial_photos(
     config: MatchingSessionConfig,
     calibration: DisplayCalibration,
 ):
-    return stimuli_utils.generate_matching_photos(
-        prepared.gabor_base,
-        prepared.background_luminance,
-        calibration.bg_lums,
-        calibration.bg_pixels,
-        calibration.bg_lums,
-        calibration.bg_pixels,
-        L_fg=config.l_fg,
-        L_bg=config.l_bg,
-        L_ref=config.l_ref,
-        c_test=test_contrast,
-        ref_c=reference_contrast,
-        cond=condition,
-        color_matrix=calibration.color_matrix,
-        gamma_bg=calibration.gamma_bg,
-        gamma_fg=calibration.gamma_fg,
-        Y_grid=calibration.ext_lum_y,
-        px_grid=calibration.ext_lum_px,
+    """matching条件を共通の輝度変換関数へ割り当てる。"""
+    reference_luminance = config.l_ref * (
+        1.0 + reference_contrast * prepared.gabor_base
     )
+    if condition in DUAL_CONDITIONS:
+        if calibration.ext_lum_y is not None and calibration.ext_lum_px is not None:
+            reference_photo = photometry.luminance_to_singleplane_photo(
+                reference_luminance,
+                calibration.ext_lum_y,
+                calibration.ext_lum_px,
+            )
+        else:
+            reference_photo = photometry.luminance_to_window2_photo(
+                reference_luminance,
+                calibration.bg_lums,
+                calibration.bg_pixels,
+                calibration.color_matrix,
+                calibration.gamma_bg,
+                calibration.gamma_fg,
+                condition=condition,
+            )
+        test_luminance = config.l_fg * (
+            1.0 + test_contrast * prepared.gabor_base
+        )
+        return {
+            "photo_ref_fg": reference_photo,
+            "photo_test_fg": photometry.luminance_to_window2_photo(
+                test_luminance,
+                calibration.bg_lums,
+                calibration.bg_pixels,
+                calibration.color_matrix,
+                calibration.gamma_bg,
+                calibration.gamma_fg,
+                condition=condition,
+            ),
+            "photo_noise_bg": photometry.luminance_to_photo(
+                prepared.background_luminance,
+                calibration.bg_lums,
+                calibration.bg_pixels,
+            ),
+        }
+    test_luminance = (
+        prepared.background_luminance
+        + config.l_fg * (1.0 + test_contrast * prepared.gabor_base)
+    )
+    return {
+        "photo_ref_fg": photometry.luminance_to_window2_photo(
+            reference_luminance,
+            calibration.bg_lums,
+            calibration.bg_pixels,
+            calibration.color_matrix,
+            luminance_grid=calibration.ext_lum_y,
+            pixel_grid=calibration.ext_lum_px,
+            condition=condition,
+        ),
+        "photo_test": photometry.luminance_to_window2_photo(
+            test_luminance,
+            calibration.bg_lums,
+            calibration.bg_pixels,
+            calibration.color_matrix,
+            luminance_grid=calibration.ext_lum_y,
+            pixel_grid=calibration.ext_lum_px,
+            condition=condition,
+        ),
+    }
 
 
 def save_preview_images(

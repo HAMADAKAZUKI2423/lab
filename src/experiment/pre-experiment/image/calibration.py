@@ -4,7 +4,7 @@ import numpy as np
 
 
 def initialize_defocus_compatibility(app) -> None:
-    """共通defocus_matching.pyが参照する表示属性を初期化する。"""
+    """共通defocus表示処理が参照する表示属性を初期化する。"""
     app.color_matrix = None
     app.gamma_bg = None
     app.gamma_fg = None

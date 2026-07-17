@@ -6,10 +6,10 @@ import random
 import tkinter as tk
 from tkinter import messagebox, ttk
 
-import defocus_matching
-import numpy as np
 from PIL import ImageTk
-import stimuli_utils
+
+from common import geometry, markers
+from common.defocus_controller import setup_defocus_matching_ui
 from experiment_base_ui import ExperimentBaseUI
 
 from .calibration import (
@@ -266,32 +266,32 @@ class ImageExperimentApp(ExperimentBaseUI):
     def update_calibration_view(self, *args) -> None:
         self.canvas1.delete("calib")
         self.canvas2.delete("calib")
-        foreground = stimuli_utils.get_size_for_visual_angle(
+        foreground = geometry.get_size_for_visual_angle(
             self.distance1, self.session_config.visual_angle_deg
         )
-        background_height = stimuli_utils.get_size_for_visual_angle(
+        background_height = geometry.get_size_for_visual_angle(
             self.distance2, self.session_config.visual_angle_deg
         )
-        background_width = stimuli_utils.get_size_for_visual_angle(
+        background_width = geometry.get_size_for_visual_angle(
             self.distance2, self.session_config.visual_angle_deg * 2.0
         )
         for width in (background_width, background_height):
-            stimuli_utils.draw_image_corner_brackets(
+            markers.draw_image_corner_brackets(
                 self.canvas1,
                 width,
                 background_height,
                 self.offset_x.get(),
                 self.offset_y.get(),
                 color=WIN1_MARKER_COLOR,
-                line_width=stimuli_utils.MARKER_LINE_WIDTH * 1.5,
+                line_width=markers.MARKER_LINE_WIDTH * 1.5,
             )
-        stimuli_utils.draw_image_corner_brackets(
+        markers.draw_image_corner_brackets(
             self.canvas2,
             foreground,
             foreground,
             color=WIN2_MARKER_COLOR,
         )
-        stimuli_utils.draw_center_cross(
+        markers.draw_center_cross(
             self.canvas2, color=WIN2_MARKER_COLOR
         )
 
@@ -344,14 +344,11 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.clear_key_bindings()
         self.canvas1.delete("all")
         self.canvas2.delete("all")
-        defocus_matching.setup_defocus_matching_ui(
+        setup_defocus_matching_ui(
             self,
             patterns=self.session_config.defocus_patterns,
             cpds=self.session_config.defocus_cpds,
         )
-
-    def on_calibration_complete(self) -> None:
-        self.start_eye_defocus_matching()
 
     def show_experiment_start_ui(self) -> None:
         self.canvas1.delete("all")
@@ -434,17 +431,17 @@ class ImageExperimentApp(ExperimentBaseUI):
 
     def phase_isi(self) -> None:
         self.canvas2.delete("img")
-        foreground = stimuli_utils.get_size_for_visual_angle(
+        foreground = geometry.get_size_for_visual_angle(
             self.distance1, self.session_config.visual_angle_deg
         )
-        stimuli_utils.draw_image_corner_brackets(
+        markers.draw_image_corner_brackets(
             self.canvas2,
             foreground,
             foreground,
             color=WIN2_MARKER_COLOR,
             flip_x=True,
         )
-        stimuli_utils.draw_center_cross(
+        markers.draw_center_cross(
             self.canvas2, color=WIN2_MARKER_COLOR
         )
         self.root.after(self.session_config.time_isi_ms, self.phase_both)
