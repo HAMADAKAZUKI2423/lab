@@ -9,7 +9,6 @@ from tkinter import messagebox, ttk
 import defocus_matching
 import stimuli_utils
 from experiment_base_ui import ExperimentBaseUI
-from experiment_trial_loop import ExperimentTrialLoop
 
 from .calibration import load_display_calibration
 from .config import MatchingSessionConfig
@@ -34,14 +33,13 @@ WIN1_MARKER_COLOR = "red"
 WIN2_MARKER_COLOR = "white"
 
 
-class MatchingExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
+class MatchingExperimentApp(ExperimentBaseUI):
     """条件だけを差し替えて本実験とtrainingを実行する。"""
 
     def __init__(self, root: tk.Tk, session_config: MatchingSessionConfig):
         ExperimentBaseUI.__init__(
             self, root, str(session_config.participant_data_dir)
         )
-        ExperimentTrialLoop.__init__(self)
 
         self.root = root
         self.session_config = session_config
@@ -81,6 +79,10 @@ class MatchingExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self.current_block_cond: dict | None = None
         self.prepared_stimulus = None
         self.rng = random.Random()
+        self.trial_list: list[dict] = []
+        self.current_trial_in_experiment = 0
+        self.current_trial_in_block = 0
+        self.results: list[dict] = []
 
         calibration = load_display_calibration(session_config.display_dir)
         self.display_calibration = calibration
@@ -97,7 +99,6 @@ class MatchingExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
 
         self._setup_windows()
         self.result_dir = session_config.result_root
-        self.setup_trial_phases(time_phase1=1600, time_isi=1, time_phase2=5000)
         self.setup_participant_info_ui()
 
     def _setup_windows(self) -> None:
@@ -509,7 +510,7 @@ class MatchingExperimentApp(ExperimentBaseUI, ExperimentTrialLoop):
         self._destroy_frame("ctrl_frame")
         self.clear_key_bindings()
         matched = slider_to_contrast(self.slider_val.get())
-        self.add_trial_result(build_result_row(self, matched))
+        self.results.append(build_result_row(self, matched))
         self.current_trial_in_block += 1
         self.current_trial_in_experiment += 1
         self.root.after(500, self.run_trial)
