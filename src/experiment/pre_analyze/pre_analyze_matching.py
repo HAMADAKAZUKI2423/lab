@@ -241,7 +241,7 @@ def save_outputs(df, output_dir):
                     continue
 
                 for value_column, suffix, ylabel in bar_specs:
-                    fig, ax = plt.subplots(figsize=(11, 6))
+                    fig, ax = plt.subplots(figsize=(10, 6))
                     sns.barplot(
                         data=plot_df,
                         x="Condition",
