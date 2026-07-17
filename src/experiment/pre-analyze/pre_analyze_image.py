@@ -56,15 +56,42 @@ if not file_paths:
 
 all_data = []
 
+CURRENT_DISTANCE_COLUMNS = ("Distance_FG(cm)", "Distance_BG(cm)")
+LEGACY_DISTANCE_COLUMNS = ("Distance1(cm)", "Distance2(cm)")
+REQUIRED_COLUMNS = {"Image_Win1", "Image_Win2", "Score"}
+
 for file in file_paths:
-    # 1. データをヘッダー付きで正しく読み込む
-    df = pd.read_csv(file, encoding='utf-8')
-    d1 = df['Distance1(cm)'].iloc[0]
-    d2 = df['Distance2(cm)'].iloc[0]
-    df['distance'] = f"{d1}-{d2} cm"
-    # ソート用にディオプトリ差と前景距離(d1)を計算
-    df['d1'] = d1
-    df['diopter_diff'] = abs(100/d1 - 100/d2) if d1 > 0 and d2 > 0 else 0
+    # 現行のimage実験が出力するCSVを読み込む。
+    df = pd.read_csv(file, encoding="utf-8")
+    if df.empty:
+        print(f"WARN: 空のCSVを除外します: {file}")
+        continue
+
+    missing = sorted(REQUIRED_COLUMNS - set(df.columns))
+    if missing:
+        raise ValueError(f"{file}: 必須列が不足しています: {missing}")
+
+    if all(column in df.columns for column in CURRENT_DISTANCE_COLUMNS):
+        fg_column, bg_column = CURRENT_DISTANCE_COLUMNS
+    elif all(column in df.columns for column in LEGACY_DISTANCE_COLUMNS):
+        # 過去に保存したCSVも解析できるよう、旧列名をフォールバックとして受け付ける。
+        fg_column, bg_column = LEGACY_DISTANCE_COLUMNS
+    else:
+        raise ValueError(
+            f"{file}: 距離列が見つかりません。"
+            f"現行列={CURRENT_DISTANCE_COLUMNS}, 旧列={LEGACY_DISTANCE_COLUMNS}"
+        )
+
+    distance_fg = float(df[fg_column].iloc[0])
+    distance_bg = float(df[bg_column].iloc[0])
+    df["distance"] = f"{distance_fg:g}-{distance_bg:g} cm"
+    # ソート用にディオプトリ差と前景距離を計算する。
+    df["d1"] = distance_fg
+    df["diopter_diff"] = (
+        abs(100 / distance_fg - 100 / distance_bg)
+        if distance_fg > 0 and distance_bg > 0
+        else 0
+    )
     all_data.append(df)
 
 # 全データを統合
@@ -126,11 +153,17 @@ final_df['bg_image'] = pd.Categorical(final_df['bg_image'], categories=bg_labels
 # 4. 条件ごとの平均値と標準誤差を算出
 summary_df = final_df.groupby(['distance', 'diopter_diff', 'd1', 'fg_image'])['Score'].agg(['mean', 'sem']).reset_index()
 
-# 指定された順序 `50-70, 81-150, 50-100, 60-150` でグラフのx軸を並べ替える
-custom_order = ['50-70 cm', '81-150 cm', '50-100 cm', '60-150 cm']
-summary_df['distance'] = pd.Categorical(summary_df['distance'], categories=custom_order, ordered=True)
-# 指定したカテゴリ順でソート
-summary_df = summary_df.sort_values('distance')
+# CSVに含まれる距離条件から表示順を自動生成する。
+distance_order = (
+    final_df[["distance", "diopter_diff", "d1"]]
+    .drop_duplicates()
+    .sort_values(["diopter_diff", "d1"])["distance"]
+    .tolist()
+)
+summary_df["distance"] = pd.Categorical(
+    summary_df["distance"], categories=distance_order, ordered=True
+)
+summary_df = summary_df.sort_values("distance")
 
 # グラフ描画用にピボット（行：距離ラベル、列：前景画像、値：平均スコア）
 pivot_df = summary_df.pivot_table(index='distance', columns='fg_image', values='mean')
@@ -158,8 +191,10 @@ plt.savefig(os.path.join(OUTPUT_DIR, 'score_vs_distance_bar.png'))
 
 # --- 追加: 背景画像ごとの集計とグラフ描画 ---
 summary_bg_df = final_df.groupby(['distance', 'bg_image'])['Score'].agg(['mean', 'sem']).reset_index()
-summary_bg_df['distance'] = pd.Categorical(summary_bg_df['distance'], categories=custom_order, ordered=True)
-summary_bg_df = summary_bg_df.sort_values('distance')
+summary_bg_df["distance"] = pd.Categorical(
+    summary_bg_df["distance"], categories=distance_order, ordered=True
+)
+summary_bg_df = summary_bg_df.sort_values("distance")
 
 pivot_bg_df = summary_bg_df.pivot_table(index='distance', columns='bg_image', values='mean')
 error_bg_df = summary_bg_df.pivot_table(index='distance', columns='bg_image', values='sem')
@@ -178,9 +213,7 @@ plt.tight_layout()
 plt.savefig(os.path.join(OUTPUT_DIR, 'score_vs_distance_bg_bar.png'))
 
 # --- 追加: 前景・背景輝度のヒートマップ (距離ごとに作成) ---
-unique_distances = final_df['distance'].unique()
-# custom_order にあるものはその順で、ないものはその後に追加
-sorted_distances = [d for d in custom_order if d in unique_distances] + [d for d in unique_distances if d not in custom_order]
+sorted_distances = distance_order
 
 for dist in sorted_distances:
     dist_df = final_df[final_df['distance'] == dist]
