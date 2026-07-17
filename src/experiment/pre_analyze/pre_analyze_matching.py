@@ -15,7 +15,7 @@ Defocus処理は実験と同じcommon.opticsを使用する。
 import argparse
 import glob
 import os
-import datetime
+import re
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -293,7 +293,7 @@ def save_outputs(df, output_dir):
                                 ha="center",
                                 va="bottom",
                                 color="black",
-                                fontsize=9,
+                                fontsize=10,
                                 bbox={
                                     "facecolor": "white",
                                     "alpha": 0.75,
@@ -310,10 +310,10 @@ def save_outputs(df, output_dir):
                     ax.set_ylabel(ylabel)
                     ax.set_xlabel("Condition")
                     ax.set_yscale("log")
-                    ax.set_ylim(0.05, 1.2)
-                    ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 1.0])
-                    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.2g"))
-                    ax.tick_params(axis="x", rotation=15)
+                    ax.set_ylim(0.05, 1.0)
+                    ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7,0.8, 0.9, 1.0])
+                    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.2f"))
+                    ax.tick_params(axis="x", rotation=0)
 
                     handles, legend_labels = ax.get_legend_handles_labels()
                     unique_legend = dict(zip(legend_labels, handles))
@@ -371,7 +371,21 @@ def main():
     else:
         default_figure_root = COMBINED_FIGURE_ROOT
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    session_timestamps = []
+    for session_dir in session_dirs:
+        folder_name = os.path.basename(os.path.normpath(session_dir))
+        match = re.search(r"(\d{8}_\d{6})$", folder_name)
+        if match:
+            session_timestamps.append(match.group(1))
+
+    if not session_timestamps:
+        raise ValueError(
+            "実験結果フォルダ名から日時を取得できませんでした。"
+            "フォルダ名は ID_YYYYMMDD_HHMMSS の形式にしてください。"
+        )
+
+    # 複数セッションの場合は、解析対象中で最も新しい実験日時を使う。
+    timestamp = max(session_timestamps)
     output_dir = args.output_dir or os.path.join(
         default_figure_root, f"analysis_{timestamp}"
     )
