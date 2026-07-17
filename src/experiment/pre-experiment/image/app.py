@@ -35,14 +35,13 @@ class ImageExperimentApp(ExperimentBaseUI):
     """画像の前景・背景組み合わせを5段階で評価する。"""
 
     def __init__(self, root: tk.Tk, session_config: ImageSessionConfig):
-        super().__init__(root, str(session_config.participant_data_dir))
+        super().__init__(root)
         self.root = root
         self.session_config = session_config
         self.session_type = "image"
         self.root.title("Image Evaluation - Controller (Window 2)")
         self.root.configure(bg=session_config.background_color)
 
-        self.participant_dominance = tk.StringVar(value="Right")
         self.pupil_diameter_val = tk.DoubleVar(
             value=session_config.initial_pupil_diameter_mm
         )
@@ -225,9 +224,6 @@ class ImageExperimentApp(ExperimentBaseUI):
         self._destroy_frame("participant_frame")
         self.start_calibration_sequence()
 
-    def on_participant_confirmed(self) -> None:
-        self.start_calibration_sequence()
-
     # ---------- calibration / defocus ----------
 
     def start_calibration_sequence(self) -> None:
@@ -298,12 +294,6 @@ class ImageExperimentApp(ExperimentBaseUI):
         stimuli_utils.draw_center_cross(
             self.canvas2, color=WIN2_MARKER_COLOR
         )
-
-    def adjust_offset(self, dx: int, dy: int):
-        self.offset_x.set(self.offset_x.get() + dx)
-        self.offset_y.set(self.offset_y.get() + dy)
-        self.update_calibration_view()
-        return "break"
 
     def setup_calibration_ui(self, is_break: bool = False) -> None:
         self._destroy_frame("ctrl_frame")
@@ -529,7 +519,3 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.canvas2.delete("all")
         self.setup_participant_info_ui()
 
-    def _destroy_frame(self, attribute: str) -> None:
-        frame = getattr(self, attribute, None)
-        if frame is not None and frame.winfo_exists():
-            frame.destroy()

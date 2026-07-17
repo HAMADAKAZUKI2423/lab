@@ -37,9 +37,7 @@ class MatchingExperimentApp(ExperimentBaseUI):
     """条件だけを差し替えて本実験とtrainingを実行する。"""
 
     def __init__(self, root: tk.Tk, session_config: MatchingSessionConfig):
-        ExperimentBaseUI.__init__(
-            self, root, str(session_config.participant_data_dir)
-        )
+        super().__init__(root)
 
         self.root = root
         self.session_config = session_config
@@ -63,7 +61,6 @@ class MatchingExperimentApp(ExperimentBaseUI):
         self.L_bg = session_config.l_bg
         self.L_ref = session_config.l_ref
 
-        self.participant_dominance = tk.StringVar(value="Right")
         self.pupil_diameter_val = tk.DoubleVar(
             value=session_config.initial_pupil_diameter_mm
         )
@@ -231,9 +228,6 @@ class MatchingExperimentApp(ExperimentBaseUI):
         self._destroy_frame("participant_frame")
         self.start_calibration_sequence()
 
-    def on_participant_confirmed(self) -> None:
-        self.start_calibration_sequence()
-
     # ---------- calibration / defocus ----------
 
     def start_calibration_sequence(self) -> None:
@@ -287,12 +281,6 @@ class MatchingExperimentApp(ExperimentBaseUI):
             line_width=stimuli_utils.MARKER_LINE_WIDTH,
         )
         stimuli_utils.draw_center_cross(self.canvas2, color=WIN2_MARKER_COLOR)
-
-    def adjust_offset(self, dx: int, dy: int):
-        self.offset_x.set(self.offset_x.get() + dx)
-        self.offset_y.set(self.offset_y.get() + dy)
-        self.update_calibration_view()
-        return "break"
 
     def setup_calibration_ui_matching(
         self, *, is_new_eye: bool = False, is_new_block: bool = False
@@ -524,7 +512,3 @@ class MatchingExperimentApp(ExperimentBaseUI):
         )
         self.root.destroy()
 
-    def _destroy_frame(self, attribute: str) -> None:
-        frame = getattr(self, attribute, None)
-        if frame is not None and frame.winfo_exists():
-            frame.destroy()
