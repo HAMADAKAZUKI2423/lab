@@ -14,6 +14,7 @@ class ImageSessionConfig:
     participant_data_dir: Path
     background_image_dir: Path
     foreground_image_dir: Path
+    display_dir: Path
     visual_angle_deg: float = 7.9
     trials_before_break: int = 38
     time_foreground_only_ms: int = 500
@@ -45,6 +46,9 @@ def create_image_config() -> ImageSessionConfig:
         foreground_image_dir=(
             LAB_ROOT / "data" / "processed" / "images"
             / "pre-experiment-image" / "fg_imgs"
+        ),
+        display_dir=(
+            LAB_ROOT / "results" / "tables" / "DisplayBrightness"
         ),
     )
     config.result_root.mkdir(parents=True, exist_ok=True)

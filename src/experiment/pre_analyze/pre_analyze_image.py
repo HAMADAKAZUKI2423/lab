@@ -46,13 +46,14 @@ if not os.path.exists(OUTPUT_DIR):
     os.makedirs(OUTPUT_DIR)
 print(f"結果出力先: {OUTPUT_DIR}")
 
-# フォルダ内のすべてのCSVファイルを取得
-file_paths = glob.glob(os.path.join(TARGET_DIR, '*.csv'))
-
-# ファイルが見つからない場合はメッセージを表示して終了
-if not file_paths:
-    print(f"解析対象のCSVファイルがフォルダ '{TARGET_DIR}' に見つかりませんでした。")
-    exit()
+# image実験本試行の結果だけを解析する。
+# 同じフォルダに保存されるdefocus_matching.csvは列構成が異なるため対象外。
+result_path = os.path.join(TARGET_DIR, "image_evaluation.csv")
+if not os.path.isfile(result_path):
+    raise FileNotFoundError(
+        f"画像評価結果が見つかりません: {result_path}"
+    )
+file_paths = [result_path]
 
 all_data = []
 

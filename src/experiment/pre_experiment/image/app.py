@@ -14,7 +14,7 @@ from ..experiment_base_ui import ExperimentBaseUI
 
 from .calibration import (
     apply_dominant_eye_calibration,
-    initialize_defocus_compatibility,
+    initialize_defocus_calibration,
 )
 from .config import ImageSessionConfig
 from .evaluation import show_evaluation_ui
@@ -53,7 +53,9 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.detailed_defocus_results: list[dict] = []
         self.current_pd_mean = 0.0
         self.current_pd_std = 0.0
-        initialize_defocus_compatibility(self)
+        self.defocus_display_calibration = initialize_defocus_calibration(
+            self, session_config.display_dir
+        )
 
         self.rng = random.Random()
         self.trial_list = []

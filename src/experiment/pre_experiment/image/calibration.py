@@ -1,15 +1,27 @@
-"""Image実験固有のキャリブレーション状態を扱う。"""
+"""Image実験のキャリブレーション状態を扱う。"""
 
-import numpy as np
+from pathlib import Path
+
+from experiment.common.display_calibration import (
+    DisplayCalibration,
+    load_display_calibration,
+)
 
 
-def initialize_defocus_compatibility(app) -> None:
-    """共通defocus表示処理が参照する表示属性を初期化する。"""
-    app.color_matrix = None
-    app.gamma_bg = None
-    app.gamma_fg = None
-    app.bg_lums = np.array([0.0, 30.0], dtype=np.float64)
-    app.bg_pixels = np.array([0.0, 255.0], dtype=np.float64)
+def initialize_defocus_calibration(
+    app,
+    display_dir: Path,
+) -> DisplayCalibration:
+    """defocus matchingでのみ使う輝度・色校正を読み込む。"""
+    calibration = load_display_calibration(display_dir)
+    app.color_matrix = calibration.color_matrix
+    app.gamma_bg = calibration.gamma_bg
+    app.gamma_fg = calibration.gamma_fg
+    app.bg_lums = calibration.bg_lums
+    app.bg_pixels = calibration.bg_pixels
+    app.ext_lum_Y = calibration.ext_lum_y
+    app.ext_lum_px = calibration.ext_lum_px
+    return calibration
 
 
 def apply_dominant_eye_calibration(app) -> None:
