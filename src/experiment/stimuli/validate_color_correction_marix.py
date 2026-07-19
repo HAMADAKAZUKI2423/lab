@@ -10,14 +10,12 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
 # =============================================================
-# 入力パッチ & 階調ランプを CSV から読み込む
-#   results/tables/DisplayBrightness/{background,foreground}/{patches,ramps}/*.csv
-#   ・patches 列: name, sR, sG, sB, Y, x, y
-#   ・ramps   列: channel, pixel, Y, x, y
-#   ・平均は Yxy->XYZ に変換して XYZ空間で平均 -> Yxy に戻す（欠損は「あるものだけ」）
+# 階調ランプを CSV から読み込む
+#   results/tables/DisplayBrightness/{background,foreground}/ramps/*.csv
+#   ・列: channel, pixel, Y, x, y
+#   ・同じ(channel,pixel)は Yxy->XYZ に変換してXYZ空間で平均し、Yxyへ戻す
 # =============================================================
-DATA_ROOT   = os.path.join("results", "tables", "DisplayBrightness")
-PATCH_ORDER = ["R", "G", "B", "W", "semiR", "semiG", "semiB", "Gray"]
+DATA_ROOT = os.path.join("results", "tables", "DisplayBrightness")
 
 def _yxy2xyz(Y, x, y):
     if y == 0:
@@ -57,34 +55,6 @@ def _get(row, *names):
             return row[nm]
     raise KeyError(names)
 
-def load_patches_avg(sub):
-    """{sub}/patches/*.csv を name ごとにXYZ平均。 -> ({name:{'srgb','yxy','n'}}, ファイル数)"""
-    d = os.path.join(DATA_ROOT, sub, "patches")
-    files = sorted(glob.glob(os.path.join(d, "*.csv")))
-    if not files:
-        raise FileNotFoundError(f"CSVが見つかりません: {d}")
-    srgb_acc, xyz_acc = {}, {}
-    for path in files:
-        for row in _read_csv_dicts(path):
-            try:
-                name = _get(row, "name", "Name")
-                srgb = (float(_get(row, "sR", "sr")),
-                        float(_get(row, "sG", "sg")),
-                        float(_get(row, "sB", "sb")))
-                Y = float(_get(row, "Y")); x = float(_get(row, "x")); y = float(_get(row, "y"))
-            except (KeyError, ValueError):
-                continue
-            srgb_acc.setdefault(name, []).append(srgb)
-            xyz_acc.setdefault(name, []).append(_yxy2xyz(Y, x, y))
-    out = {}
-    for name, xyzs in xyz_acc.items():
-        out[name] = {
-            "srgb": tuple(np.mean(np.array(srgb_acc[name]), axis=0)),
-            "yxy":  _xyz2yxy(np.mean(np.array(xyzs), axis=0)),
-            "n":    len(xyzs),
-        }
-    return out, len(files)
-
 def load_ramps_avg(sub):
     """{sub}/ramps/*.csv を (channel,pixel) ごとにXYZ平均。 -> {ch:[(pixel,Y,x,y),...]}"""
     d = os.path.join(DATA_ROOT, sub, "ramps")
@@ -108,23 +78,6 @@ def load_ramps_avg(sub):
     for ch in ramp:
         ramp[ch].sort(key=lambda t: -t[0])   # 255 -> 0 の順
     return ramp
-
-# ---- パッチ平均を読み込み、背景(BGT)・前景(FGR)を name で突き合わせて PATCHES を生成 ----
-_bg_p, _n_bg = load_patches_avg("background")
-_fg_p, _n_fg = load_patches_avg("foreground")
-
-_names  = [n for n in PATCH_ORDER if (n in _bg_p or n in _fg_p)]
-_names += [n for n in sorted(set(_bg_p) | set(_fg_p)) if n not in _names]
-
-PATCHES = []
-for n in _names:
-    _src = _bg_p.get(n) or _fg_p.get(n)
-    srgb = tuple(float(c) for c in _src["srgb"])
-    bgt  = tuple(_bg_p[n]["yxy"]) if n in _bg_p else None
-    fgr  = tuple(_fg_p[n]["yxy"]) if n in _fg_p else None
-    PATCHES.append((n, srgb, bgt, fgr))
-
-print(f"[CSV読込] パッチ: background {_n_bg} ファイル / foreground {_n_fg} ファイル -> {len(PATCHES)} パッチ")
 
 # ---- 色変換ユーティリティ ----
 def linear_to_srgb(c):
@@ -632,25 +585,44 @@ for Yt in [15.0, 30.0]:
 #   出力: ΔE00, ΔL*, Δa*, Δb*, ΔY   （符号は sim - add）
 #   ※Lab の基準白は既存 WHITE_XYZ を流用（add/sim 共通）。別の白にするなら差し替え。
 # =============================================================
-# ---- Add(加算) は実測を引用 / sim は既存の測定値をそのまま使用 ----
-#   Add: foreground_add/*.csv の
-#        「加算後」Yxy を、狙い輝度(=bg+fg)ごとに XYZ空間で平均して引用する。
-#   sim: 既存の測定値をそのまま使用。
-_SIM_BY_TARGET = [
-    # name,  target,  sim(Y, x, y)
-    ("Y0",    0, (0.4,  0.1707, 0.1190)),
-    ("Y10",  10, (10.7, 0.2827, 0.2875)),
-    ("Y20",  20, (20.4, 0.2813, 0.2871)),
-    ("Y30",  30, (30.4, 0.2849, 0.2927)),
-    ("Y40",  40, (40.3, 0.2836, 0.2928)),
-    ("Y50",  50, (49.8, 0.2841, 0.2939)),
-    ("Y60",  60, (59.7, 0.2847, 0.2978)),
-]
+# ---- Add(加算) と sim(単一プレーン再現) は実測CSVから読み込む ----
+#   Add: foreground_add/add/*.csv の「加算後」Yxyを、
+#        狙い輝度(=bg+fg)ごとにXYZ空間で平均する。
+#   sim: foreground_add/sim/*.csv のうち更新日時が最新の1ファイルを読み、
+#        setlumごとの実測Yxyを使用する。
+_ADDSIM_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add", "add")
+_SIM_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add", "sim")
 
-_ADDSIM_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add")
+
+def _load_latest_sim_by_target(dir_path):
+    """sim/*.csvの最新ファイルを読み、{setlum: (Y,x,y)}とパスを返す。"""
+    files = sorted(glob.glob(os.path.join(dir_path, "*.csv")))
+    if not files:
+        print(f"[sim実測] CSVが見つかりません: {dir_path}")
+        return {}, None
+    latest = max(files, key=os.path.getmtime)
+    acc = {}
+    for row in _read_csv_dicts(latest):
+        try:
+            target = int(round(float(_get(
+                row, "setlum", "SetLum", "target", "Target",
+                "Target_Luminance(cd/m2)",
+            ))))
+            Y = float(_get(row, "Y", "Y_sim", "Ysim"))
+            x = float(_get(row, "x"))
+            y = float(_get(row, "y"))
+        except (KeyError, ValueError):
+            continue
+        acc.setdefault(target, []).append(_yxy2xyz(Y, x, y))
+    out = {
+        target: _xyz2yxy(np.mean(np.array(values), axis=0))
+        for target, values in acc.items()
+    }
+    print(f"[sim実測] 最新CSVを読み込みました: {latest} ({len(out)}設定)")
+    return out, latest
 
 def _read_add_rows(dir_path):
-    """foreground_add/*.csv を読み、[(bg, fg, Y, x, y), ...] を返す共通リーダー。
+    """foreground_add/add/*.csv を読み、[(bg, fg, Y, x, y), ...] を返す共通リーダー。
        Y=加算後輝度, x,y=色度, bg/fg=目標輝度(無ければ None)。
        CSVが無い場合は警告を表示し、空リストを返して処理を継続する。"""
     files = sorted(glob.glob(os.path.join(dir_path, "*.csv")))
@@ -695,6 +667,7 @@ def _load_add_by_target(dir_path):
     return {k: _xyz2yxy(np.mean(np.array(v), axis=0)) for k, v in acc.items()}
 
 _add_by_target = _load_add_by_target(_ADDSIM_CSV_DIR)
+_sim_by_target, _sim_csv_path = _load_latest_sim_by_target(_SIM_CSV_DIR)
 
 def _add_meas_for(target, tol=5):
     """狙い輝度 target に対応する実測加算Yxyを返す。完全一致優先、無ければ
@@ -706,10 +679,13 @@ def _add_meas_for(target, tol=5):
     k = min(_add_by_target, key=lambda kk: abs(kk - target))
     return _add_by_target[k] if abs(k - target) <= tol else None
 
-# name(狙い輝度), Add(Y,x,y)=実測加算(引用), sim(Y,x,y)=既存のまま
-ADDSIM = [(name, _add_meas_for(tgt), sim) for name, tgt, sim in _SIM_BY_TARGET]
+# 最新sim CSVに存在するsetlumだけを、同じ狙い輝度のAdd実測と対応付ける。
+ADDSIM = [
+    (f"Y{target}", _add_meas_for(target), _sim_by_target[target])
+    for target in sorted(_sim_by_target)
+]
 
-print("\n[Add実測] foreground_add の加算後Yxyを引用（狙い輝度=bg+fg で平均）")
+print("\n[Add実測] foreground_add/add の加算後Yxyを引用（狙い輝度=bg+fg で平均）")
 for _name, _add_row, _sim in ADDSIM:
     _s = "（実測なし→スキップ）" if _add_row is None \
          else f"Y={_add_row[0]:.2f}, x={_add_row[1]:.4f}, y={_add_row[2]:.4f}"
