@@ -34,13 +34,21 @@ def contrast_to_slider(contrast: float) -> float:
 
 def build_blocks(config: MatchingSessionConfig, rng) -> list[dict]:
     groups = [
-        [{"condition": condition, "ocularity": ocularity}
-         for condition in config.conditions]
+        [
+            {"condition": condition, "ocularity": ocularity}
+            for condition in config.conditions
+        ]
         for ocularity in config.ocularities
     ]
-    for group in groups:
-        rng.shuffle(group)
+
+    # trainingではconfig.pyの条件順を維持する
+    if config.session_type != "training":
+        for group in groups:
+            rng.shuffle(group)
+
+    # binocular / monocularのグループ順はランダム
     rng.shuffle(groups)
+
     return [block for group in groups for block in group]
 
 

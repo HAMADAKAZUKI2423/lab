@@ -121,8 +121,8 @@ def create_experiment_config() -> MatchingSessionConfig:
 def create_training_config() -> MatchingSessionConfig:
     return _base_config(
         "training",
-        conditions=("Single plane", "Dual plane flat"),
-        ref_contrasts=(0.1, 0.2),
+        conditions=("Dual plane flat", "Single plane"),
+        ref_contrasts=(0.2,),
         defocus_cpds=(4,),
         save_preview=False,
     )
