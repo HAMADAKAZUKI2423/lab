@@ -1,115 +1,137 @@
 """デフォーカスマッチング刺激の準備とCanvas描画。"""
 
-from pathlib import Path
-
 import numpy as np
-from PIL import Image, ImageTk
+from PIL import Image
 
-from experiment.stimuli import defocus_stimuli
+from . import geometry, markers, optics, patterns, photometry
 
-from . import geometry, markers, optics, photometry
-
-VISUAL_ANGLE_DEG = 7.9
+VISUAL_ANGLE_WIDTH_DEG = 7.9
+VISUAL_ANGLE_HEIGHT_DEG = 3.95
 WIN2_MARKER_COLOR = "white"
 MATCH_MEAN_LUMINANCE = 15.0
 MATCH_CONTRAST = 1.0
-EXPERIMENT_DIR = Path(__file__).resolve().parent.parent
-LAB_ROOT = EXPERIMENT_DIR.parents[1]
-STIMULUS_OUTPUT_DIR = LAB_ROOT / "data" / "processed" / "images" / "pre-experiment-matching"
 
 
-def _ensure_stimuli(app):
-    conditions = tuple(sorted(set(app.defocus_match_patterns)))
-    cache_key = (float(app.distance1), float(app.distance2), conditions)
-    if getattr(app, "_prepared_defocus_stimuli_key", None) == cache_key:
-        return
-    patterns = tuple(dict.fromkeys(pattern for pattern, _ in conditions))
-    cpds = tuple(sorted({cpd for _, cpd in conditions}))
-    defocus_stimuli.ensure_defocus_stimuli(
-        distance_fg=app.distance1,
-        distance_bg=app.distance2,
-        patterns=patterns,
-        cpds=cpds,
-        output_dir=str(STIMULUS_OUTPUT_DIR),
+def _resize_noise(noise: np.ndarray, width: int, height: int) -> np.ndarray:
+    """角度空間で生成したノイズを表示面の画素数へ変換する。"""
+    image = Image.fromarray(noise.astype(np.float32), mode="F")
+    resized = image.resize((width, height), Image.Resampling.BICUBIC)
+    return np.asarray(resized, dtype=np.float64)
+
+
+def prepare_defocus_trial(app, *, cpd: float, seed: int) -> None:
+    """1試行分の4 cpdノイズを生成し、スライダー操作中は固定する。"""
+    ppd_fg = geometry.get_size_for_visual_angle(app.distance1, 1.0)
+    ppd_bg = geometry.get_size_for_visual_angle(app.distance2, 1.0)
+    canonical_ppd = max(ppd_fg, ppd_bg)
+    canonical_width = int(VISUAL_ANGLE_WIDTH_DEG * canonical_ppd)
+    canonical_height = int(VISUAL_ANGLE_HEIGHT_DEG * canonical_ppd)
+
+    rng = np.random.default_rng(seed)
+    canonical_noise = patterns.create_noise_base(
+        canonical_width,
+        canonical_height,
+        canonical_ppd,
+        cpd,
+        rng=rng,
     )
-    app._prepared_defocus_stimuli_key = cache_key
-    return
+
+    foreground_width = int(VISUAL_ANGLE_WIDTH_DEG * ppd_fg)
+    foreground_height = int(VISUAL_ANGLE_HEIGHT_DEG * ppd_fg)
+    background_width = int(VISUAL_ANGLE_WIDTH_DEG * ppd_bg)
+    background_height = int(VISUAL_ANGLE_HEIGHT_DEG * ppd_bg)
+
+    foreground_noise = _resize_noise(
+        canonical_noise, foreground_width, foreground_height
+    )
+    background_noise = _resize_noise(
+        canonical_noise, background_width, background_height
+    )
+    app.defocus_foreground_luminance = MATCH_MEAN_LUMINANCE * (
+        1.0 + MATCH_CONTRAST * foreground_noise
+    )
+    app.defocus_background_luminance = MATCH_MEAN_LUMINANCE * (
+        1.0 + MATCH_CONTRAST * background_noise
+    )
+    app.defocus_foreground_size = (foreground_width, foreground_height)
+    app.defocus_background_size = (background_width, background_height)
+    app.photo_match_bg = photometry.luminance_to_photo(
+        app.defocus_background_luminance,
+        app.bg_lums,
+        app.bg_pixels,
+    )
 
 
 def update_defocus_view(app) -> None:
-    """現在の条件と瞳孔径に対応する刺激を描画する。"""
-    _ensure_stimuli(app)
+    """固定したノイズへ現在の瞳孔径のブラーを適用して描画する。"""
     app.canvas1.delete("match")
     app.canvas2.delete("match")
     app.canvas2.delete("calib")
+
     distance_fg = app.distance1
     distance_bg = app.distance2
-    foreground_size = geometry.get_size_for_visual_angle(distance_fg, VISUAL_ANGLE_DEG)
-    background_size = geometry.get_size_for_visual_angle(distance_bg, VISUAL_ANGLE_DEG)
     diopter_difference = (
         abs(100.0 / distance_fg - 100.0 / distance_bg)
         if distance_fg > 0 and distance_bg > 0 else 0.0
     )
-    pixels_per_degree = geometry.get_size_for_visual_angle(distance_fg, 1.0)
-    pattern_name, cpd = app.defocus_match_patterns[app.current_match_idx]
-    foreground_path = defocus_stimuli.get_stimulus_path(
-        str(STIMULUS_OUTPUT_DIR), "FG", pattern_name, distance_fg, cpd
+    ppd_fg = geometry.get_size_for_visual_angle(distance_fg, 1.0)
+    blurred_luminance = optics.apply_defocus_blur_to_luminance(
+        app.defocus_foreground_luminance,
+        diopter_difference,
+        app.pupil_diameter_val.get(),
+        ppd_fg,
     )
-    background_path = defocus_stimuli.get_stimulus_path(
-        str(STIMULUS_OUTPUT_DIR), "BG", pattern_name, distance_bg, cpd
-    )
-    with Image.open(foreground_path) as source:
-        foreground = source.convert("L")
-    with Image.open(background_path) as source:
-        background = source.convert("L")
-    foreground = foreground.resize(
-        (foreground_size, foreground_size // 2), Image.Resampling.LANCZOS
-    )
-    foreground = optics.apply_defocus_blur_to_image(
-        foreground, diopter_difference, app.pupil_diameter_val.get(), pixels_per_degree
-    ).transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-    background = background.resize(
-        (background_size, background_size // 2), Image.Resampling.LANCZOS
-    )
-    foreground_base = np.asarray(foreground, dtype=np.float64) / 255.0
-    foreground_luminance = MATCH_MEAN_LUMINANCE * (
-        1.0 + MATCH_CONTRAST * (2.0 * foreground_base - 1.0)
-    )
+    blurred_luminance = np.fliplr(blurred_luminance)
+
     if (
         getattr(app, "color_matrix", None) is not None
         and getattr(app, "gamma_bg", None) is not None
         and getattr(app, "gamma_fg", None) is not None
     ):
         app.photo_match_fg = photometry.luminance_to_dualplane_photo(
-            foreground_luminance, app.bg_lums, app.bg_pixels,
-            app.color_matrix, app.gamma_bg, app.gamma_fg,
+            blurred_luminance,
+            app.bg_lums,
+            app.bg_pixels,
+            app.color_matrix,
+            app.gamma_bg,
+            app.gamma_fg,
         )
     else:
-        app.photo_match_fg = ImageTk.PhotoImage(
-            photometry.luminance_to_pil(foreground_luminance, app.bg_lums, app.bg_pixels)
+        app.photo_match_fg = photometry.luminance_to_photo(
+            blurred_luminance,
+            app.bg_lums,
+            app.bg_pixels,
         )
-    background_base = np.asarray(background, dtype=np.float64) / 255.0
-    background_luminance = MATCH_MEAN_LUMINANCE * (
-        1.0 + MATCH_CONTRAST * (2.0 * background_base - 1.0)
-    )
-    app.photo_match_bg = ImageTk.PhotoImage(
-        photometry.luminance_to_pil(background_luminance, app.bg_lums, app.bg_pixels)
-    )
-    foreground_offset = foreground_size // 4
-    background_offset = -background_size // 4
+
+    foreground_width, foreground_height = app.defocus_foreground_size
+    _, background_height = app.defocus_background_size
+    foreground_offset = foreground_height // 2
+    background_offset = -background_height // 2
+
     app.canvas1.create_image(
         app.width // 2 + app.offset_x.get(),
         app.height // 2 + app.offset_y.get() + background_offset,
-        image=app.photo_match_bg, anchor="center", tags="match",
+        image=app.photo_match_bg,
+        anchor="center",
+        tags="match",
     )
     app.canvas2.create_image(
         app.canvas2.winfo_width() // 2,
         app.canvas2.winfo_height() // 2 + foreground_offset,
-        image=app.photo_match_fg, anchor="center", tags="match",
+        image=app.photo_match_fg,
+        anchor="center",
+        tags="match",
     )
     for offset in (-foreground_offset, foreground_offset):
         markers.draw_image_corner_brackets(
-            app.canvas2, foreground_size, foreground_size // 2,
-            offset_y=offset, color=WIN2_MARKER_COLOR,
+            app.canvas2,
+            foreground_width,
+            foreground_height,
+            offset_y=offset,
+            color=WIN2_MARKER_COLOR,
         )
-        markers.draw_center_cross(app.canvas2, offset_y=offset, color=WIN2_MARKER_COLOR)
+        markers.draw_center_cross(
+            app.canvas2,
+            offset_y=offset,
+            color=WIN2_MARKER_COLOR,
+        )

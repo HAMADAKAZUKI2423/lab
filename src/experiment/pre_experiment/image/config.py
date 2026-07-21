@@ -24,10 +24,8 @@ class ImageSessionConfig:
     distance_bg_cm: int = 150
     background_color: str = "black"
     initial_pupil_diameter_mm: float = 4.0
-    defocus_patterns: tuple[str, ...] = (
-        "checker", "checker_45", "stripe", "border", "noise"
-    )
-    defocus_cpds: tuple[int, ...] = (2, 4)
+    defocus_cpd: float = 4.0
+    defocus_repetitions: int = 5
 
 
 def create_image_config() -> ImageSessionConfig:

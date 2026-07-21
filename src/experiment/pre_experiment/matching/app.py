@@ -321,8 +321,8 @@ class MatchingExperimentApp(ExperimentBaseUI):
         self.canvas2.delete("all")
         setup_defocus_matching_ui(
             self,
-            patterns=self.session_config.defocus_patterns,
-            cpds=self.session_config.defocus_cpds,
+            cpd=self.session_config.defocus_cpd,
+            repetitions=self.session_config.defocus_repetitions,
         )
 
     # ---------- block / trial ----------

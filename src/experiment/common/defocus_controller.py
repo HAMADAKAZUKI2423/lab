@@ -6,28 +6,37 @@ from pathlib import Path
 import random
 import tkinter as tk
 
-from .defocus_view import update_defocus_view
+from .defocus_view import prepare_defocus_trial, update_defocus_view
 
 
-DEFAULT_PATTERNS = ("checker", "checker_45", "stripe", "border", "noise")
-DEFAULT_CPDS = (2, 4)
+DEFAULT_CPD = 4.0
+DEFAULT_REPETITIONS = 10
 
 
 def setup_defocus_matching_ui(
     app,
     *,
-    patterns=DEFAULT_PATTERNS,
-    cpds=DEFAULT_CPDS,
+    cpd: float = DEFAULT_CPD,
+    repetitions: int = DEFAULT_REPETITIONS,
 ) -> None:
-    """指定したパターンと空間周波数でmatchingを開始する。"""
+    """4 cpdの帯域制限ノイズを使ったdefocus matchingを開始する。"""
+    if cpd <= 0:
+        raise ValueError(f"cpd must be positive: {cpd}")
+    if repetitions <= 0:
+        raise ValueError(f"repetitions must be positive: {repetitions}")
+
     app._destroy_frame("ctrl_frame")
     app.clear_key_bindings()
     app.canvas1.delete("all")
     app.canvas2.delete("all")
-    app.defocus_match_patterns = [
-        (pattern, cpd) for pattern in patterns for cpd in cpds
+    app.defocus_match_trials = [
+        {
+            "trial": index + 1,
+            "cpd": float(cpd),
+            "seed": random.randrange(2**32),
+        }
+        for index in range(repetitions)
     ]
-    random.shuffle(app.defocus_match_patterns)
     app.current_match_idx = 0
     app.match_pd_results = []
     _show_step(app)
@@ -36,6 +45,8 @@ def setup_defocus_matching_ui(
 def _show_step(app) -> None:
     app._destroy_frame("ctrl_frame")
     app.clear_key_bindings()
+    trial = app.defocus_match_trials[app.current_match_idx]
+    prepare_defocus_trial(app, cpd=trial["cpd"], seed=trial["seed"])
     app.ctrl_frame = tk.Frame(app.root, bg="gray")
     app.ctrl_frame.place(relx=0.5, rely=0.8, anchor="center")
     app.pupil_diameter_val.set(4.0)
@@ -50,7 +61,7 @@ def _show_step(app) -> None:
         command=lambda *_: update_defocus_view(app),
     ).pack(pady=10)
     current_step = app.current_match_idx + 1
-    total_steps = len(app.defocus_match_patterns)
+    total_steps = len(app.defocus_match_trials)
     button_text = "Matching Done" if current_step == total_steps else "Next Matching"
     button = tk.Button(
         app.ctrl_frame, text=button_text, command=lambda: _record_and_continue(app)
@@ -83,9 +94,9 @@ def _show_step(app) -> None:
 
 
 def _record_and_continue(app) -> None:
-    if app.current_match_idx >= len(app.defocus_match_patterns):
+    if app.current_match_idx >= len(app.defocus_match_trials):
         return
-    pattern, cpd = app.defocus_match_patterns[app.current_match_idx]
+    trial = app.defocus_match_trials[app.current_match_idx]
     pupil_diameter = app.pupil_diameter_val.get()
     app.match_pd_results.append(pupil_diameter)
     current_eye = app.calibration_eyes[app.current_calib_eye_idx]
@@ -93,16 +104,18 @@ def _record_and_continue(app) -> None:
         {
             "ID": app.participant_id.get(),
             "Eye": current_eye,
-            "Pattern": pattern,
-            "Spatial_Freq(cpd)": cpd,
+            "Trial": trial["trial"],
+            "Spatial_Freq(cpd)": trial["cpd"],
+            "Noise_Seed": trial["seed"],
             "Matched_PD(mm)": pupil_diameter,
         }
     )
     print(
-        f"Defocus match result: {pattern}_{cpd}cpd -> {pupil_diameter}mm"
+        f"Defocus match result: trial={trial['trial']}, "
+        f"{trial['cpd']}cpd -> {pupil_diameter}mm"
     )
     app.current_match_idx += 1
-    if app.current_match_idx < len(app.defocus_match_patterns):
+    if app.current_match_idx < len(app.defocus_match_trials):
         _show_step(app)
         return
     average = sum(app.match_pd_results) / len(app.match_pd_results)
@@ -151,7 +164,8 @@ def _save_results(app) -> None:
     )
     output = result_dir / filename
     fields = [
-        "ID", "Eye", "Pattern", "Spatial_Freq(cpd)", "Matched_PD(mm)"
+        "ID", "Eye", "Trial", "Spatial_Freq(cpd)",
+        "Noise_Seed", "Matched_PD(mm)",
     ]
     with output.open("w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=fields)

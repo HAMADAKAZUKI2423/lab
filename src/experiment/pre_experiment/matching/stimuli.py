@@ -34,21 +34,13 @@ def contrast_to_slider(contrast: float) -> float:
 
 def build_blocks(config: MatchingSessionConfig, rng) -> list[dict]:
     groups = [
-        [
-            {"condition": condition, "ocularity": ocularity}
-            for condition in config.conditions
-        ]
+        [{"condition": condition, "ocularity": ocularity}
+         for condition in config.conditions]
         for ocularity in config.ocularities
     ]
-
-    # trainingではconfig.pyの条件順を維持する
-    if config.session_type != "training":
-        for group in groups:
-            rng.shuffle(group)
-
-    # binocular / monocularのグループ順はランダム
+    for group in groups:
+        rng.shuffle(group)
     rng.shuffle(groups)
-
     return [block for group in groups for block in group]
 
 
@@ -91,6 +83,7 @@ def prepare_trial_stimulus(
     orientation: int,
     pupil_diameter_mm: float,
     config: MatchingSessionConfig,
+    rng: np.random.Generator | None = None,
 ) -> PreparedTrialStimulus:
     ppd_fg = geometry.get_size_for_visual_angle(config.distance_fg_cm, 1.0)
     ppd_bg = geometry.get_size_for_visual_angle(config.distance_bg_cm, 1.0)
@@ -113,11 +106,13 @@ def prepare_trial_stimulus(
     else:
         if condition == "Dual plane":
             noise = patterns.create_noise_base(
-                width_bg, height_bg, ppd_bg, config.spatial_frequency
+                width_bg, height_bg, ppd_bg, config.spatial_frequency,
+                rng=rng,
             )
         else:
             noise = patterns.create_noise_base(
-                width_fg, height_fg, ppd_fg, config.spatial_frequency
+                width_fg, height_fg, ppd_fg, config.spatial_frequency,
+                rng=rng,
             )
         background = config.l_bg * (1.0 + noise)
 
@@ -216,29 +211,26 @@ def save_preview_images(
 ) -> None:
     """乱数状態を変えず、代表刺激を保存する。"""
     save_dir.mkdir(parents=True, exist_ok=True)
-    random_state = np.random.get_state()
-    np.random.seed(42)
-    try:
-        for condition in config.conditions:
-            prepared = prepare_trial_stimulus(
-                condition=condition,
-                ocularity="binocular",
-                dominant_eye="Right",
-                orientation=0,
-                pupil_diameter_mm=pupil_diameter_mm,
-                config=config,
-            )
-            photos = generate_trial_photos(
-                prepared,
-                condition=condition,
-                test_contrast=1.0,
-                reference_contrast=0.2,
-                config=config,
-                calibration=calibration,
-            )
-            for key, photo in photos.items():
-                image = getattr(photo, "_PhotoImage__photo", None)
-                if isinstance(image, Image.Image):
-                    image.save(save_dir / f"{condition}_{key}.png")
-    finally:
-        np.random.set_state(random_state)
+    rng = np.random.default_rng(42)
+    for condition in config.conditions:
+        prepared = prepare_trial_stimulus(
+            condition=condition,
+            ocularity="binocular",
+            dominant_eye="Right",
+            orientation=0,
+            pupil_diameter_mm=pupil_diameter_mm,
+            config=config,
+            rng=rng,
+        )
+        photos = generate_trial_photos(
+            prepared,
+            condition=condition,
+            test_contrast=1.0,
+            reference_contrast=0.2,
+            config=config,
+            calibration=calibration,
+        )
+        for key, photo in photos.items():
+            image = getattr(photo, "_PhotoImage__photo", None)
+            if isinstance(image, Image.Image):
+                image.save(save_dir / f"{condition}_{key}.png")

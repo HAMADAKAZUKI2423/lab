@@ -150,14 +150,13 @@ def calculate_blur_attenuation_cached(
     height_px = int(VISUAL_ANGLE_HEIGHT_DEG * ppd_fg)
 
     # 実験のnoise生成と同じ関数を、解析ではseed固定で決定論的に使う。
-    random_state = np.random.get_state()
-    np.random.seed(42)
-    try:
-        noise_base = patterns.create_noise_base(
-            width_px, height_px, ppd_fg, f_center_cpd
-        )
-    finally:
-        np.random.set_state(random_state)
+    noise_base = patterns.create_noise_base(
+        width_px,
+        height_px,
+        ppd_fg,
+        f_center_cpd,
+        rng=np.random.default_rng(42),
+    )
 
     lum_original = DEFAULT_L_BG * (1.0 + BACKGROUND_CONTRAST * noise_base)
     d_fg_m = d_fg / 100.0
@@ -241,7 +240,7 @@ def save_outputs(df, output_dir):
                     continue
 
                 for value_column, suffix, ylabel in bar_specs:
-                    fig, ax = plt.subplots(figsize=(10, 6))
+                    fig, ax = plt.subplots(figsize=(11, 6))
                     sns.barplot(
                         data=plot_df,
                         x="Condition",
@@ -293,7 +292,7 @@ def save_outputs(df, output_dir):
                                 ha="center",
                                 va="bottom",
                                 color="black",
-                                fontsize=10,
+                                fontsize=9,
                                 bbox={
                                     "facecolor": "white",
                                     "alpha": 0.75,
@@ -311,8 +310,8 @@ def save_outputs(df, output_dir):
                     ax.set_xlabel("Condition")
                     ax.set_yscale("log")
                     ax.set_ylim(0.05, 1.0)
-                    ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7,0.8, 0.9, 1.0])
-                    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.2f"))
+                    ax.set_yticks(np.arange(0.1, 1.01, 0.1))
+                    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.1f"))
                     ax.tick_params(axis="x", rotation=0)
 
                     handles, legend_labels = ax.get_legend_handles_labels()
