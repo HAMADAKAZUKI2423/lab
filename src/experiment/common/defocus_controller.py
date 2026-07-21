@@ -10,7 +10,7 @@ from .defocus_view import prepare_defocus_trial, update_defocus_view
 
 
 DEFAULT_CPD = 4.0
-DEFAULT_REPETITIONS = 10
+DEFAULT_REPETITIONS = 5
 
 
 def setup_defocus_matching_ui(
@@ -48,18 +48,22 @@ def _show_step(app) -> None:
     trial = app.defocus_match_trials[app.current_match_idx]
     prepare_defocus_trial(app, cpd=trial["cpd"], seed=trial["seed"])
     app.ctrl_frame = tk.Frame(app.root, bg="gray")
-    app.ctrl_frame.place(relx=0.5, rely=0.8, anchor="center")
+    app.ctrl_frame.place(relx=0.5, rely=0.7, anchor="center")
     app.pupil_diameter_val.set(4.0)
-    tk.Scale(
-        app.ctrl_frame,
-        from_=6.0,
-        to=1.0,
-        resolution=0.1,
-        orient=tk.HORIZONTAL,
-        length=400,
-        variable=app.pupil_diameter_val,
-        command=lambda *_: update_defocus_view(app),
-    ).pack(pady=10)
+    # 操作方法を理解するため、セッション全体の最初の1試行だけ表示する。
+    show_slider = not getattr(app, "_defocus_slider_has_been_shown", False)
+    if show_slider:
+        tk.Scale(
+            app.ctrl_frame,
+            from_=6.0,
+            to=1.0,
+            resolution=0.1,
+            orient=tk.HORIZONTAL,
+            length=400,
+            variable=app.pupil_diameter_val,
+            command=lambda *_: update_defocus_view(app),
+        ).pack(pady=10)
+        app._defocus_slider_has_been_shown = True
     current_step = app.current_match_idx + 1
     total_steps = len(app.defocus_match_trials)
     button_text = "Matching Done" if current_step == total_steps else "Next Matching"
@@ -70,15 +74,15 @@ def _show_step(app) -> None:
     button.focus_set()
     instruction = (
         f"Defocus Matching ({current_step}/{total_steps})\n"
-        "Adjust the slider to match the blur on Window 2 with Window 1.\n"
-        "Press Down to confirm."
+        "Use ← and → to adjust the test stimulus.\n"
+        "Press ↓ to confirm."
     )
     tk.Label(
         app.ctrl_frame,
         text=instruction,
         bg="gray",
         fg="white",
-        font=("Arial", 12),
+        font=("Arial", 16, "bold"),
     ).pack(pady=10, padx=20)
     app.key_bindings["<Down>"] = app.root.bind(
         "<Down>", lambda event: _record_and_continue(app)
