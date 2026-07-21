@@ -289,7 +289,7 @@ class MatchingExperimentApp(ExperimentBaseUI):
         self._destroy_frame("ctrl_frame")
         self.clear_key_bindings()
         self.ctrl_frame = tk.Frame(self.root, bg="gray")
-        self.ctrl_frame.place(relx=0.5, rely=0.8, anchor="center")
+        self.ctrl_frame.place(relx=0.5, rely=0.7, anchor="center")
         if is_new_eye:
             eye = self.calibration_eyes[self.current_calib_eye_idx]
             text = f"[{eye} Eye Calibration]\nUse arrow keys to align the red frame."
@@ -321,8 +321,8 @@ class MatchingExperimentApp(ExperimentBaseUI):
         self.canvas2.delete("all")
         setup_defocus_matching_ui(
             self,
-            patterns=self.session_config.defocus_patterns,
-            cpds=self.session_config.defocus_cpds,
+            cpd=self.session_config.defocus_cpd,
+            repetitions=self.session_config.defocus_repetitions,
         )
 
     # ---------- block / trial ----------
@@ -411,20 +411,31 @@ class MatchingExperimentApp(ExperimentBaseUI):
         self._destroy_frame("ctrl_frame")
         self.clear_key_bindings()
         self.ctrl_frame = tk.Frame(self.root, bg="gray")
-        self.ctrl_frame.place(relx=0.5, rely=0.8, anchor="center")
+        self.ctrl_frame.place(relx=0.5, rely=0.7, anchor="center")
         self.slider_val = tk.DoubleVar(value=self.init_slider_val)
-        tk.Scale(
-            self.ctrl_frame, from_=1.0, to=0.0, resolution=0.001,
-            orient=tk.HORIZONTAL, length=400, variable=self.slider_val,
-            showvalue=0, command=lambda *_: self.update_stimuli(),
-        ).pack(pady=10)
+        # 操作方法を理解するため、実験全体の最初の1試行だけ表示する。
+        if self.current_trial_in_experiment == 0:
+            tk.Scale(
+                self.ctrl_frame,
+                from_=1.0,
+                to=0.0,
+                resolution=0.001,
+                orient=tk.HORIZONTAL,
+                length=400,
+                variable=self.slider_val,
+                showvalue=0,
+                command=lambda *_: self.update_stimuli(),
+            ).pack(pady=10)
         tk.Button(
             self.ctrl_frame, text="Next Trial", command=self.save_and_next
         ).pack(pady=10)
         tk.Label(
             self.ctrl_frame,
-            text="Adjust the slider to match the contrast.\nPress Down to confirm.",
-            bg="gray", fg="white", font=("Arial", 12),
+            text=(
+                "Use ← and → to adjust the test stimulus.\n"
+                "Press ↓ to confirm."
+            ),
+            bg="gray", fg="white", font=("Arial", 16, "bold"),
         ).pack(pady=10, padx=20)
         self.key_bindings["<Down>"] = self.root.bind(
             "<Down>", lambda e: self.save_and_next()

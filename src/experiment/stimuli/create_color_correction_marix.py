@@ -7,16 +7,13 @@ import matplotlib.pyplot as plt
 from scipy.optimize import curve_fit
 
 # =============================================================
-# 実測パッチから色変換行列 T'(透過)・R'(反射)・C(=inv(R')·T') を推定し CSV 保存する
-#   モデル: XYZ = M @ rgb_lin  (M は 3x3 / 純色+白+CMY+グレーを最小二乗で当てはめ)
+# 実測階調ランプから色変換行列 T'(透過)・R'(反射)・C(=inv(R')·T') を推定し CSV 保存する
+#   モデル: XYZ = M @ rgb_lin
+#   background/foreground の ramps 全CSVを(channel, pixel)ごとにXYZ空間で平均し、
+#   pixel=128,255 の R/G/B/W を最小二乗フィットに使用する。
 # =============================================================
 
-# ---- 入力パッチを CSV から読み込み（複数ファイルを XYZ 空間で平均）----
-#   results/tables/DisplayBrightness/{background,foreground}/patches/*.csv
-#   列: name, sR, sG, sB, Y, x, y
-
-DATA_ROOT   = os.path.join("results", "tables", "DisplayBrightness")
-PATCH_ORDER = ["R", "G", "B", "W", "semiR", "semiG", "semiB", "Gray"]
+DATA_ROOT = os.path.join("results", "tables", "DisplayBrightness")
 
 def _yxy2xyz(Y, x, y):
     if y == 0:
@@ -56,34 +53,6 @@ def _get(row, *names):
             return row[nm]
     raise KeyError(names)
 
-def load_patches_avg(sub):
-    """{sub}/patches/*.csv を name ごとにXYZ平均。 -> ({name:{'srgb','yxy','n'}}, ファイル数)"""
-    d = os.path.join(DATA_ROOT, sub, "patches")
-    files = sorted(glob.glob(os.path.join(d, "*.csv")))
-    if not files:
-        raise FileNotFoundError(f"CSVが見つかりません: {d}")
-    srgb_acc, xyz_acc = {}, {}
-    for path in files:
-        for row in _read_csv_dicts(path):
-            try:
-                name = _get(row, "name", "Name")
-                srgb = (float(_get(row, "sR", "sr")),
-                        float(_get(row, "sG", "sg")),
-                        float(_get(row, "sB", "sb")))
-                Y = float(_get(row, "Y")); x = float(_get(row, "x")); y = float(_get(row, "y"))
-            except (KeyError, ValueError):
-                continue
-            srgb_acc.setdefault(name, []).append(srgb)
-            xyz_acc.setdefault(name, []).append(_yxy2xyz(Y, x, y))
-    out = {}
-    for name, xyzs in xyz_acc.items():
-        out[name] = {
-            "srgb": tuple(np.mean(np.array(srgb_acc[name]), axis=0)),
-            "yxy":  _xyz2yxy(np.mean(np.array(xyzs), axis=0)),
-            "n":    len(xyzs),
-        }
-    return out, len(files)
-
 def load_ramps_avg(sub):
     """{sub}/ramps/*.csv を (channel,pixel) ごとにXYZ平均。 -> {ch:[(pixel,Y,x,y),...]}"""
     d = os.path.join(DATA_ROOT, sub, "ramps")
@@ -107,27 +76,6 @@ def load_ramps_avg(sub):
     for ch in ramp:
         ramp[ch].sort(key=lambda t: -t[0])   # 255 -> 0 の順
     return ramp
-
-# ---- パッチ平均を読み込み、背景(BGT)・前景(FGR)を name で突き合わせて PATCHES を生成 ----
-_bg_p, _n_bg = load_patches_avg("background")
-_fg_p, _n_fg = load_patches_avg("foreground")
-
-_names  = [n for n in PATCH_ORDER if (n in _bg_p or n in _fg_p)]
-_names += [n for n in sorted(set(_bg_p) | set(_fg_p)) if n not in _names]
-
-PATCHES = []
-for n in _names:
-    _src = _bg_p.get(n) or _fg_p.get(n)
-    srgb = tuple(float(c) for c in _src["srgb"])
-    bgt  = tuple(_bg_p[n]["yxy"]) if n in _bg_p else None
-    fgr  = tuple(_fg_p[n]["yxy"]) if n in _fg_p else None
-    PATCHES.append((n, srgb, bgt, fgr))
-
-print(f"[CSV読込] パッチ: background {_n_bg} ファイル / foreground {_n_fg} ファイル -> {len(PATCHES)} パッチ")
-for _p in PATCHES:
-    _b = None if _p[2] is None else tuple(round(v, 4) for v in _p[2])
-    _f = None if _p[3] is None else tuple(round(v, 4) for v in _p[3])
-    print(f"  {_p[0]:>6}  sRGB={tuple(round(c,3) for c in _p[1])}  BGT={_b}  FGR={_f}")
 
 # ============================================================
 # 実測EOTF g の構築
@@ -326,40 +274,93 @@ g_b     = lambda v: _apply(_gb, v, 0)   # 背景画素値 -> 正規化線形
 g_f     = lambda v: _apply(_gf, v, 0)   # 前景画素値 -> 正規化線形
 g_f_inv = lambda l: _apply(_gf, l, 1)   # 正規化線形 -> 前景画素値
 
-def collect(channel):
-    """channel='BGT' or 'FGR' の有効パッチを (rgb_lin, XYZ, names) で返す"""
-    idx = 2 if channel == "BGT" else 3
-    rgb_lin, XYZ, names = [], [], []
-    for p in PATCHES:
-        meas = p[idx]
-        if meas is None or any(v is None for v in meas):
-            continue  # 未測定はスキップ
-        lin = g_b(p[1]) if channel == "BGT" else g_f(p[1])   # 背景=g_b / 前景=g_f で線形化
-        rgb_lin.append(lin)
-        XYZ.append(_yxy2xyz(*meas))
-        names.append(p[0])
-    return np.array(rgb_lin), np.array(XYZ), names
+FIT_LEVELS = (128, 255)
+FIT_CHANNELS = ("R", "G", "B", "W")
+
+
+def _ramp_input_rgb(channel, pixel):
+    """ランプのchannel/pixelを表示入力RGB(0-1)へ戻す。"""
+    value = float(pixel) / 255.0
+    if channel == "R":
+        return np.array([value, 0.0, 0.0])
+    if channel == "G":
+        return np.array([0.0, value, 0.0])
+    if channel == "B":
+        return np.array([0.0, 0.0, value])
+    if channel == "W":
+        return np.array([value, value, value])
+    raise ValueError(f"unsupported ramp channel: {channel}")
+
+
+def collect_ramp_fit(ramp, eotf, side):
+    """平均済みrampsのpixel=128,255から行列フィット用(rgb_lin, XYZ, names)を作る。"""
+    rgb_lin, xyz_values, names = [], [], []
+    missing = []
+    for channel in FIT_CHANNELS:
+        by_pixel = {
+            int(pixel): (float(Y), float(x), float(y))
+            for pixel, Y, x, y in ramp.get(channel, [])
+        }
+        for pixel in FIT_LEVELS:
+            if pixel not in by_pixel:
+                missing.append(f"{channel}_{pixel}")
+                continue
+            Y, x, y = by_pixel[pixel]
+            rgb_lin.append(eotf(_ramp_input_rgb(channel, pixel)))
+            xyz_values.append(_yxy2xyz(Y, x, y))
+            names.append(f"{channel}_{pixel}")
+
+        selected = [(pixel, by_pixel[pixel][0]) for pixel in FIT_LEVELS if pixel in by_pixel]
+        if len(selected) >= 2:
+            luminances = np.array([item[1] for item in selected], dtype=float)
+            if np.any(np.diff(luminances) < 0):
+                print(f"WARN: {side}/{channel} のYが128から255で増加していません: {selected}")
+
+    if missing:
+        raise ValueError(
+            f"{side} rampsに行列フィット用測定点が不足しています: {', '.join(missing)}"
+        )
+    return np.array(rgb_lin), np.array(xyz_values), names
+
 
 def fit_matrix(rgb_lin, XYZ):
     """
     XYZ = M @ rgb_lin を最小二乗で解く (M: 3x3)
     行形式: rgb_lin(N,3) @ M.T = XYZ(N,3)
     """
-    Mt, *_ = np.linalg.lstsq(rgb_lin, XYZ, rcond=None)  # A @ Mt = Bm -> Mt = M.T
+    Mt, *_ = np.linalg.lstsq(rgb_lin, XYZ, rcond=None)
     return Mt.T
 
-# ===================== 推定 =====================
-rgb_T, XYZ_T, names_T = collect("BGT")
-rgb_R, XYZ_R, names_R = collect("FGR")
+
+def report_matrix_fit(name, matrix, rgb_lin, xyz_measured, labels):
+    """行列フィットのXYZ残差と入力行列の条件数を表示する。"""
+    xyz_predicted = rgb_lin @ matrix.T
+    residual = xyz_measured - xyz_predicted
+    rmse_xyz = np.sqrt(np.mean(residual ** 2, axis=0))
+    rmse_total = float(np.sqrt(np.mean(residual ** 2)))
+    print(f"\n---- [{name}] ramps pixel=128,255 行列フィット検証 ----")
+    print(f"  points={len(labels)} / condition={np.linalg.cond(rgb_lin):.3f}")
+    print(f"  RMSE XYZ={np.round(rmse_xyz, 6)} / total={rmse_total:.6f}")
+    for channel in FIT_CHANNELS:
+        mask = np.array([label.startswith(f"{channel}_") for label in labels])
+        channel_rmse = float(np.sqrt(np.mean(residual[mask] ** 2)))
+        print(f"  {channel}: RMSE={channel_rmse:.6f}")
+
+
+# ===================== rampsから推定 =====================
+rgb_T, XYZ_T, names_T = collect_ramp_fit(RAMP_BG, g_b, "background")
+rgb_R, XYZ_R, names_R = collect_ramp_fit(RAMP_FG, g_f, "foreground")
 
 T_prime = fit_matrix(rgb_T, XYZ_T)   # T·Db
 R_prime = fit_matrix(rgb_R, XYZ_R)   # R·Df
-C = np.linalg.inv(R_prime) @ T_prime      # = (R·Df)^(-1)(T·Db)
+C = np.linalg.inv(R_prime) @ T_prime  # = (R·Df)^(-1)(T·Db)
 
 np.set_printoptions(precision=6, suppress=True)
 print("T_prime:\n", T_prime)
 print("R_prime:\n", R_prime)
 print("C = inv(R') @ T':\n", C)
+report_matrix_fit("T_prime/background", T_prime, rgb_T, XYZ_T, names_T)
+report_matrix_fit("R_prime/foreground", R_prime, rgb_R, XYZ_R, names_R)
 
 # =============================================================
 # R', T', C を CSV 保存（別プログラムから参照する用）
@@ -448,20 +449,20 @@ print("  ", os.path.abspath(_bg_lut_path))
 
 # =============================================================
 # 単一プレーンLUT: 実測の加算結果から「前景1枚で目標輝度を再現」する画像を生成
-#   入力: results/tables/DisplayBrightness/foreground_add/*.csv （加算後の測定値 Y,x,y）
+#   入力: results/tables/DisplayBrightness/foreground_add/add/*.csv （加算後の測定値 Y,x,y）
 #   方法: 加算後 Yxy -> XYZ -> inv(R') -> 前景線形 -> g_f_inv で前景画素値を求め、
 #         加算後輝度 Y をキーに 1D LUT(線形補間・範囲外は端点クランプ)を構築する。
 #   出力: 目標輝度ごとの前景画像 AddSim_Y**.png を foreground_add に保存。
 # =============================================================
 FG_ADD_DIR  = os.path.join(FIG_DIR, "foreground_add")
-ADD_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add")
+ADD_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add", "add")
 ADD_TARGETS = [0, 10, 20, 30, 40, 50, 60]   # 前景1枚で再現したい加算輝度(cd/m^2)
 PATCH       = 256                            # 出力画像の一辺(px)
 
 R_prime_inv = np.linalg.inv(R_prime)         # XYZ -> 前景線形RGB
 
 def load_add_measurements(dir_path):
-    """foreground_add/*.csv から加算後の (Y, x, y) を読み込む。CSVが無ければ空リスト。"""
+    """foreground_add/add/*.csv から加算後の (Y, x, y) を読み込む。CSVが無ければ空リスト。"""
     files = sorted(glob.glob(os.path.join(dir_path, "*.csv")))
     if not files:
         print(f"[単一プレーンLUT] 加算測定CSVが見つかりません（スキップ）: {dir_path}")

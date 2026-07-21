@@ -24,8 +24,8 @@ class MatchingSessionConfig:
     ref_contrasts: tuple[float, ...]
     orientations: tuple[int, ...]
     repetitions: int
-    defocus_patterns: tuple[str, ...]
-    defocus_cpds: tuple[int, ...]
+    defocus_cpd: float
+    defocus_repetitions: int
     save_preview: bool
     result_root: Path
     figure_root: Path
@@ -80,10 +80,8 @@ def _base_config(session_type: str, **overrides: Any) -> MatchingSessionConfig:
         "ref_contrasts": (),
         "orientations": (0,),
         "repetitions": 5,
-        "defocus_patterns": (
-            "checker", "checker_45", "stripe", "border", "noise"
-        ),
-        "defocus_cpds": (2, 4),
+        "defocus_cpd": 4.0,
+        "defocus_repetitions": 5,
         "save_preview": True,
         "result_root": result_root,
         "figure_root": figure_root,
@@ -113,7 +111,8 @@ def create_experiment_config() -> MatchingSessionConfig:
             "Dual plane flat",
         ),
         ref_contrasts=(0.1, 0.2),
-        defocus_cpds=(2, 4),
+        defocus_cpd=4.0,
+        defocus_repetitions=10,
         save_preview=True,
     )
 
@@ -123,6 +122,7 @@ def create_training_config() -> MatchingSessionConfig:
         "training",
         conditions=("Single plane", "Dual plane"),
         ref_contrasts=(0.2,),
-        defocus_cpds=(4,),
+        defocus_cpd=4.0,
+        defocus_repetitions=5,
         save_preview=False,
     )

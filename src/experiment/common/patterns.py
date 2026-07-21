@@ -9,9 +9,11 @@ def create_noise_base(
     ppd: float,
     f_center_cpd: float,
     bandwidth_octave: float = 1.0,
+    rng: np.random.Generator | None = None,
 ) -> np.ndarray:
     """中心周波数周辺へ帯域制限したノイズを-1から1で返す。"""
-    white_noise = np.random.normal(0, 1, (height_px, width_px))
+    rng = rng or np.random.default_rng()
+    white_noise = rng.normal(0.0, 1.0, (height_px, width_px))
     noise_spectrum = np.fft.fftshift(np.fft.fft2(white_noise))
     frequency_x = np.fft.fftshift(np.fft.fftfreq(width_px, d=1 / ppd))
     frequency_y = np.fft.fftshift(np.fft.fftfreq(height_px, d=1 / ppd))

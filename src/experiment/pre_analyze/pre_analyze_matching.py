@@ -15,7 +15,7 @@ Defocus処理は実験と同じcommon.opticsを使用する。
 import argparse
 import glob
 import os
-import datetime
+import re
 
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -150,14 +150,13 @@ def calculate_blur_attenuation_cached(
     height_px = int(VISUAL_ANGLE_HEIGHT_DEG * ppd_fg)
 
     # 実験のnoise生成と同じ関数を、解析ではseed固定で決定論的に使う。
-    random_state = np.random.get_state()
-    np.random.seed(42)
-    try:
-        noise_base = patterns.create_noise_base(
-            width_px, height_px, ppd_fg, f_center_cpd
-        )
-    finally:
-        np.random.set_state(random_state)
+    noise_base = patterns.create_noise_base(
+        width_px,
+        height_px,
+        ppd_fg,
+        f_center_cpd,
+        rng=np.random.default_rng(42),
+    )
 
     lum_original = DEFAULT_L_BG * (1.0 + BACKGROUND_CONTRAST * noise_base)
     d_fg_m = d_fg / 100.0
@@ -310,10 +309,10 @@ def save_outputs(df, output_dir):
                     ax.set_ylabel(ylabel)
                     ax.set_xlabel("Condition")
                     ax.set_yscale("log")
-                    ax.set_ylim(0.05, 1.2)
-                    ax.set_yticks([0.05, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 1.0])
-                    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.2g"))
-                    ax.tick_params(axis="x", rotation=15)
+                    ax.set_ylim(0.05, 1.0)
+                    ax.set_yticks(np.arange(0.1, 1.01, 0.1))
+                    ax.yaxis.set_major_formatter(ticker.FormatStrFormatter("%.1f"))
+                    ax.tick_params(axis="x", rotation=0)
 
                     handles, legend_labels = ax.get_legend_handles_labels()
                     unique_legend = dict(zip(legend_labels, handles))
@@ -371,7 +370,21 @@ def main():
     else:
         default_figure_root = COMBINED_FIGURE_ROOT
 
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    session_timestamps = []
+    for session_dir in session_dirs:
+        folder_name = os.path.basename(os.path.normpath(session_dir))
+        match = re.search(r"(\d{8}_\d{6})$", folder_name)
+        if match:
+            session_timestamps.append(match.group(1))
+
+    if not session_timestamps:
+        raise ValueError(
+            "実験結果フォルダ名から日時を取得できませんでした。"
+            "フォルダ名は ID_YYYYMMDD_HHMMSS の形式にしてください。"
+        )
+
+    # 複数セッションの場合は、解析対象中で最も新しい実験日時を使う。
+    timestamp = max(session_timestamps)
     output_dir = args.output_dir or os.path.join(
         default_figure_root, f"analysis_{timestamp}"
     )
