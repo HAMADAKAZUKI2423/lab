@@ -136,34 +136,35 @@ def generate_trial_photos(
     config: MatchingSessionConfig,
     calibration: DisplayCalibration,
 ):
-    """matching条件を共通の輝度変換関数へ割り当てる。"""
+    """refはBG15実測LUT、SP testは加算実測LUT、DP testは光学加算で生成する。"""
     reference_luminance = config.l_ref * (
         1.0 + reference_contrast * prepared.gabor_base
     )
-    if condition in DUAL_CONDITIONS:
-        if calibration.dp_ref_y is not None and calibration.dp_ref_px is not None:
-            reference_photo = photometry.luminance_to_singleplane_photo(
-                reference_luminance,
-                calibration.dp_ref_y,
-                calibration.dp_ref_px,
-            )
-        else:
-            reference_photo = photometry.luminance_to_window2_photo(
-                reference_luminance,
-                calibration.bg_lums,
-                calibration.bg_pixels,
-                calibration.color_matrix,
-                calibration.gamma_bg,
-                calibration.gamma_fg,
-                condition=condition,
-            )
-        test_luminance = config.l_fg * (
-            1.0 + test_contrast * prepared.gabor_base
+    if calibration.ref_lut_y is not None and calibration.ref_lut_px is not None:
+        reference_photo = photometry.luminance_to_singleplane_photo(
+            reference_luminance,
+            calibration.ref_lut_y,
+            calibration.ref_lut_px,
         )
+    else:
+        reference_photo = photometry.luminance_to_window2_photo(
+            reference_luminance,
+            calibration.bg_lums,
+            calibration.bg_pixels,
+            calibration.color_matrix,
+            calibration.gamma_bg,
+            calibration.gamma_fg,
+            condition="Dual plane",
+        )
+
+    foreground_luminance = config.l_fg * (
+        1.0 + test_contrast * prepared.gabor_base
+    )
+    if condition in DUAL_CONDITIONS:
         return {
             "photo_ref_fg": reference_photo,
             "photo_test_fg": photometry.luminance_to_window2_photo(
-                test_luminance,
+                foreground_luminance,
                 calibration.bg_lums,
                 calibration.bg_pixels,
                 calibration.color_matrix,
@@ -177,29 +178,26 @@ def generate_trial_photos(
                 calibration.bg_pixels,
             ),
         }
-    test_luminance = (
-        prepared.background_luminance
-        + config.l_fg * (1.0 + test_contrast * prepared.gabor_base)
-    )
+
+    total_luminance = prepared.background_luminance + foreground_luminance
+    if (
+        calibration.sp_test_lut_y is not None
+        and calibration.sp_test_lut_px is not None
+    ):
+        test_photo = photometry.luminance_to_singleplane_photo(
+            total_luminance,
+            calibration.sp_test_lut_y,
+            calibration.sp_test_lut_px,
+        )
+    else:
+        test_photo = photometry.luminance_to_singleplane_photo(
+            total_luminance,
+            calibration.ext_lum_y,
+            calibration.ext_lum_px,
+        )
     return {
-        "photo_ref_fg": photometry.luminance_to_window2_photo(
-            reference_luminance,
-            calibration.bg_lums,
-            calibration.bg_pixels,
-            calibration.color_matrix,
-            luminance_grid=calibration.ext_lum_y,
-            pixel_grid=calibration.ext_lum_px,
-            condition=condition,
-        ),
-        "photo_test": photometry.luminance_to_window2_photo(
-            test_luminance,
-            calibration.bg_lums,
-            calibration.bg_pixels,
-            calibration.color_matrix,
-            luminance_grid=calibration.ext_lum_y,
-            pixel_grid=calibration.ext_lum_px,
-            condition=condition,
-        ),
+        "photo_ref_fg": reference_photo,
+        "photo_test": test_photo,
     }
 
 
