@@ -95,7 +95,7 @@ def luminance_to_dualplane_photo(
 
 
 def luminance_to_singleplane_photo(luminance, luminance_grid, pixel_grid):
-    """拡張輝度LUTを使ってPhotoImageへ変換する。"""
+    """1次元カラーLUTを使ってPhotoImageへ変換する。"""
     luminance = np.asarray(luminance, dtype=np.float64)
     output = np.empty(luminance.shape + (3,), dtype=np.float64)
     for channel in range(3):
