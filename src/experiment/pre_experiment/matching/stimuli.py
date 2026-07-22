@@ -141,11 +141,11 @@ def generate_trial_photos(
         1.0 + reference_contrast * prepared.gabor_base
     )
     if condition in DUAL_CONDITIONS:
-        if calibration.ext_lum_y is not None and calibration.ext_lum_px is not None:
+        if calibration.dp_ref_y is not None and calibration.dp_ref_px is not None:
             reference_photo = photometry.luminance_to_singleplane_photo(
                 reference_luminance,
-                calibration.ext_lum_y,
-                calibration.ext_lum_px,
+                calibration.dp_ref_y,
+                calibration.dp_ref_px,
             )
         else:
             reference_photo = photometry.luminance_to_window2_photo(

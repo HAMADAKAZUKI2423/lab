@@ -505,6 +505,93 @@ else:
                header="Y,pxR,pxG,pxB", comments="")
     print(f"\n[CSV保存] 拡張輝度LUTを保存しました -> {os.path.abspath(lut_path)}")
 
+    # DP参照刺激専用LUTを作る。
+    # 背景の設定輝度を15 cd/m^2に固定し、参照刺激の残りを前景へ割り当てる。
+    # 入力キーは設定上の合計輝度(bg + fg)、出力は加算実測XYZを
+    # Window 2単独で再現するためのカラーRGB画素値とする。
+    DP_REF_BG_LUMINANCE = 15.0
+
+    def load_dp_ref_measurements(dir_path, bg_target):
+        files = sorted(glob.glob(os.path.join(dir_path, "*.csv")))
+        samples = []
+        for path in files:
+            for row in _read_csv_dicts(path):
+                try:
+                    bg = float(_get(row, "bg", "BG", "bg_Y", "Ybg"))
+                    fg = float(_get(row, "fg", "FG", "fg_Y", "Yfg"))
+                    measured_Y = float(_get(row, "Y", "Y_add", "Yadd"))
+                    x = float(_get(row, "x"))
+                    y = float(_get(row, "y"))
+                except (KeyError, ValueError):
+                    continue
+                if np.isclose(bg, bg_target, rtol=0.0, atol=1e-6):
+                    samples.append((bg + fg, measured_Y, x, y))
+        return samples
+
+    _dp_samples = load_dp_ref_measurements(
+        ADD_CSV_DIR, DP_REF_BG_LUMINANCE
+    )
+    if not _dp_samples:
+        print(
+            "[DP ref LUT] BG=15の加算測定がないため "
+            "dp_ref_lut.csv の生成をスキップします"
+        )
+    else:
+        _dp_target_y = np.array(
+            [sample[0] for sample in _dp_samples], dtype=float
+        )
+        _dp_xyz = np.array([
+            _yxy2xyz(sample[1], sample[2], sample[3])
+            for sample in _dp_samples
+        ])
+
+        # 同一設定条件の反復測定は、RGBではなくXYZ空間で平均する。
+        _dp_uY, _dp_inv = np.unique(
+            np.round(_dp_target_y, 4), return_inverse=True
+        )
+        _dp_uXYZ = np.array([
+            _dp_xyz[_dp_inv == index].mean(axis=0)
+            for index in range(len(_dp_uY))
+        ])
+
+        _dp_linear_rgb = _dp_uXYZ @ R_prime_inv.T
+        _dp_out_of_gamut = np.any(
+            (_dp_linear_rgb < 0.0) | (_dp_linear_rgb > 1.0), axis=1
+        )
+        if np.any(_dp_out_of_gamut):
+            print(
+                "WARN: DP ref LUTに前景色域外の点があります: "
+                f"{_dp_uY[_dp_out_of_gamut]}"
+            )
+
+        _dp_px = np.clip(
+            g_f_inv(np.clip(_dp_linear_rgb, 0.0, None)), 0.0, 1.0
+        )
+        _dp_y_grid = np.linspace(
+            float(_dp_uY.min()), float(_dp_uY.max()), 1024
+        )
+        _dp_px_grid = np.stack([
+            np.interp(_dp_y_grid, _dp_uY, _dp_px[:, channel])
+            for channel in range(3)
+        ], axis=1)
+
+        dp_ref_lut_path = os.path.join(TABLE_DIR, "dp_ref_lut.csv")
+        np.savetxt(
+            dp_ref_lut_path,
+            np.column_stack([_dp_y_grid, _dp_px_grid]),
+            delimiter=",",
+            header="Y,pxR,pxG,pxB",
+            comments="",
+        )
+        print(
+            "\n[CSV保存] BG=15固定のDP ref LUTを保存しました -> "
+            f"{os.path.abspath(dp_ref_lut_path)}"
+        )
+        print(
+            f"  設定合計輝度レンジ: {_dp_uY.min():.2f}〜"
+            f"{_dp_uY.max():.2f} cd/m^2 / 測定点: {len(_dp_uY)}"
+        )
+
     os.makedirs(FG_ADD_DIR, exist_ok=True)
     print("\n==== 単一プレーンLUT（実測加算ベース）====")
     print(f"入力CSV: {ADD_CSV_DIR}")
