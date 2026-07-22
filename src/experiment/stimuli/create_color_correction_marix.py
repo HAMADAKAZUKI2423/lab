@@ -456,7 +456,7 @@ print("  ", os.path.abspath(_bg_lut_path))
 # =============================================================
 FG_ADD_DIR  = os.path.join(FIG_DIR, "foreground_add")
 ADD_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add", "add")
-ADD_TARGETS = [0, 10, 20, 30, 40, 50, 60]   # 前景1枚で再現したい加算輝度(cd/m^2)
+ADD_TARGETS = [0, 15, 25, 30, 35, 45, 60]   # 前景1枚で再現したい加算輝度(cd/m^2)
 PATCH       = 256                            # 出力画像の一辺(px)
 
 R_prime_inv = np.linalg.inv(R_prime)         # XYZ -> 前景線形RGB
@@ -533,26 +533,29 @@ else:
         print("[加算sim LUT] bg/fg付き加算測定がないため生成をスキップします")
     else:
         # SP系test用の連続1次元LUTを作る。
-        # 0〜15: BG=0のFG=0,10,15
+        # 0〜15: BG=0のFG=0,5,10,15
         # 15〜45: BG=15の全測定点
-        # 45〜60: BG=30のFG=15,20,30
+        # 45〜60: BG=30のFG=15,20,25,30
         # 境界15/45は両側の加算実測XYZを平均して共通アンカーにする。
         selected_by_total = {}
         for (bg, fg), xyz in _component_xyz.items():
             use_sample = (
                 (np.isclose(bg, 0.0) and any(
-                    np.isclose(fg, value) for value in (0.0, 10.0, 15.0)
+                    np.isclose(fg, value) for value in (0.0, 5.0, 10.0, 15.0)
                 ))
                 or (np.isclose(bg, 15.0) and 0.0 <= fg <= 30.0)
                 or (np.isclose(bg, 30.0) and any(
-                    np.isclose(fg, value) for value in (15.0, 20.0, 30.0)
+                    np.isclose(fg, value) for value in (15.0, 20.0, 25.0, 30.0)
                 ))
             )
             if use_sample:
                 total = round(bg + fg, 4)
                 selected_by_total.setdefault(total, []).append(xyz)
 
-        required_totals = {0.0, 10.0, 15.0, 45.0, 50.0, 60.0}
+        required_totals = {
+            0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0,
+            35.0, 40.0, 45.0, 50.0, 55.0, 60.0,
+        }
         missing_totals = sorted(required_totals - set(selected_by_total))
         if missing_totals:
             print(
@@ -602,10 +605,10 @@ else:
             )
             print(f"  合計輝度ノード: {sp_node_y.tolist()}")
 
-        # 全条件共通ref用: BG=15固定、FG=0,10,15,20,30の
+        # 全条件共通ref用: BG=15固定、FG=0,5,10,15,20,25,30の
         # 加算実測XYZを使い、各XYZの実測YをLUT入力軸として補間する。
         # これにより目標Yを直接指定し、refの物理コントラストを維持する。
-        ref_fg_values = (0.0, 10.0, 15.0, 20.0, 30.0)
+        ref_fg_values = (0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0)
         ref_keys = [(15.0, fg) for fg in ref_fg_values]
         missing_ref_keys = [
             key for key in ref_keys if key not in _component_xyz
