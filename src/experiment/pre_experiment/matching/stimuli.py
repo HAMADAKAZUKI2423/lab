@@ -207,11 +207,21 @@ def save_preview_images(
     calibration: DisplayCalibration,
     pupil_diameter_mm: float,
 ) -> None:
-    """乱数状態を変えず、代表刺激を保存する。"""
+    """重複を除いた代表刺激を、指定コントラストごとに保存する。"""
     save_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(42)
-    for condition in config.conditions:
-        prepared = prepare_trial_stimulus(
+    test_contrasts = (0.1, 1.0)
+    reference_contrasts = (0.1, 0.2)
+
+    def save_photo(photo, filename: str) -> None:
+        tk_photo = getattr(photo, "_PhotoImage__photo", None)
+        if tk_photo is None:
+            print(f"WARN: preview image could not be saved: {filename}")
+            return
+        tk_photo.write(str(save_dir / filename), format="png")
+
+    prepared_by_condition = {
+        condition: prepare_trial_stimulus(
             condition=condition,
             ocularity="binocular",
             dominant_eye="Right",
@@ -220,15 +230,80 @@ def save_preview_images(
             config=config,
             rng=rng,
         )
+        for condition in config.conditions
+    }
+
+    # ref前景は条件間で共通なので、参照コントラストごとに1枚だけ保存する。
+    reference_condition = config.conditions[0]
+    reference_prepared = prepared_by_condition[reference_condition]
+    for contrast in reference_contrasts:
         photos = generate_trial_photos(
-            prepared,
-            condition=condition,
-            test_contrast=1.0,
-            reference_contrast=0.2,
+            reference_prepared,
+            condition=reference_condition,
+            test_contrast=test_contrasts[0],
+            reference_contrast=contrast,
             config=config,
             calibration=calibration,
         )
-        for key, photo in photos.items():
-            image = getattr(photo, "_PhotoImage__photo", None)
-            if isinstance(image, Image.Image):
-                image.save(save_dir / f"{condition}_{key}.png")
+        save_photo(photos["photo_ref_fg"], f"ref_fg_c{contrast:g}.png")
+
+    # Single plane系は背景と前景を合成したtest画像を条件・コントラスト別に保存する。
+    for condition in ("Single plane", "Single plane + defocus simulation"):
+        if condition not in prepared_by_condition:
+            continue
+        prepared = prepared_by_condition[condition]
+        condition_label = (
+            "single_defocus" if condition.endswith("defocus simulation") else "single"
+        )
+        for contrast in test_contrasts:
+            photos = generate_trial_photos(
+                prepared,
+                condition=condition,
+                test_contrast=contrast,
+                reference_contrast=reference_contrasts[0],
+                config=config,
+                calibration=calibration,
+            )
+            save_photo(
+                photos["photo_test"],
+                f"{condition_label}_test_c{contrast:g}.png",
+            )
+
+    # Dual plane系のtest前景は条件間で共通なので、コントラストごとに1枚だけ保存する。
+    dual_condition = next(
+        (condition for condition in ("Dual plane", "Dual plane flat")
+         if condition in prepared_by_condition),
+        None,
+    )
+    if dual_condition is not None:
+        prepared = prepared_by_condition[dual_condition]
+        for contrast in test_contrasts:
+            photos = generate_trial_photos(
+                prepared,
+                condition=dual_condition,
+                test_contrast=contrast,
+                reference_contrast=reference_contrasts[0],
+                config=config,
+                calibration=calibration,
+            )
+            save_photo(
+                photos["photo_test_fg"],
+                f"dual_test_fg_c{contrast:g}.png",
+            )
+
+    # Dual plane背景はnoise/flatごとに1枚だけ保存する。
+    for condition, label in (
+        ("Dual plane", "noise"),
+        ("Dual plane flat", "flat"),
+    ):
+        if condition not in prepared_by_condition:
+            continue
+        photos = generate_trial_photos(
+            prepared_by_condition[condition],
+            condition=condition,
+            test_contrast=test_contrasts[0],
+            reference_contrast=reference_contrasts[0],
+            config=config,
+            calibration=calibration,
+        )
+        save_photo(photos["photo_noise_bg"], f"dual_test_bg_{label}.png")

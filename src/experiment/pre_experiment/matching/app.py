@@ -25,6 +25,7 @@ from .stimuli import (
     contrast_to_slider,
     generate_trial_photos,
     prepare_trial_stimulus,
+    save_preview_images,
     slider_to_contrast,
 )
 
@@ -335,6 +336,13 @@ class MatchingExperimentApp(ExperimentBaseUI):
         self.offset_x.set(calibration["offset_x"])
         self.offset_y.set(calibration["offset_y"])
         self.current_pd_mean = calibration["pd_mean"]
+        if self.session_config.save_preview:
+            save_preview_images(
+                Path(self.result_dir) / "stimulus_previews",
+                self.session_config,
+                self.display_calibration,
+                self.current_pd_mean,
+            )
         self.blocks = build_blocks(self.session_config, self.rng)
         self.current_block_index = 0
         self.current_trial_in_experiment = 0
