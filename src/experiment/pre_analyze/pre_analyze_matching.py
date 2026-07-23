@@ -385,8 +385,16 @@ def main():
 
     # 複数セッションの場合は、解析対象中で最も新しい実験日時を使う。
     timestamp = max(session_timestamps)
+
+    participant_ids = sorted(
+        analyzed["ID"].dropna().astype(str).str.strip().unique()
+    )
+    participant_ids = [value for value in participant_ids if value]
+    participant_label = "-".join(participant_ids) or "unknown"
+    participant_label = re.sub(r"[^0-9A-Za-z_-]+", "_", participant_label)
+
     output_dir = args.output_dir or os.path.join(
-        default_figure_root, f"analysis_{timestamp}"
+        default_figure_root, f"analyze_{participant_label}_{timestamp}"
     )
     save_outputs(analyzed, output_dir)
 
