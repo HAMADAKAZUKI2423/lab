@@ -394,7 +394,7 @@ def main():
     participant_label = re.sub(r"[^0-9A-Za-z_-]+", "_", participant_label)
 
     output_dir = args.output_dir or os.path.join(
-        default_figure_root, f"analyze_{participant_label}_{timestamp}"
+        default_figure_root, f"analysis_{participant_label}_{timestamp}"
     )
     save_outputs(analyzed, output_dir)
 
