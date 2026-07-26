@@ -484,7 +484,10 @@ if not RAMP_FG_CORR:
     print("  補正後ランプ(foreground/corrected_ramps)が未読込のためスキップ")
 else:
     print(f"{'ch':>3} {'ΔE00_avg':>9} {'ΔE00_max':>9} {'ΔY_avg':>8} {'点数':>5}")
-    for _ch in [c for c in CHANNELS if c in RAMP_BG and c in RAMP_FG_CORR]:
+    for _ch in [
+        c for c in ("R", "G", "B", "W")
+        if c in RAMP_BG and c in RAMP_FG_CORR
+    ]:
         _T = _ramp_by_level(RAMP_BG[_ch])
         _R = _ramp_by_level(RAMP_FG_CORR[_ch])
         _levels = sorted(set(_T) & set(_R))
