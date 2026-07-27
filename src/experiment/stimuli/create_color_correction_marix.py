@@ -456,7 +456,7 @@ print("  ", os.path.abspath(_bg_lut_path))
 # =============================================================
 FG_ADD_DIR  = os.path.join(FIG_DIR, "foreground_add")
 ADD_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add", "add")
-ADD_TARGETS = [0, 15, 25, 30, 35, 45, 60]   # 前景1枚で再現したい加算輝度(cd/m^2)
+ADD_TARGETS = [0, 10, 15, 25, 30, 35, 45, 50, 60]   # 前景1枚で再現したい加算輝度(cd/m^2)
 PATCH       = 256                            # 出力画像の一辺(px)
 
 R_prime_inv = np.linalg.inv(R_prime)         # XYZ -> 前景線形RGB
@@ -528,141 +528,121 @@ else:
             for key, values in grouped.items()
         }
 
+    sp_y_grid = None
+    sp_px_grid = None
     _component_xyz = load_component_add_measurements(ADD_CSV_DIR)
     if not _component_xyz:
         print("[加算sim LUT] bg/fg付き加算測定がないため生成をスキップします")
     else:
         # SP系test用の連続1次元LUTを作る。
-        # 0〜15: BG=0のFG=0,5,10,15
-        # 15〜45: BG=15の全測定点
-        # 45〜60: BG=30のFG=15,20,25,30
-        # 境界15/45は両側の加算実測XYZを平均して共通アンカーにする。
-        selected_by_total = {}
-        for (bg, fg), xyz in _component_xyz.items():
-            use_sample = (
-                (np.isclose(bg, 0.0) and any(
-                    np.isclose(fg, value) for value in (0.0, 5.0, 10.0, 15.0)
-                ))
-                or (np.isclose(bg, 15.0) and 0.0 <= fg <= 30.0)
-                or (np.isclose(bg, 30.0) and any(
-                    np.isclose(fg, value) for value in (15.0, 20.0, 25.0, 30.0)
-                ))
-            )
-            if use_sample:
-                total = round(bg + fg, 4)
-                selected_by_total.setdefault(total, []).append(xyz)
-
-        required_totals = {
-            0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0,
-            35.0, 40.0, 45.0, 50.0, 55.0, 60.0,
+        # 0〜15: 実測黒点とBG=15/FG=0のXYZをアフィン補間する。
+        # 15〜45: BG=15の実測XYZを補間する。
+        # 45〜60: BG=15/FG=30（合計45）とBG=30/FG=30（合計60）の
+        # 実測XYZを補間する。物理的に一意な0/60条件をLUT端点へ固定する。
+        # 同じ15/45アンカーを隣接区間で共有し、境界を連続にする。
+        black_key = (0.0, 0.0)
+        low_anchor_key = (15.0, 0.0)
+        middle_end_key = (15.0, 30.0)
+        high_endpoint_key = (30.0, 30.0)
+        required_anchor_keys = (
+            black_key, low_anchor_key,
+            middle_end_key, high_endpoint_key,
+        )
+        missing_anchor_keys = [
+            key for key in required_anchor_keys if key not in _component_xyz
+        ]
+        middle_samples = sorted(
+            (round(bg + fg, 4), xyz)
+            for (bg, fg), xyz in _component_xyz.items()
+            if np.isclose(bg, 15.0) and 0.0 <= fg <= 30.0
+        )
+        required_middle_totals = {
+            15.0, 20.0, 25.0, 30.0, 35.0, 40.0, 45.0,
         }
-        missing_totals = sorted(required_totals - set(selected_by_total))
-        if missing_totals:
+        available_middle_totals = {
+            total for total, _ in middle_samples
+        }
+        missing_middle_totals = sorted(
+            required_middle_totals - available_middle_totals
+        )
+        if missing_anchor_keys:
             print(
-                "WARN: SP test LUTの必須合計輝度が不足しています: "
-                f"{missing_totals}"
+                "WARN: Single plane加算LUTの必須アンカーが不足しています: "
+                f"{missing_anchor_keys}"
             )
-        if len(selected_by_total) < 2:
-            print("WARN: SP test LUTの有効測定点が不足しているため生成をスキップします")
+        if missing_middle_totals:
+            print(
+                "WARN: Single plane加算LUTの中央区間の測定点が不足しています: "
+                f"{missing_middle_totals}"
+            )
+        if missing_anchor_keys or len(middle_samples) < 2:
+            print("WARN: Single plane加算LUTの有効測定点が不足しているため生成をスキップします")
         else:
-            sp_node_y = np.array(sorted(selected_by_total), dtype=float)
-            sp_node_xyz = np.array([
-                np.mean(np.asarray(selected_by_total[value]), axis=0)
-                for value in sp_node_y
-            ])
-
-            # 輝度の正規化は行わず、測定XYZをそのまま線形補間する。
-            sp_y_grid = np.linspace(
-                float(sp_node_y.min()), float(sp_node_y.max()), 2048
+            black_xyz = _component_xyz[black_key]
+            xyz_15 = _component_xyz[low_anchor_key]
+            xyz_45 = _component_xyz[middle_end_key]
+            xyz_60 = _component_xyz[high_endpoint_key]
+            middle_y = np.array(
+                [total for total, _ in middle_samples], dtype=float
             )
-            sp_xyz_grid = np.stack([
-                np.interp(sp_y_grid, sp_node_y, sp_node_xyz[:, channel])
+            middle_xyz = np.array(
+                [xyz for _, xyz in middle_samples], dtype=float
+            )
+
+            sp_y_grid = np.linspace(0.0, 60.0, 2048)
+            sp_xyz_grid = np.empty((len(sp_y_grid), 3), dtype=float)
+
+            low_mask = sp_y_grid <= 15.0
+            low_alpha = sp_y_grid[low_mask, None] / 15.0
+            sp_xyz_grid[low_mask] = (
+                black_xyz[None, :]
+                + low_alpha * (xyz_15 - black_xyz)[None, :]
+            )
+
+            middle_mask = (sp_y_grid > 15.0) & (sp_y_grid < 45.0)
+            sp_xyz_grid[middle_mask] = np.stack([
+                np.interp(
+                    sp_y_grid[middle_mask], middle_y,
+                    middle_xyz[:, channel],
+                )
                 for channel in range(3)
             ], axis=1)
+
+            high_mask = sp_y_grid >= 45.0
+            high_alpha = (sp_y_grid[high_mask, None] - 45.0) / 15.0
+            sp_xyz_grid[high_mask] = (
+                xyz_45[None, :]
+                + high_alpha * (xyz_60 - xyz_45)[None, :]
+            )
+
             sp_linear_rgb = sp_xyz_grid @ R_prime_inv.T
             sp_out_of_gamut = np.any(
                 (sp_linear_rgb < 0.0) | (sp_linear_rgb > 1.0), axis=1
             )
             if np.any(sp_out_of_gamut):
                 print(
-                    "WARN: SP test LUTに前景色域外の点があります。最初の入力輝度="
+                    "WARN: Single plane加算LUTに前景色域外の点があります。最初の入力輝度="
                     f"{sp_y_grid[np.flatnonzero(sp_out_of_gamut)[0]]:.2f}"
                 )
             sp_px_grid = np.clip(
                 g_f_inv(np.clip(sp_linear_rgb, 0.0, None)), 0.0, 1.0
             )
-            sp_test_lut_path = os.path.join(TABLE_DIR, "sp_test_lut.csv")
+            singleplane_add_lut_path = os.path.join(TABLE_DIR, "singleplane_add_lut.csv")
             np.savetxt(
-                sp_test_lut_path,
+                singleplane_add_lut_path,
                 np.column_stack([sp_y_grid, sp_px_grid]),
                 delimiter=",",
                 header="Y,pxR,pxG,pxB",
                 comments="",
             )
             print(
-                "\n[CSV保存] 連続SP test LUTを保存しました -> "
-                f"{os.path.abspath(sp_test_lut_path)}"
-            )
-            print(f"  合計輝度ノード: {sp_node_y.tolist()}")
-
-        # 全条件共通ref用: BG=15固定、FG=0,5,10,15,20,25,30の
-        # 加算実測XYZを使い、各XYZの実測YをLUT入力軸として補間する。
-        # これにより目標Yを直接指定し、refの物理コントラストを維持する。
-        ref_fg_values = (0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0)
-        ref_keys = [(15.0, fg) for fg in ref_fg_values]
-        missing_ref_keys = [
-            key for key in ref_keys if key not in _component_xyz
-        ]
-        if missing_ref_keys:
-            print(
-                "WARN: ref LUTに必要なBG=15の加算測定が不足しています: "
-                f"{missing_ref_keys}"
-            )
-        else:
-            ref_node_xyz = np.array([
-                _component_xyz[key] for key in ref_keys
-            ], dtype=float)
-            ref_node_y = ref_node_xyz[:, 1].copy()
-            ref_order = np.argsort(ref_node_y)
-            ref_node_y = ref_node_y[ref_order]
-            ref_node_xyz = ref_node_xyz[ref_order]
-            if np.any(np.diff(ref_node_y) <= 0.0):
-                raise ValueError(
-                    "BG=15 ref測定の実測Yが重複または非増加です: "
-                    f"{ref_node_y.tolist()}"
-                )
-            ref_y_grid = np.linspace(
-                float(ref_node_y.min()), float(ref_node_y.max()), 1024
-            )
-            ref_xyz_grid = np.stack([
-                np.interp(ref_y_grid, ref_node_y, ref_node_xyz[:, channel])
-                for channel in range(3)
-            ], axis=1)
-            ref_linear_rgb = ref_xyz_grid @ R_prime_inv.T
-            ref_out_of_gamut = np.any(
-                (ref_linear_rgb < 0.0) | (ref_linear_rgb > 1.0), axis=1
-            )
-            if np.any(ref_out_of_gamut):
-                print(
-                    "WARN: ref LUTに前景色域外の点があります。最初の入力輝度="
-                    f"{ref_y_grid[np.flatnonzero(ref_out_of_gamut)[0]]:.2f}"
-                )
-            ref_px_grid = np.clip(
-                g_f_inv(np.clip(ref_linear_rgb, 0.0, None)), 0.0, 1.0
-            )
-            ref_lut_path = os.path.join(TABLE_DIR, "ref_lut.csv")
-            np.savetxt(
-                ref_lut_path,
-                np.column_stack([ref_y_grid, ref_px_grid]),
-                delimiter=",",
-                header="Y,pxR,pxG,pxB",
-                comments="",
+                "\n[CSV保存] 区間別Single plane加算LUTを保存しました -> "
+                f"{os.path.abspath(singleplane_add_lut_path)}"
             )
             print(
-                "[CSV保存] BG=15実測ベースのref LUTを保存しました -> "
-                f"{os.path.abspath(ref_lut_path)}"
+                "  0〜15=実測0–15補間 / 15〜45=実測補間 / "
+                "45〜60=実測45–60補間"
             )
-            print(f"  実測Yノード: {ref_node_y.tolist()}")
 
     os.makedirs(FG_ADD_DIR, exist_ok=True)
     print("\n==== 単一プレーンLUT（実測加算ベース）====")
@@ -671,9 +651,16 @@ else:
     print(f"{'target':>7} {'画素値(0-255)':>16} {'備考':>10}")
 
     for Yt in ADD_TARGETS:
-        px   = add_sim_pixel(Yt)
-        note = "" if (_uY.min() - 1e-9) <= Yt <= (_uY.max() + 1e-9) else "★範囲外→クランプ"
+        if sp_y_grid is not None and sp_px_grid is not None:
+            px = np.array([
+                np.interp(float(Yt), sp_y_grid, sp_px_grid[:, channel])
+                for channel in range(3)
+            ])
+            note = "区間別SP LUT"
+        else:
+            px = add_sim_pixel(Yt)
+            note = "★SP LUT未生成→旧LUT"
         plt.imsave(os.path.join(FG_ADD_DIR, f"AddSim_Y{int(Yt):02d}.png"),
                    np.tile(px, (PATCH, PATCH, 1)))
-        print(f"{Yt:7d} {str(np.round(px*255).astype(int)):>16} {note:>10}")
+        print(f"{Yt:7d} {str(np.round(px*255).astype(int)):>16} {note:>16}")
     print(f"[保存] 前景画像 {len(ADD_TARGETS)} 枚 -> {FG_ADD_DIR}")

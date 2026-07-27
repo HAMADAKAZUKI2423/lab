@@ -136,26 +136,24 @@ def generate_trial_photos(
     config: MatchingSessionConfig,
     calibration: DisplayCalibration,
 ):
-    """refはBG15実測LUT、SP testは加算実測LUT、DP testは光学加算で生成する。"""
+    """refとSingle plane系testは共通の加算実測LUT、DP testは光学加算で生成する。"""
+    # referenceは全条件でSP系testと同じ加算実測LUTから生成する。
     reference_luminance = config.l_ref * (
         1.0 + reference_contrast * prepared.gabor_base
     )
-    if calibration.ref_lut_y is not None and calibration.ref_lut_px is not None:
-        reference_photo = photometry.luminance_to_singleplane_photo(
-            reference_luminance,
-            calibration.ref_lut_y,
-            calibration.ref_lut_px,
+    if (
+        calibration.singleplane_add_lut_y is None
+        or calibration.singleplane_add_lut_px is None
+    ):
+        raise RuntimeError(
+            "singleplane_add_lut.csvがありません。"
+            "create_color_correction_marix.pyを先に実行してください。"
         )
-    else:
-        reference_photo = photometry.luminance_to_window2_photo(
-            reference_luminance,
-            calibration.bg_lums,
-            calibration.bg_pixels,
-            calibration.color_matrix,
-            calibration.gamma_bg,
-            calibration.gamma_fg,
-            condition="Dual plane",
-        )
+    reference_photo = photometry.luminance_to_singleplane_photo(
+        reference_luminance,
+        calibration.singleplane_add_lut_y,
+        calibration.singleplane_add_lut_px,
+    )
 
     foreground_luminance = config.l_fg * (
         1.0 + test_contrast * prepared.gabor_base
@@ -179,22 +177,22 @@ def generate_trial_photos(
             ),
         }
 
+    # Single plane系では、背景と前景の合計目標輝度を区間別の
+    # 実測加算LUT（singleplane_add_lut.csv）でWindow 2のRGB画素値へ変換する。
     total_luminance = prepared.background_luminance + foreground_luminance
     if (
-        calibration.sp_test_lut_y is not None
-        and calibration.sp_test_lut_px is not None
+        calibration.singleplane_add_lut_y is None
+        or calibration.singleplane_add_lut_px is None
     ):
-        test_photo = photometry.luminance_to_singleplane_photo(
-            total_luminance,
-            calibration.sp_test_lut_y,
-            calibration.sp_test_lut_px,
+        raise RuntimeError(
+            "singleplane_add_lut.csvがありません。"
+            "create_color_correction_marix.pyを先に実行してください。"
         )
-    else:
-        test_photo = photometry.luminance_to_singleplane_photo(
-            total_luminance,
-            calibration.ext_lum_y,
-            calibration.ext_lum_px,
-        )
+    test_photo = photometry.luminance_to_singleplane_photo(
+        total_luminance,
+        calibration.singleplane_add_lut_y,
+        calibration.singleplane_add_lut_px,
+    )
     return {
         "photo_ref_fg": reference_photo,
         "photo_test": test_photo,

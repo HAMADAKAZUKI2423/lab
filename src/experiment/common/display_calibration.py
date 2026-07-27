@@ -26,10 +26,8 @@ class DisplayCalibration:
     bg_pixels: np.ndarray
     ext_lum_y: np.ndarray | None
     ext_lum_px: np.ndarray | None
-    ref_lut_y: np.ndarray | None
-    ref_lut_px: np.ndarray | None
-    sp_test_lut_y: np.ndarray | None
-    sp_test_lut_px: np.ndarray | None
+    singleplane_add_lut_y: np.ndarray | None
+    singleplane_add_lut_px: np.ndarray | None
 
 
 def _load_matrix(path: Path) -> np.ndarray:
@@ -75,9 +73,8 @@ def load_display_calibration(display_dir: Path) -> DisplayCalibration:
         bg_pixels = np.array([0.0, 255.0], dtype=np.float64)
 
     ext_lum_y, ext_lum_px = _load_extended_lut(display_dir / "ext_lum_lut.csv")
-    ref_lut_y, ref_lut_px = _load_extended_lut(display_dir / "ref_lut.csv")
-    sp_test_lut_y, sp_test_lut_px = _load_extended_lut(
-        display_dir / "sp_test_lut.csv"
+    singleplane_add_lut_y, singleplane_add_lut_px = _load_extended_lut(
+        display_dir / "singleplane_add_lut.csv"
     )
     return DisplayCalibration(
         color_matrix=_load_matrix(display_dir / "C.csv"),
@@ -87,8 +84,6 @@ def load_display_calibration(display_dir: Path) -> DisplayCalibration:
         bg_pixels=np.asarray(bg_pixels, dtype=np.float64),
         ext_lum_y=ext_lum_y,
         ext_lum_px=ext_lum_px,
-        ref_lut_y=ref_lut_y,
-        ref_lut_px=ref_lut_px,
-        sp_test_lut_y=sp_test_lut_y,
-        sp_test_lut_px=sp_test_lut_px,
+        singleplane_add_lut_y=singleplane_add_lut_y,
+        singleplane_add_lut_px=singleplane_add_lut_px,
     )
