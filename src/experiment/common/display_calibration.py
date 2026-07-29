@@ -27,8 +27,6 @@ class DisplayCalibration:
     gamma_fg: dict[str, float] | None
     bg_lums: np.ndarray
     bg_pixels: np.ndarray
-    ext_lum_y: np.ndarray | None
-    ext_lum_px: np.ndarray | None
 
 
 def _load_matrix(path: Path) -> np.ndarray:
@@ -68,17 +66,6 @@ def _load_gamma(path: Path) -> dict[str, float] | None:
         return None
 
 
-def _load_extended_lut(path: Path):
-    try:
-        values = np.loadtxt(path, delimiter=",", skiprows=1)
-        if values.ndim != 2 or values.shape[1] < 4:
-            raise ValueError("expected Y,R,G,B columns")
-        return values[:, 0], values[:, 1:4]
-    except (OSError, ValueError) as exc:
-        print(f"WARN: {path.name} could not be loaded ({exc}).")
-        return None, None
-
-
 def load_display_calibration(display_dir: Path) -> DisplayCalibration:
     bg_lums, bg_pixels = load_luminance_lut(
         str(display_dir / "bg_luminance_lut.csv")
@@ -88,7 +75,6 @@ def load_display_calibration(display_dir: Path) -> DisplayCalibration:
         bg_lums = np.array([0.0, 100.0], dtype=np.float64)
         bg_pixels = np.array([0.0, 255.0], dtype=np.float64)
 
-    ext_lum_y, ext_lum_px = _load_extended_lut(display_dir / "ext_lum_lut.csv")
     t_prime = _load_required_matrix(display_dir / "T_prime.csv")
     r_prime = _load_required_matrix(display_dir / "R_prime.csv")
     r_prime_inv = np.linalg.inv(r_prime)
@@ -101,6 +87,4 @@ def load_display_calibration(display_dir: Path) -> DisplayCalibration:
         gamma_fg=_load_gamma(display_dir / "gamma_fg.csv"),
         bg_lums=np.asarray(bg_lums, dtype=np.float64),
         bg_pixels=np.asarray(bg_pixels, dtype=np.float64),
-        ext_lum_y=ext_lum_y,
-        ext_lum_px=ext_lum_px,
     )

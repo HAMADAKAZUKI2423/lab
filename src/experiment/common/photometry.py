@@ -169,21 +169,6 @@ def luminance_components_to_matrix_singleplane_photo(
     )
 
 
-def luminance_to_singleplane_photo(luminance, luminance_grid, pixel_grid):
-    """1次元カラーLUTを使ってPhotoImageへ変換する。"""
-    luminance = np.asarray(luminance, dtype=np.float64)
-    output = np.empty(luminance.shape + (3,), dtype=np.float64)
-    for channel in range(3):
-        output[..., channel] = np.interp(
-            luminance, luminance_grid, pixel_grid[:, channel]
-        )
-    return ImageTk.PhotoImage(
-        Image.fromarray(
-            np.clip(output * 255.0, 0, 255).astype(np.uint8), mode="RGB"
-        )
-    )
-
-
 def luminance_to_window2_photo(
     luminance,
     luminances,
@@ -191,8 +176,6 @@ def luminance_to_window2_photo(
     color_matrix,
     gamma_background=None,
     gamma_foreground=None,
-    luminance_grid=None,
-    pixel_grid=None,
     condition="",
 ):
     """実験条件に応じたWindow 2用PhotoImageを返す。"""
@@ -205,10 +188,6 @@ def luminance_to_window2_photo(
         return luminance_to_dualplane_photo(
             luminance, luminances, pixels, color_matrix,
             gamma_background, gamma_foreground,
-        )
-    if condition.startswith("Single plane") and luminance_grid is not None:
-        return luminance_to_singleplane_photo(
-            luminance, luminance_grid, pixel_grid
         )
     pixel_values = np.interp(luminance, luminances, pixels)
     if color_matrix is None:

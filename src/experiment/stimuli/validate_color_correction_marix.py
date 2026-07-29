@@ -622,12 +622,8 @@ for Yt in [0.0, 15.0, 30.0]:
 #   sim: foreground_add/sim/*.csv のうち更新日時が最新の1ファイルを読み、
 #        setlumごとの実測Yxyを使用する。
 _ADDSIM_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add", "add")
-_SIM_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add", "sim")
 _MATRIX_SIM_CSV_DIR = os.path.join(
     TABLE_DIR, "foreground_add", "simulation_matarix"
-)
-_TWO_C_SIM_CSV_DIR = os.path.join(
-    TABLE_DIR, "foreground_add", "simulation_2c"
 )
 
 
@@ -704,46 +700,21 @@ def _load_add_by_target(dir_path):
     return {k: _xyz2yxy(np.mean(np.array(v), axis=0)) for k, v in acc.items()}
 
 _add_by_target = _load_add_by_target(_ADDSIM_CSV_DIR)
-# LUT・2Cは比較CSVが存在する場合だけ任意検証する。
-_sim_by_target, _sim_csv_path = _load_latest_sim_by_target(_SIM_CSV_DIR)
 _matrix_sim_by_target, _matrix_sim_csv_path = _load_latest_sim_by_target(
     _MATRIX_SIM_CSV_DIR
 )
-_two_c_sim_by_target, _two_c_sim_csv_path = _load_latest_sim_by_target(
-    _TWO_C_SIM_CSV_DIR
-)
-if _sim_by_target and 0 not in _sim_by_target:
-    print("[LUT sim実測] target=0がないため比較をスキップします")
-    _sim_by_target = {}
-if _two_c_sim_by_target and 0 not in _two_c_sim_by_target:
-    print("[2C sim実測] target=0がないため比較をスキップします")
-    _two_c_sim_by_target = {}
 
 if 0 not in _add_by_target:
     raise ValueError("Add実測にtarget=0の共通黒測定がありません")
 if 0 not in _matrix_sim_by_target:
     raise ValueError("Matrix sim実測にtarget=0の共通黒測定がありません")
 ADD_COMMON_BLACK_XYZ = Yxy_to_XYZ(_add_by_target[0])
-SIM_COMMON_BLACK_XYZ = (
-    Yxy_to_XYZ(_sim_by_target[0]) if _sim_by_target else None
-)
 MATRIX_SIM_COMMON_BLACK_XYZ = Yxy_to_XYZ(_matrix_sim_by_target[0])
-TWO_C_SIM_COMMON_BLACK_XYZ = (
-    Yxy_to_XYZ(_two_c_sim_by_target[0])
-    if _two_c_sim_by_target else None
-)
 print("[共通黒] Add XYZ =", np.round(ADD_COMMON_BLACK_XYZ, 6))
-if SIM_COMMON_BLACK_XYZ is not None:
-    print("[共通黒] LUT sim XYZ =", np.round(SIM_COMMON_BLACK_XYZ, 6))
 print(
     "[共通黒] Matrix sim XYZ =",
     np.round(MATRIX_SIM_COMMON_BLACK_XYZ, 6),
 )
-if TWO_C_SIM_COMMON_BLACK_XYZ is not None:
-    print(
-        "[共通黒] 2C sim XYZ =",
-        np.round(TWO_C_SIM_COMMON_BLACK_XYZ, 6),
-    )
 
 def _add_meas_for(target, tol=5):
     """狙い輝度 target に対応する実測加算Yxyを返す。完全一致優先、無ければ
@@ -755,54 +726,11 @@ def _add_meas_for(target, tol=5):
     k = min(_add_by_target, key=lambda kk: abs(kk - target))
     return _add_by_target[k] if abs(k - target) <= tol else None
 
-# 最新sim CSVに存在するsetlumだけを、同じ狙い輝度のAdd実測と対応付ける。
-ADDSIM = [
-    (f"Y{target}", _add_meas_for(target), _sim_by_target[target])
-    for target in sorted(_sim_by_target)
-]
-
-print("\n[Add実測] foreground_add/add の加算後Yxyを引用（狙い輝度=bg+fg で平均）")
-for _name, _add_row, _sim in ADDSIM:
-    _s = "（実測なし→スキップ）" if _add_row is None \
-         else f"Y={_add_row[0]:.2f}, x={_add_row[1]:.4f}, y={_add_row[2]:.4f}"
-    print(f"  {_name:>4}: {_s}")
-
-ADDSIM_WHITE = WHITE_XYZ   # Lab 基準白（Yw=100スケール）。必要なら実測白に変更可。
-
-print("\n==== Add(加算) vs sim(シミュレート) 色差・輝度差  [符号 = sim - add] ====")
-print(f"{'target':>7} {'ΔE00':>8} {'ΔL*':>8} {'Δa*':>8} {'Δb*':>8} "
-      f"{'ΔY':>7} {'Y_add':>7} {'Y_sim':>7}")
-
-_addsim_dE = []
-for name, add_row, sim_row in ADDSIM:
-    if add_row is None or sim_row is None:
-        continue
-    if any(v is None for v in add_row) or any(v is None for v in sim_row):
-        continue
-
-    xyz_add = Yxy_to_XYZ(add_row) - ADD_COMMON_BLACK_XYZ
-    xyz_sim = Yxy_to_XYZ(sim_row) - SIM_COMMON_BLACK_XYZ
-    Lab_add = XYZ_to_Lab(xyz_add, ADDSIM_WHITE)
-    Lab_sim = XYZ_to_Lab(xyz_sim, ADDSIM_WHITE)
-
-    dE00 = ciede2000(Lab_add, Lab_sim)
-    dL = Lab_sim[0] - Lab_add[0]        # ΔL* = sim - add
-    da = Lab_sim[1] - Lab_add[1]        # Δa*
-    db = Lab_sim[2] - Lab_add[2]        # Δb*
-    dY = xyz_sim[1] - xyz_add[1]  # 共通黒差引き後の輝度差
-
-    _addsim_dE.append((name, dE00))
-    print(f"{name:>7} {dE00:8.3f} {dL:+8.3f} {da:+8.3f} {db:+8.3f} "
-          f"{dY:+7.2f} {xyz_add[1]:7.2f} {xyz_sim[1]:7.2f}")
-
-if _addsim_dE:
-    _avg = sum(d for _, d in _addsim_dE) / len(_addsim_dE)
-    _worst = max(_addsim_dE, key=lambda x: x[1])
-    print(f"\n平均 ΔE00 = {_avg:.3f} / 最大 ΔE00 = {_worst[1]:.3f} ({_worst[0]})")
+ADDSIM_WHITE = WHITE_XYZ
 
 # =============================================================
 # Add(加算) vs Matrix sim の色差・輝度差
-#   simulation_matarix/*.csv の最新ファイルを、LUT simと同じ形式で検証する。
+#   simulation_matarix/*.csv の最新ファイルを検証する。
 #   符号は Matrix sim - Add。双方のtarget=0を共通黒として差し引く。
 # =============================================================
 MATRIX_ADDSIM = [
@@ -861,65 +789,4 @@ if _matrix_addsim_dE:
         f"\nMatrix平均 ΔE00 = {_matrix_avg:.3f} / "
         f"最大 ΔE00 = {_matrix_worst[1]:.3f} "
         f"({_matrix_worst[0]})"
-    )
-
-# =============================================================
-# Add(加算) vs 2C sim の色差・輝度差
-#   simulation_2c/*.csv の最新ファイルを、Matrix simと同じ形式で検証する。
-#   符号は 2C sim - Add。双方のtarget=0を共通黒として差し引く。
-# =============================================================
-TWO_C_ADDSIM = [
-    (
-        f"Y{target}",
-        _add_meas_for(target),
-        _two_c_sim_by_target[target],
-    )
-    for target in sorted(_two_c_sim_by_target)
-]
-
-print(
-    "\n==== Add(加算) vs 2C sim 色差・輝度差 "
-    "[符号 = 2C sim - Add] ===="
-)
-print(
-    f"{'target':>7} {'ΔE00':>8} {'ΔL*':>8} {'Δa*':>8} "
-    f"{'Δb*':>8} {'ΔY':>7} {'Y_add':>7} {'Y_2C':>9}"
-)
-
-_two_c_addsim_dE = []
-for name, add_row, two_c_row in TWO_C_ADDSIM:
-    if add_row is None or two_c_row is None:
-        continue
-    if any(v is None for v in add_row) or any(
-        v is None for v in two_c_row
-    ):
-        continue
-
-    xyz_add = Yxy_to_XYZ(add_row) - ADD_COMMON_BLACK_XYZ
-    xyz_two_c = Yxy_to_XYZ(two_c_row) - TWO_C_SIM_COMMON_BLACK_XYZ
-    Lab_add = XYZ_to_Lab(xyz_add, ADDSIM_WHITE)
-    Lab_two_c = XYZ_to_Lab(xyz_two_c, ADDSIM_WHITE)
-
-    dE00 = ciede2000(Lab_add, Lab_two_c)
-    dL = Lab_two_c[0] - Lab_add[0]
-    da = Lab_two_c[1] - Lab_add[1]
-    db = Lab_two_c[2] - Lab_add[2]
-    dY = xyz_two_c[1] - xyz_add[1]
-
-    _two_c_addsim_dE.append((name, dE00))
-    print(
-        f"{name:>7} {dE00:8.3f} {dL:+8.3f} {da:+8.3f} "
-        f"{db:+8.3f} {dY:+7.2f} "
-        f"{xyz_add[1]:7.2f} {xyz_two_c[1]:9.2f}"
-    )
-
-if _two_c_addsim_dE:
-    _two_c_avg = sum(d for _, d in _two_c_addsim_dE) / len(
-        _two_c_addsim_dE
-    )
-    _two_c_worst = max(_two_c_addsim_dE, key=lambda x: x[1])
-    print(
-        f"\n2C平均 ΔE00 = {_two_c_avg:.3f} / "
-        f"最大 ΔE00 = {_two_c_worst[1]:.3f} "
-        f"({_two_c_worst[0]})"
     )
