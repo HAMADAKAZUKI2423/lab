@@ -136,24 +136,40 @@ def generate_trial_photos(
     config: MatchingSessionConfig,
     calibration: DisplayCalibration,
 ):
-    """refとSingle plane系testは共通の加算実測LUT、DP testは光学加算で生成する。"""
-    # referenceは全条件でSP系testと同じ加算実測LUTから生成する。
+    """Single planeはPDF行列法または実測加算LUT、DPは光学加算で生成する。"""
     reference_luminance = config.l_ref * (
         1.0 + reference_contrast * prepared.gabor_base
     )
-    if (
-        calibration.singleplane_add_lut_y is None
-        or calibration.singleplane_add_lut_px is None
-    ):
-        raise RuntimeError(
-            "singleplane_add_lut.csvがありません。"
-            "create_color_correction_marix.pyを先に実行してください。"
+    if config.singleplane_reproduction_mode == "matrix":
+        # referenceは前景1画面だけで表示するため、背景基準の輝度を
+        # C = inv(R') @ T' で前景RGBへ写像する。
+        reference_photo = photometry.luminance_to_dualplane_photo(
+            reference_luminance,
+            calibration.bg_lums,
+            calibration.bg_pixels,
+            calibration.color_matrix,
+            calibration.gamma_bg,
+            calibration.gamma_fg,
         )
-    reference_photo = photometry.luminance_to_singleplane_photo(
-        reference_luminance,
-        calibration.singleplane_add_lut_y,
-        calibration.singleplane_add_lut_px,
-    )
+    elif config.singleplane_reproduction_mode == "measured_lut":
+        if (
+            calibration.singleplane_add_lut_y is None
+            or calibration.singleplane_add_lut_px is None
+        ):
+            raise RuntimeError(
+                "singleplane_add_lut.csvがありません。"
+                "create_color_correction_marix.pyを先に実行してください。"
+            )
+        reference_photo = photometry.luminance_to_singleplane_photo(
+            reference_luminance,
+            calibration.singleplane_add_lut_y,
+            calibration.singleplane_add_lut_px,
+        )
+    else:
+        raise ValueError(
+            "unknown singleplane_reproduction_mode: "
+            f"{config.singleplane_reproduction_mode}"
+        )
 
     foreground_luminance = config.l_fg * (
         1.0 + test_contrast * prepared.gabor_base
@@ -177,22 +193,44 @@ def generate_trial_photos(
             ),
         }
 
-    # Single plane系では、背景と前景の合計目標輝度を区間別の
-    # 実測加算LUT（singleplane_add_lut.csv）でWindow 2のRGB画素値へ変換する。
-    total_luminance = prepared.background_luminance + foreground_luminance
-    if (
-        calibration.singleplane_add_lut_y is None
-        or calibration.singleplane_add_lut_px is None
-    ):
-        raise RuntimeError(
-            "singleplane_add_lut.csvがありません。"
-            "create_color_correction_marix.pyを先に実行してください。"
+    if config.singleplane_reproduction_mode == "matrix":
+        # PDF方式:
+        # d_rep = inv(R') (T'd_bg + R'd_fg)
+        # 個別色合わせ後は C(d_bg + d_fg) と等価なので、
+        # 背景・前景成分を線形RGB空間で変換・加算する。
+        test_photo = (
+            photometry.luminance_components_to_matrix_singleplane_photo(
+                prepared.background_luminance,
+                foreground_luminance,
+                calibration.bg_lums,
+                calibration.bg_pixels,
+                calibration.color_matrix,
+                calibration.gamma_bg,
+                calibration.gamma_fg,
+            )
         )
-    test_photo = photometry.luminance_to_singleplane_photo(
-        total_luminance,
-        calibration.singleplane_add_lut_y,
-        calibration.singleplane_add_lut_px,
-    )
+    elif config.singleplane_reproduction_mode == "measured_lut":
+        total_luminance = (
+            prepared.background_luminance + foreground_luminance
+        )
+        if (
+            calibration.singleplane_add_lut_y is None
+            or calibration.singleplane_add_lut_px is None
+        ):
+            raise RuntimeError(
+                "singleplane_add_lut.csvがありません。"
+                "create_color_correction_marix.pyを先に実行してください。"
+            )
+        test_photo = photometry.luminance_to_singleplane_photo(
+            total_luminance,
+            calibration.singleplane_add_lut_y,
+            calibration.singleplane_add_lut_px,
+        )
+    else:
+        raise ValueError(
+            "unknown singleplane_reproduction_mode: "
+            f"{config.singleplane_reproduction_mode}"
+        )
     return {
         "photo_ref_fg": reference_photo,
         "photo_test": test_photo,

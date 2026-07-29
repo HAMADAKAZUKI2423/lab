@@ -718,6 +718,41 @@ else:
     print(f"測定点 {len(_add_meas)} 件 / 有効輝度 {len(_uY)} 段 / レンジ {_uY.min():.2f}〜{_uY.max():.2f} cd/m^2")
     print(f"{'target':>7} {'画素値(0-255)':>16} {'備考':>10}")
 
+    # PDFの行列モデルだけで、背景基準の無彩色XYZを前景1画面へ変換する。
+    # T' @ [1,1,1] の色度を保ったまま目標Yへスケールし、
+    # d_rep = inv(R') @ XYZ_target で前景線形RGBを求める。
+    matrix_reference_white_xyz = T_prime @ np.ones(3, dtype=float)
+    matrix_reference_white_Y = float(matrix_reference_white_xyz[1])
+    if matrix_reference_white_Y <= 0:
+        raise ValueError(
+            "T_primeから得た背景基準WhiteのYが正ではありません"
+        )
+
+    def matrix_sim_pixel(Y_target):
+        xyz_target = (
+            float(Y_target)
+            / matrix_reference_white_Y
+            * matrix_reference_white_xyz
+        )
+        foreground_linear = R_prime_inv @ xyz_target
+        if np.any(foreground_linear < -1e-9) or np.any(
+            foreground_linear > 1.0 + 1e-9
+        ):
+            print(
+                "WARN: MatrixSim is out of gamut: "
+                f"Y={Y_target}, "
+                f"linearRGB={np.round(foreground_linear, 6)}"
+            )
+        return np.clip(
+            g_f_inv(np.clip(foreground_linear, 0.0, None)),
+            0.0,
+            1.0,
+        )
+
+    print(
+        f"{'target':>7} {'LUT画素値(0-255)':>20} "
+        f"{'Matrix画素値(0-255)':>23} {'備考':>16}"
+    )
     for Yt in ADD_TARGETS:
         if sp_y_grid is not None and sp_px_grid is not None:
             px = np.array([
@@ -728,7 +763,23 @@ else:
         else:
             px = add_sim_pixel(Yt)
             note = "★SP LUT未生成→旧LUT"
-        plt.imsave(os.path.join(FG_ADD_DIR, f"AddSim_Y{int(Yt):02d}.png"),
-                   np.tile(px, (PATCH, PATCH, 1)))
-        print(f"{Yt:7d} {str(np.round(px*255).astype(int)):>16} {note:>16}")
-    print(f"[保存] 前景画像 {len(ADD_TARGETS)} 枚 -> {FG_ADD_DIR}")
+
+        matrix_px = matrix_sim_pixel(Yt)
+        plt.imsave(
+            os.path.join(FG_ADD_DIR, f"AddSim_Y{int(Yt):02d}.png"),
+            np.tile(px, (PATCH, PATCH, 1)),
+        )
+        plt.imsave(
+            os.path.join(FG_ADD_DIR, f"MatrixSim_Y{int(Yt):02d}.png"),
+            np.tile(matrix_px, (PATCH, PATCH, 1)),
+        )
+        print(
+            f"{Yt:7d} "
+            f"{str(np.round(px * 255).astype(int)):>20} "
+            f"{str(np.round(matrix_px * 255).astype(int)):>23} "
+            f"{note:>16}"
+        )
+    print(
+        f"[保存] LUT/Matrix前景画像 各{len(ADD_TARGETS)}枚 "
+        f"-> {FG_ADD_DIR}"
+    )

@@ -94,6 +94,73 @@ def luminance_to_dualplane_photo(
     return ImageTk.PhotoImage(image)
 
 
+def luminance_components_to_matrix_singleplane_photo(
+    background_luminance,
+    foreground_luminance,
+    background_luminances,
+    background_pixels,
+    color_matrix,
+    gamma_background,
+    gamma_foreground,
+):
+    """PDFの線形加算モデルで2成分を前景1画面用RGBへ変換する。
+
+    各成分を基準側（背景）の線形RGBへ変換し、
+    C = inv(R') @ T' により前景側へ写像してから線形空間で加算する。
+    これは d_rep = inv(R') (T'd_bg + R'd_fg) の簡略形に対応する。
+    """
+    linear_foreground_sum = None
+    for luminance in (background_luminance, foreground_luminance):
+        pixels = np.clip(
+            np.interp(luminance, background_luminances, background_pixels),
+            0,
+            255,
+        ) / 255.0
+        linear_background = np.stack(
+            [
+                _apply_gamma(gamma_background, channel, pixels)
+                for channel in "RGB"
+            ],
+            axis=-1,
+        )
+        component_foreground = linear_background @ color_matrix.T
+        if linear_foreground_sum is None:
+            linear_foreground_sum = component_foreground
+        else:
+            linear_foreground_sum = (
+                linear_foreground_sum + component_foreground
+            )
+
+    out_of_gamut = (
+        np.any(linear_foreground_sum < -1e-9)
+        or np.any(linear_foreground_sum > 1.0 + 1e-9)
+    )
+    if out_of_gamut:
+        print(
+            "WARN: matrix Single plane RGB is out of gamut: "
+            f"min={float(np.min(linear_foreground_sum)):.6f}, "
+            f"max={float(np.max(linear_foreground_sum)):.6f}"
+        )
+
+    linear_foreground_sum = np.clip(
+        linear_foreground_sum, 0.0, 1.0
+    )
+    output = np.empty_like(linear_foreground_sum)
+    for index, channel in enumerate("RGB"):
+        output[..., index] = _apply_gamma(
+            gamma_foreground,
+            channel,
+            linear_foreground_sum[..., index],
+            inverse=True,
+        )
+    return ImageTk.PhotoImage(
+        Image.fromarray(
+            np.clip(output * 255.0, 0, 255).astype(np.uint8),
+            mode="RGB",
+        )
+    )
+
+
 def luminance_to_singleplane_photo(luminance, luminance_grid, pixel_grid):
     """1次元カラーLUTを使ってPhotoImageへ変換する。"""
     luminance = np.asarray(luminance, dtype=np.float64)

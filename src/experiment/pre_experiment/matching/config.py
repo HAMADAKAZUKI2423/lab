@@ -39,6 +39,8 @@ class MatchingSessionConfig:
     asym_width_factor_small: float = 0.7
     initial_pupil_diameter_mm: float = 4.0
     slider_step: float = 0.005
+    singleplane_simulation_gain: float = 2.0
+    singleplane_reproduction_mode: str = "matrix"
     background_color: str = "black"
     l_fg: float = 15.0
     l_bg: float = 15.0
