@@ -355,6 +355,10 @@ T_prime = fit_matrix(rgb_T, XYZ_T)   # T·Db
 R_prime = fit_matrix(rgb_R, XYZ_R)   # R·Df
 C = np.linalg.inv(R_prime) @ T_prime  # = (R·Df)^(-1)(T·Db)
 
+print(f"cond(T_prime): {np.linalg.cond(T_prime):.3f}")
+print(f"cond(R_prime): {np.linalg.cond(R_prime):.3f}")
+print(f"cond(C): {np.linalg.cond(C):.3f}")
+
 np.set_printoptions(precision=6, suppress=True)
 print("T_prime:\n", T_prime)
 print("R_prime:\n", R_prime)
