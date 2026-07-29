@@ -92,6 +92,24 @@ print("[CSV読込] 階調ランプ (レベル数):")
 for _side, _ramp in (("BG", RAMP_BG), ("FG", RAMP_FG)):
     print(f"  {_side}: " + ", ".join(f"{_ch}={len(_ramp.get(_ch, []))}" for _ch in CHANNELS))
 
+
+def estimate_ramp_common_black_xyz(*ramps):
+    """BG/FGランプの全channel・pixel=0をXYZ空間で平均する。"""
+    samples = []
+    for ramp in ramps:
+        for channel in ("R", "G", "B", "W"):
+            for pixel, Y, x, y in ramp.get(channel, []):
+                if int(pixel) == 0:
+                    samples.append(_yxy2xyz(Y, x, y))
+    if not samples:
+        raise ValueError("BG/FGランプにpixel=0の共通黒測定がありません")
+    return np.mean(np.asarray(samples, dtype=float), axis=0)
+
+
+RAMP_COMMON_BLACK_XYZ = estimate_ramp_common_black_xyz(RAMP_BG, RAMP_FG)
+RAMP_COMMON_BLACK_Y = float(RAMP_COMMON_BLACK_XYZ[1])
+print("[共通黒] ramp XYZ =", np.round(RAMP_COMMON_BLACK_XYZ, 6))
+
 # =============================================================
 # 階調ランプの直線性チェック & ガンマ推定（プロットのみ）
 #   (1) XYZ^(1/2.2) を横軸に取り、画素値との直線性を確認
@@ -113,7 +131,7 @@ def _prep_ramp(ramp_channel, remove_black=True):
     pts.sort(key=lambda t: t[0])
     v = np.array([p[0] for p in pts], dtype=float)
     Y = np.array([p[1] for p in pts], dtype=float)
-    Y0 = Y[np.argmin(v)] if remove_black else 0.0     # v=0 の輝度を黒レベルに
+    Y0 = RAMP_COMMON_BLACK_Y if remove_black else 0.0  # 全ランプのpixel=0平均を共通黒に
     Ymax = Y[np.argmax(v)]
     denom = (Ymax - Y0) if (Ymax - Y0) != 0 else 1.0
     yn = np.clip((Y - Y0) / denom, 0.0, None)          # 0-1 正規化
@@ -307,7 +325,8 @@ def collect_ramp_fit(ramp, eotf, side):
                 continue
             Y, x, y = by_pixel[pixel]
             rgb_lin.append(eotf(_ramp_input_rgb(channel, pixel)))
-            xyz_values.append(_yxy2xyz(Y, x, y))
+            xyz_increment = _yxy2xyz(Y, x, y) - RAMP_COMMON_BLACK_XYZ
+            xyz_values.append(xyz_increment)
             names.append(f"{channel}_{pixel}")
 
         selected = [(pixel, by_pixel[pixel][0]) for pixel in FIT_LEVELS if pixel in by_pixel]
@@ -441,8 +460,12 @@ def save_bg_luminance_lut(ramp_bg, table_dir):
             "Target_Luminance(cd/m2)", "Pixel_Value", "x", "y"
         ])
         for pixel, Y, x, y in rows:
+            luminance_increment = (
+                0.0 if int(pixel) == 0
+                else max(0.0, float(Y) - RAMP_COMMON_BLACK_Y)
+            )
             writer.writerow([
-                f"{float(Y):.10g}", int(pixel),
+                f"{luminance_increment:.10g}", int(pixel),
                 f"{float(x):.10g}", f"{float(y):.10g}",
             ])
     return path
@@ -482,14 +505,50 @@ def load_add_measurements(dir_path):
             out.append((Y, x, y))
     return out
 
+def load_add_common_black_xyz(dir_path):
+    """加算CSVのbg=0・fg=0をXYZ空間で平均して共通黒を返す。"""
+    samples = []
+    for path in sorted(glob.glob(os.path.join(dir_path, "*.csv"))):
+        for row in _read_csv_dicts(path):
+            try:
+                bg = float(_get(row, "bg", "BG", "bg_Y", "Ybg"))
+                fg = float(_get(row, "fg", "FG", "fg_Y", "Yfg"))
+                Y = float(_get(row, "Y", "Y_add", "Yadd"))
+                x = float(_get(row, "x"))
+                y = float(_get(row, "y"))
+            except (KeyError, ValueError):
+                continue
+            if np.isclose(bg, 0.0) and np.isclose(fg, 0.0):
+                samples.append(_yxy2xyz(Y, x, y))
+    if not samples:
+        raise ValueError("加算CSVにbg=0・fg=0の共通黒測定がありません")
+    return np.mean(np.asarray(samples, dtype=float), axis=0)
+
+
 _add_meas = load_add_measurements(ADD_CSV_DIR)
 if not _add_meas:
     print("[単一プレーンLUT] 加算測定が無いため LUT 構築・画像出力をスキップします")
 else:
-    # 各測定: 加算後 Yxy -> XYZ -> inv(R') -> 前景線形 -> g_f_inv -> 前景画素値(0-1)
-    _Y  = np.array([m[0] for m in _add_meas], dtype=float)
-    _px = np.array([np.clip(g_f_inv(np.clip(R_prime_inv @ _yxy2xyz(*m), 0.0, None)), 0.0, 1.0)
-                    for m in _add_meas])
+    ADD_COMMON_BLACK_XYZ = load_add_common_black_xyz(ADD_CSV_DIR)
+    ADD_COMMON_BLACK_Y = float(ADD_COMMON_BLACK_XYZ[1])
+    print("[共通黒] add XYZ =", np.round(ADD_COMMON_BLACK_XYZ, 6))
+
+    def _add_increment_xyz(measurement):
+        return _yxy2xyz(*measurement) - ADD_COMMON_BLACK_XYZ
+
+    # 各測定: 共通黒差引き後XYZ -> inv(R') -> 前景線形 -> g_f_inv -> 前景画素値(0-1)
+    _Y = np.array([
+        max(0.0, float(m[0]) - ADD_COMMON_BLACK_Y)
+        for m in _add_meas
+    ], dtype=float)
+    _px = np.array([
+        np.clip(
+            g_f_inv(np.clip(R_prime_inv @ _add_increment_xyz(m), 0.0, None)),
+            0.0,
+            1.0,
+        )
+        for m in _add_meas
+    ])
 
     # 加算後輝度 Y をキーに昇順化（同一 Y は平均して単調化: np.interp 用）
     _uY, _inv = np.unique(np.round(_Y, 4), return_inverse=True)
@@ -535,6 +594,11 @@ else:
     sp_y_grid = None
     sp_px_grid = None
     _component_xyz = load_component_add_measurements(ADD_CSV_DIR)
+    if _component_xyz:
+        _component_xyz = {
+            key: xyz - ADD_COMMON_BLACK_XYZ
+            for key, xyz in _component_xyz.items()
+        }
     if not _component_xyz:
         print("[加算sim LUT] bg/fg付き加算測定がないため生成をスキップします")
     else:
