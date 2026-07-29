@@ -92,6 +92,24 @@ print("[CSV読込] 階調ランプ (レベル数):")
 for _side, _ramp in (("BG", RAMP_BG), ("FG", RAMP_FG)):
     print(f"  {_side}: " + ", ".join(f"{_ch}={len(_ramp.get(_ch, []))}" for _ch in CHANNELS))
 
+
+def estimate_ramp_common_black_xyz(*ramps):
+    """BG/FGランプの全channel・pixel=0をXYZ空間で平均する。"""
+    samples = []
+    for ramp in ramps:
+        for channel in ("R", "G", "B", "W"):
+            for pixel, Y, x, y in ramp.get(channel, []):
+                if int(pixel) == 0:
+                    samples.append(_yxy2xyz(Y, x, y))
+    if not samples:
+        raise ValueError("BG/FGランプにpixel=0の共通黒測定がありません")
+    return np.mean(np.asarray(samples, dtype=float), axis=0)
+
+
+RAMP_COMMON_BLACK_XYZ = estimate_ramp_common_black_xyz(RAMP_BG, RAMP_FG)
+RAMP_COMMON_BLACK_Y = float(RAMP_COMMON_BLACK_XYZ[1])
+print("[共通黒] ramp XYZ =", np.round(RAMP_COMMON_BLACK_XYZ, 6))
+
 # =============================================================
 # 階調ランプの直線性チェック & ガンマ推定（プロットのみ）
 #   (1) XYZ^(1/2.2) を横軸に取り、画素値との直線性を確認
@@ -113,7 +131,7 @@ def _prep_ramp(ramp_channel, remove_black=True):
     pts.sort(key=lambda t: t[0])
     v = np.array([p[0] for p in pts], dtype=float)
     Y = np.array([p[1] for p in pts], dtype=float)
-    Y0 = Y[np.argmin(v)] if remove_black else 0.0     # v=0 の輝度を黒レベルに
+    Y0 = RAMP_COMMON_BLACK_Y if remove_black else 0.0  # 全ランプのpixel=0平均を共通黒に
     Ymax = Y[np.argmax(v)]
     denom = (Ymax - Y0) if (Ymax - Y0) != 0 else 1.0
     yn = np.clip((Y - Y0) / denom, 0.0, None)          # 0-1 正規化
@@ -307,7 +325,8 @@ def collect_ramp_fit(ramp, eotf, side):
                 continue
             Y, x, y = by_pixel[pixel]
             rgb_lin.append(eotf(_ramp_input_rgb(channel, pixel)))
-            xyz_values.append(_yxy2xyz(Y, x, y))
+            xyz_increment = _yxy2xyz(Y, x, y) - RAMP_COMMON_BLACK_XYZ
+            xyz_values.append(xyz_increment)
             names.append(f"{channel}_{pixel}")
 
         selected = [(pixel, by_pixel[pixel][0]) for pixel in FIT_LEVELS if pixel in by_pixel]
@@ -354,6 +373,10 @@ rgb_R, XYZ_R, names_R = collect_ramp_fit(RAMP_FG, g_f, "foreground")
 T_prime = fit_matrix(rgb_T, XYZ_T)   # T·Db
 R_prime = fit_matrix(rgb_R, XYZ_R)   # R·Df
 C = np.linalg.inv(R_prime) @ T_prime  # = (R·Df)^(-1)(T·Db)
+
+print(f"cond(T_prime): {np.linalg.cond(T_prime):.3f}")
+print(f"cond(R_prime): {np.linalg.cond(R_prime):.3f}")
+print(f"cond(C): {np.linalg.cond(C):.3f}")
 
 np.set_printoptions(precision=6, suppress=True)
 print("T_prime:\n", T_prime)
@@ -437,8 +460,12 @@ def save_bg_luminance_lut(ramp_bg, table_dir):
             "Target_Luminance(cd/m2)", "Pixel_Value", "x", "y"
         ])
         for pixel, Y, x, y in rows:
+            luminance_increment = (
+                0.0 if int(pixel) == 0
+                else max(0.0, float(Y) - RAMP_COMMON_BLACK_Y)
+            )
             writer.writerow([
-                f"{float(Y):.10g}", int(pixel),
+                f"{luminance_increment:.10g}", int(pixel),
                 f"{float(x):.10g}", f"{float(y):.10g}",
             ])
     return path
@@ -448,232 +475,85 @@ print("\n[CSV保存] 背景Whiteランプの絶対輝度LUTを保存しました
 print("  ", os.path.abspath(_bg_lut_path))
 
 # =============================================================
-# 単一プレーンLUT: 実測の加算結果から「前景1枚で目標輝度を再現」する画像を生成
-#   入力: results/tables/DisplayBrightness/foreground_add/add/*.csv （加算後の測定値 Y,x,y）
-#   方法: 加算後 Yxy -> XYZ -> inv(R') -> 前景線形 -> g_f_inv で前景画素値を求め、
-#         加算後輝度 Y をキーに 1D LUT(線形補間・範囲外は端点クランプ)を構築する。
-#   出力: 目標輝度ごとの前景画像 AddSim_Y**.png を foreground_add に保存。
+# Matrix方式: T'・R'による加算予測をFG一画面用画像として保存
 # =============================================================
-FG_ADD_DIR  = os.path.join(FIG_DIR, "foreground_add")
-ADD_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add", "add")
-ADD_TARGETS = [0, 15, 25, 30, 35, 45, 60]   # 前景1枚で再現したい加算輝度(cd/m^2)
-PATCH       = 256                            # 出力画像の一辺(px)
+FG_ADD_DIR = os.path.join(FIG_DIR, "foreground_add")
+PATCH = 256
+R_prime_inv = np.linalg.inv(R_prime)
 
-R_prime_inv = np.linalg.inv(R_prime)         # XYZ -> 前景線形RGB
+if True:
+    # Matrix方式は実際の加算測定と同じBG/FG条件を個別に予測し、
+    # 同一合計輝度ごとにXYZ空間で平均してからFG再現画像へ変換する。
+    MATRIX_SIM_DIR = os.path.join(FG_ADD_DIR, "matrix_simulation")
+    os.makedirs(MATRIX_SIM_DIR, exist_ok=True)
+    MATRIX_BG_LEVELS = (0, 15, 30)
+    MATRIX_FG_LEVELS = (0, 5, 10, 15, 20, 25, 30)
 
-def load_add_measurements(dir_path):
-    """foreground_add/add/*.csv から加算後の (Y, x, y) を読み込む。CSVが無ければ空リスト。"""
-    files = sorted(glob.glob(os.path.join(dir_path, "*.csv")))
-    if not files:
-        print(f"[単一プレーンLUT] 加算測定CSVが見つかりません（スキップ）: {dir_path}")
-        return []
-    out = []
-    for path in files:
-        for row in _read_csv_dicts(path):
-            try:
-                Y = float(_get(row, "Y", "Y_add", "Yadd"))
-                x = float(_get(row, "x")); y = float(_get(row, "y"))
-            except (KeyError, ValueError):
-                continue
-            out.append((Y, x, y))
-    return out
+    bg_white_rows = sorted(
+        (
+            0.0 if int(pixel) == 0
+            else max(0.0, float(Y) - RAMP_COMMON_BLACK_Y),
+            float(pixel) / 255.0,
+        )
+        for pixel, Y, _x, _y in RAMP_BG["W"]
+    )
+    bg_white_y = np.array([row[0] for row in bg_white_rows])
+    bg_white_pixel = np.array([row[1] for row in bg_white_rows])
 
-_add_meas = load_add_measurements(ADD_CSV_DIR)
-if not _add_meas:
-    print("[単一プレーンLUT] 加算測定が無いため LUT 構築・画像出力をスキップします")
-else:
-    # 各測定: 加算後 Yxy -> XYZ -> inv(R') -> 前景線形 -> g_f_inv -> 前景画素値(0-1)
-    _Y  = np.array([m[0] for m in _add_meas], dtype=float)
-    _px = np.array([np.clip(g_f_inv(np.clip(R_prime_inv @ _yxy2xyz(*m), 0.0, None)), 0.0, 1.0)
-                    for m in _add_meas])
+    def reference_linear_for_luminance(Y_target):
+        pixel = np.interp(
+            float(Y_target), bg_white_y, bg_white_pixel
+        )
+        return g_b(np.array([pixel, pixel, pixel], dtype=float))
 
-    # 加算後輝度 Y をキーに昇順化（同一 Y は平均して単調化: np.interp 用）
-    _uY, _inv = np.unique(np.round(_Y, 4), return_inverse=True)
-    _uPx = np.array([_px[_inv == i].mean(axis=0) for i in range(len(_uY))])
-
-    def add_sim_pixel(Y_target):
-        """加算後の目標輝度 -> 前景画素値(0-1)。範囲外は端点にクランプ。"""
-        px = np.array([np.interp(float(Y_target), _uY, _uPx[:, i]) for i in range(3)])
-        return np.clip(px, 0.0, 1.0)
-    
-    # 拡張輝度LUTをCSVに保存
-    Y_grid = np.linspace(0.0, float(_uY.max()), 1024)
-    px_grid = np.stack([np.interp(Y_grid, _uY, _uPx[:,c]) for c in range(3)], axis=1)
-    lut_path = os.path.join(TABLE_DIR, "ext_lum_lut.csv")
-    np.savetxt(lut_path,
-               np.column_stack([Y_grid, px_grid]), delimiter=",",
-               header="Y,pxR,pxG,pxB", comments="")
-    print(f"\n[CSV保存] 拡張輝度LUTを保存しました -> {os.path.abspath(lut_path)}")
-
-    # 加算実測を(BG設定輝度, FG設定輝度)ごとにXYZ空間で平均する。
-    def load_component_add_measurements(dir_path):
-        grouped = {}
-        files = sorted(glob.glob(os.path.join(dir_path, "*.csv")))
-        for path in files:
-            for row in _read_csv_dicts(path):
-                try:
-                    bg = float(_get(row, "bg", "BG", "bg_Y", "Ybg"))
-                    fg = float(_get(row, "fg", "FG", "fg_Y", "Yfg"))
-                    measured_Y = float(_get(row, "Y", "Y_add", "Yadd"))
-                    x = float(_get(row, "x"))
-                    y = float(_get(row, "y"))
-                except (KeyError, ValueError):
-                    continue
-                key = (round(bg, 4), round(fg, 4))
-                grouped.setdefault(key, []).append(
-                    _yxy2xyz(measured_Y, x, y)
-                )
-        return {
-            key: np.mean(np.asarray(values), axis=0)
-            for key, values in grouped.items()
-        }
-
-    _component_xyz = load_component_add_measurements(ADD_CSV_DIR)
-    if not _component_xyz:
-        print("[加算sim LUT] bg/fg付き加算測定がないため生成をスキップします")
-    else:
-        # SP系test用の連続1次元LUTを作る。
-        # 0〜15: BG=0のFG=0,5,10,15
-        # 15〜45: BG=15の全測定点
-        # 45〜60: BG=30のFG=15,20,25,30
-        # 境界15/45は両側の加算実測XYZを平均して共通アンカーにする。
-        selected_by_total = {}
-        for (bg, fg), xyz in _component_xyz.items():
-            use_sample = (
-                (np.isclose(bg, 0.0) and any(
-                    np.isclose(fg, value) for value in (0.0, 5.0, 10.0, 15.0)
-                ))
-                or (np.isclose(bg, 15.0) and 0.0 <= fg <= 30.0)
-                or (np.isclose(bg, 30.0) and any(
-                    np.isclose(fg, value) for value in (15.0, 20.0, 25.0, 30.0)
-                ))
+    matrix_xyz_by_total = {}
+    for bg_target in MATRIX_BG_LEVELS:
+        for fg_target in MATRIX_FG_LEVELS:
+            linear_bg = reference_linear_for_luminance(bg_target)
+            linear_fg_reference = reference_linear_for_luminance(
+                fg_target
             )
-            if use_sample:
-                total = round(bg + fg, 4)
-                selected_by_total.setdefault(total, []).append(xyz)
+            linear_fg = C @ linear_fg_reference
+            xyz_sum = T_prime @ linear_bg + R_prime @ linear_fg
+            total_target = int(bg_target + fg_target)
+            matrix_xyz_by_total.setdefault(total_target, []).append(
+                xyz_sum
+            )
 
-        required_totals = {
-            0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0,
-            35.0, 40.0, 45.0, 50.0, 55.0, 60.0,
-        }
-        missing_totals = sorted(required_totals - set(selected_by_total))
-        if missing_totals:
+    print("\n==== Matrix平均加算シミュレート画像 ====")
+    print(f"{'target':>7} {'n':>3} {'Matrix画素値(0-255)':>23}")
+    for total_target in sorted(matrix_xyz_by_total):
+        mean_xyz = np.mean(
+            np.asarray(matrix_xyz_by_total[total_target]), axis=0
+        )
+        foreground_linear = R_prime_inv @ mean_xyz
+        if np.any(foreground_linear < -1e-9) or np.any(
+            foreground_linear > 1.0 + 1e-9
+        ):
             print(
-                "WARN: SP test LUTの必須合計輝度が不足しています: "
-                f"{missing_totals}"
+                "WARN: averaged MatrixSim is out of gamut: "
+                f"Y={total_target}, "
+                f"linearRGB={np.round(foreground_linear, 6)}"
             )
-        if len(selected_by_total) < 2:
-            print("WARN: SP test LUTの有効測定点が不足しているため生成をスキップします")
-        else:
-            sp_node_y = np.array(sorted(selected_by_total), dtype=float)
-            sp_node_xyz = np.array([
-                np.mean(np.asarray(selected_by_total[value]), axis=0)
-                for value in sp_node_y
-            ])
+        matrix_px = np.clip(
+            g_f_inv(np.clip(foreground_linear, 0.0, None)),
+            0.0,
+            1.0,
+        )
+        plt.imsave(
+            os.path.join(
+                MATRIX_SIM_DIR,
+                f"MatrixSim_Y{int(total_target):02d}.png",
+            ),
+            np.tile(matrix_px, (PATCH, PATCH, 1)),
+        )
+        print(
+            f"{total_target:7d} "
+            f"{len(matrix_xyz_by_total[total_target]):3d} "
+            f"{str(np.round(matrix_px * 255).astype(int)):>23}"
+        )
 
-            # 輝度の正規化は行わず、測定XYZをそのまま線形補間する。
-            sp_y_grid = np.linspace(
-                float(sp_node_y.min()), float(sp_node_y.max()), 2048
-            )
-            sp_xyz_grid = np.stack([
-                np.interp(sp_y_grid, sp_node_y, sp_node_xyz[:, channel])
-                for channel in range(3)
-            ], axis=1)
-            sp_linear_rgb = sp_xyz_grid @ R_prime_inv.T
-            sp_out_of_gamut = np.any(
-                (sp_linear_rgb < 0.0) | (sp_linear_rgb > 1.0), axis=1
-            )
-            if np.any(sp_out_of_gamut):
-                print(
-                    "WARN: SP test LUTに前景色域外の点があります。最初の入力輝度="
-                    f"{sp_y_grid[np.flatnonzero(sp_out_of_gamut)[0]]:.2f}"
-                )
-            sp_px_grid = np.clip(
-                g_f_inv(np.clip(sp_linear_rgb, 0.0, None)), 0.0, 1.0
-            )
-            sp_test_lut_path = os.path.join(TABLE_DIR, "sp_test_lut.csv")
-            np.savetxt(
-                sp_test_lut_path,
-                np.column_stack([sp_y_grid, sp_px_grid]),
-                delimiter=",",
-                header="Y,pxR,pxG,pxB",
-                comments="",
-            )
-            print(
-                "\n[CSV保存] 連続SP test LUTを保存しました -> "
-                f"{os.path.abspath(sp_test_lut_path)}"
-            )
-            print(f"  合計輝度ノード: {sp_node_y.tolist()}")
-
-        # 全条件共通ref用: BG=15固定、FG=0,5,10,15,20,25,30の
-        # 加算実測XYZを使い、各XYZの実測YをLUT入力軸として補間する。
-        # これにより目標Yを直接指定し、refの物理コントラストを維持する。
-        ref_fg_values = (0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0)
-        ref_keys = [(15.0, fg) for fg in ref_fg_values]
-        missing_ref_keys = [
-            key for key in ref_keys if key not in _component_xyz
-        ]
-        if missing_ref_keys:
-            print(
-                "WARN: ref LUTに必要なBG=15の加算測定が不足しています: "
-                f"{missing_ref_keys}"
-            )
-        else:
-            ref_node_xyz = np.array([
-                _component_xyz[key] for key in ref_keys
-            ], dtype=float)
-            ref_node_y = ref_node_xyz[:, 1].copy()
-            ref_order = np.argsort(ref_node_y)
-            ref_node_y = ref_node_y[ref_order]
-            ref_node_xyz = ref_node_xyz[ref_order]
-            if np.any(np.diff(ref_node_y) <= 0.0):
-                raise ValueError(
-                    "BG=15 ref測定の実測Yが重複または非増加です: "
-                    f"{ref_node_y.tolist()}"
-                )
-            ref_y_grid = np.linspace(
-                float(ref_node_y.min()), float(ref_node_y.max()), 1024
-            )
-            ref_xyz_grid = np.stack([
-                np.interp(ref_y_grid, ref_node_y, ref_node_xyz[:, channel])
-                for channel in range(3)
-            ], axis=1)
-            ref_linear_rgb = ref_xyz_grid @ R_prime_inv.T
-            ref_out_of_gamut = np.any(
-                (ref_linear_rgb < 0.0) | (ref_linear_rgb > 1.0), axis=1
-            )
-            if np.any(ref_out_of_gamut):
-                print(
-                    "WARN: ref LUTに前景色域外の点があります。最初の入力輝度="
-                    f"{ref_y_grid[np.flatnonzero(ref_out_of_gamut)[0]]:.2f}"
-                )
-            ref_px_grid = np.clip(
-                g_f_inv(np.clip(ref_linear_rgb, 0.0, None)), 0.0, 1.0
-            )
-            ref_lut_path = os.path.join(TABLE_DIR, "ref_lut.csv")
-            np.savetxt(
-                ref_lut_path,
-                np.column_stack([ref_y_grid, ref_px_grid]),
-                delimiter=",",
-                header="Y,pxR,pxG,pxB",
-                comments="",
-            )
-            print(
-                "[CSV保存] BG=15実測ベースのref LUTを保存しました -> "
-                f"{os.path.abspath(ref_lut_path)}"
-            )
-            print(f"  実測Yノード: {ref_node_y.tolist()}")
-
-    os.makedirs(FG_ADD_DIR, exist_ok=True)
-    print("\n==== 単一プレーンLUT（実測加算ベース）====")
-    print(f"入力CSV: {ADD_CSV_DIR}")
-    print(f"測定点 {len(_add_meas)} 件 / 有効輝度 {len(_uY)} 段 / レンジ {_uY.min():.2f}〜{_uY.max():.2f} cd/m^2")
-    print(f"{'target':>7} {'画素値(0-255)':>16} {'備考':>10}")
-
-    for Yt in ADD_TARGETS:
-        px   = add_sim_pixel(Yt)
-        note = "" if (_uY.min() - 1e-9) <= Yt <= (_uY.max() + 1e-9) else "★範囲外→クランプ"
-        plt.imsave(os.path.join(FG_ADD_DIR, f"AddSim_Y{int(Yt):02d}.png"),
-                   np.tile(px, (PATCH, PATCH, 1)))
-        print(f"{Yt:7d} {str(np.round(px*255).astype(int)):>16} {note:>10}")
-    print(f"[保存] 前景画像 {len(ADD_TARGETS)} 枚 -> {FG_ADD_DIR}")
+    print(
+        f"[保存] Matrix平均画像 {len(matrix_xyz_by_total)}枚 "
+        f"-> {MATRIX_SIM_DIR}"
+    )
