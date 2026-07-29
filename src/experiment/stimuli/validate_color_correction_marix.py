@@ -97,13 +97,32 @@ print("[CSV読込] 階調ランプ (レベル数):")
 for _side, _ramp in (("BG", RAMP_BG), ("FG", RAMP_FG)):
     print(f"  {_side}: " + ", ".join(f"{_ch}={len(_ramp.get(_ch, []))}" for _ch in CHANNELS))
 
+
+def estimate_common_black_xyz(*ramps):
+    """指定ランプの全channel・pixel=0をXYZ空間で平均する。"""
+    samples = []
+    for ramp in ramps:
+        for channel in ("R", "G", "B", "W"):
+            for pixel, Y, x, y in ramp.get(channel, []):
+                if int(pixel) == 0:
+                    samples.append(_yxy2xyz(Y, x, y))
+    if not samples:
+        raise ValueError("ランプにpixel=0の共通黒測定がありません")
+    return np.mean(np.asarray(samples, dtype=float), axis=0)
+
+
+RAMP_COMMON_BLACK_XYZ = estimate_common_black_xyz(RAMP_BG, RAMP_FG)
+RAMP_COMMON_BLACK_Y = float(RAMP_COMMON_BLACK_XYZ[1])
+print("[共通黒] ramp XYZ =", np.round(RAMP_COMMON_BLACK_XYZ, 6))
+
+
 def _prep_ramp(ramp_channel, remove_black=True):
     """ramp [(pixel,Y,x,y),...] -> (v, yn, Y0)"""
     pts = [(p[0] / 255.0, p[1]) for p in ramp_channel if p[1] is not None]
     pts.sort(key=lambda t: t[0])
     v = np.array([p[0] for p in pts], dtype=float)
     Y = np.array([p[1] for p in pts], dtype=float)
-    Y0 = Y[np.argmin(v)] if remove_black else 0.0
+    Y0 = RAMP_COMMON_BLACK_Y if remove_black else 0.0
     Ymax = Y[np.argmax(v)]
     denom = (Ymax - Y0) if (Ymax - Y0) != 0 else 1.0
     yn = np.clip((Y - Y0) / denom, 0.0, None)
@@ -399,6 +418,13 @@ except FileNotFoundError as _e:
     RAMP_FG_CORR = {}
     print(f"\n[補正後ランプ] 未測定のためプロットをスキップ: {_e}")
 
+RAMP_FG_CORR_BLACK_XYZ = (
+    estimate_common_black_xyz(RAMP_FG_CORR)
+    if RAMP_FG_CORR else None
+)
+if RAMP_FG_CORR_BLACK_XYZ is not None:
+    print("[共通黒] corrected ramp XYZ =", np.round(RAMP_FG_CORR_BLACK_XYZ, 6))
+
 CORR_PLOT_DIR = os.path.join(RAMP_FIG_DIR, "corrected_linearity")
 for _ch in [c for c in RAMP_FG_RAW if c in RAMP_FG_CORR]:
     plot_corrected_linearity(_ch, RAMP_FG_RAW[_ch], RAMP_FG_CORR[_ch], plot_dir=CORR_PLOT_DIR)
@@ -493,10 +519,12 @@ else:
         _levels = sorted(set(_T) & set(_R))
         _dE, _dY = [], []
         for _lv in _levels:
-            _Lab_T = XYZ_to_Lab(Yxy_to_XYZ(_T[_lv]), WHITE_XYZ)
-            _Lab_R = XYZ_to_Lab(Yxy_to_XYZ(_R[_lv]), WHITE_XYZ)
+            _xyz_T = Yxy_to_XYZ(_T[_lv]) - RAMP_COMMON_BLACK_XYZ
+            _xyz_R = Yxy_to_XYZ(_R[_lv]) - RAMP_FG_CORR_BLACK_XYZ
+            _Lab_T = XYZ_to_Lab(_xyz_T, WHITE_XYZ)
+            _Lab_R = XYZ_to_Lab(_xyz_R, WHITE_XYZ)
             _dE.append(ciede2000(_Lab_T, _Lab_R))
-            _dY.append(_R[_lv][0] - _T[_lv][0])   # ΔY = Y_R - Y_T
+            _dY.append(_xyz_R[1] - _xyz_T[1])  # 共通黒差引き後のΔY
         if not _dE:
             print(f"{_ch:>3} {'--':>9}  (共通レベルなし)")
             continue
@@ -672,6 +700,15 @@ def _load_add_by_target(dir_path):
 _add_by_target = _load_add_by_target(_ADDSIM_CSV_DIR)
 _sim_by_target, _sim_csv_path = _load_latest_sim_by_target(_SIM_CSV_DIR)
 
+if 0 not in _add_by_target:
+    raise ValueError("Add実測にtarget=0の共通黒測定がありません")
+if 0 not in _sim_by_target:
+    raise ValueError("sim実測にtarget=0の共通黒測定がありません")
+ADD_COMMON_BLACK_XYZ = Yxy_to_XYZ(_add_by_target[0])
+SIM_COMMON_BLACK_XYZ = Yxy_to_XYZ(_sim_by_target[0])
+print("[共通黒] Add XYZ =", np.round(ADD_COMMON_BLACK_XYZ, 6))
+print("[共通黒] sim XYZ =", np.round(SIM_COMMON_BLACK_XYZ, 6))
+
 def _add_meas_for(target, tol=5):
     """狙い輝度 target に対応する実測加算Yxyを返す。完全一致優先、無ければ
        ±tol 以内の最も近いキーを使う（該当なしは None でスキップ）。"""
@@ -707,8 +744,8 @@ for name, add_row, sim_row in ADDSIM:
     if any(v is None for v in add_row) or any(v is None for v in sim_row):
         continue
 
-    xyz_add = Yxy_to_XYZ(add_row)
-    xyz_sim = Yxy_to_XYZ(sim_row)
+    xyz_add = Yxy_to_XYZ(add_row) - ADD_COMMON_BLACK_XYZ
+    xyz_sim = Yxy_to_XYZ(sim_row) - SIM_COMMON_BLACK_XYZ
     Lab_add = XYZ_to_Lab(xyz_add, ADDSIM_WHITE)
     Lab_sim = XYZ_to_Lab(xyz_sim, ADDSIM_WHITE)
 
@@ -716,11 +753,11 @@ for name, add_row, sim_row in ADDSIM:
     dL = Lab_sim[0] - Lab_add[0]        # ΔL* = sim - add
     da = Lab_sim[1] - Lab_add[1]        # Δa*
     db = Lab_sim[2] - Lab_add[2]        # Δb*
-    dY = sim_row[0] - add_row[0]        # ΔY (絶対輝度差)
+    dY = xyz_sim[1] - xyz_add[1]  # 共通黒差引き後の輝度差
 
     _addsim_dE.append((name, dE00))
     print(f"{name:>7} {dE00:8.3f} {dL:+8.3f} {da:+8.3f} {db:+8.3f} "
-          f"{dY:+7.2f} {add_row[0]:7.2f} {sim_row[0]:7.2f}")
+          f"{dY:+7.2f} {xyz_add[1]:7.2f} {xyz_sim[1]:7.2f}")
 
 if _addsim_dE:
     _avg = sum(d for _, d in _addsim_dE) / len(_addsim_dE)
