@@ -704,6 +704,7 @@ def _load_add_by_target(dir_path):
     return {k: _xyz2yxy(np.mean(np.array(v), axis=0)) for k, v in acc.items()}
 
 _add_by_target = _load_add_by_target(_ADDSIM_CSV_DIR)
+# LUT・2Cは比較CSVが存在する場合だけ任意検証する。
 _sim_by_target, _sim_csv_path = _load_latest_sim_by_target(_SIM_CSV_DIR)
 _matrix_sim_by_target, _matrix_sim_csv_path = _load_latest_sim_by_target(
     _MATRIX_SIM_CSV_DIR
@@ -711,29 +712,38 @@ _matrix_sim_by_target, _matrix_sim_csv_path = _load_latest_sim_by_target(
 _two_c_sim_by_target, _two_c_sim_csv_path = _load_latest_sim_by_target(
     _TWO_C_SIM_CSV_DIR
 )
+if _sim_by_target and 0 not in _sim_by_target:
+    print("[LUT sim実測] target=0がないため比較をスキップします")
+    _sim_by_target = {}
+if _two_c_sim_by_target and 0 not in _two_c_sim_by_target:
+    print("[2C sim実測] target=0がないため比較をスキップします")
+    _two_c_sim_by_target = {}
 
 if 0 not in _add_by_target:
     raise ValueError("Add実測にtarget=0の共通黒測定がありません")
-if 0 not in _sim_by_target:
-    raise ValueError("LUT sim実測にtarget=0の共通黒測定がありません")
 if 0 not in _matrix_sim_by_target:
     raise ValueError("Matrix sim実測にtarget=0の共通黒測定がありません")
-if 0 not in _two_c_sim_by_target:
-    raise ValueError("2C sim実測にtarget=0の共通黒測定がありません")
 ADD_COMMON_BLACK_XYZ = Yxy_to_XYZ(_add_by_target[0])
-SIM_COMMON_BLACK_XYZ = Yxy_to_XYZ(_sim_by_target[0])
+SIM_COMMON_BLACK_XYZ = (
+    Yxy_to_XYZ(_sim_by_target[0]) if _sim_by_target else None
+)
 MATRIX_SIM_COMMON_BLACK_XYZ = Yxy_to_XYZ(_matrix_sim_by_target[0])
-TWO_C_SIM_COMMON_BLACK_XYZ = Yxy_to_XYZ(_two_c_sim_by_target[0])
+TWO_C_SIM_COMMON_BLACK_XYZ = (
+    Yxy_to_XYZ(_two_c_sim_by_target[0])
+    if _two_c_sim_by_target else None
+)
 print("[共通黒] Add XYZ =", np.round(ADD_COMMON_BLACK_XYZ, 6))
-print("[共通黒] LUT sim XYZ =", np.round(SIM_COMMON_BLACK_XYZ, 6))
+if SIM_COMMON_BLACK_XYZ is not None:
+    print("[共通黒] LUT sim XYZ =", np.round(SIM_COMMON_BLACK_XYZ, 6))
 print(
     "[共通黒] Matrix sim XYZ =",
     np.round(MATRIX_SIM_COMMON_BLACK_XYZ, 6),
 )
-print(
-    "[共通黒] 2C sim XYZ =",
-    np.round(TWO_C_SIM_COMMON_BLACK_XYZ, 6),
-)
+if TWO_C_SIM_COMMON_BLACK_XYZ is not None:
+    print(
+        "[共通黒] 2C sim XYZ =",
+        np.round(TWO_C_SIM_COMMON_BLACK_XYZ, 6),
+    )
 
 def _add_meas_for(target, tol=5):
     """狙い輝度 target に対応する実測加算Yxyを返す。完全一致優先、無ければ

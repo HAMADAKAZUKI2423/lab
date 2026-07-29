@@ -718,26 +718,35 @@ else:
     print(f"測定点 {len(_add_meas)} 件 / 有効輝度 {len(_uY)} 段 / レンジ {_uY.min():.2f}〜{_uY.max():.2f} cd/m^2")
     print(f"{'target':>7} {'画素値(0-255)':>16} {'備考':>10}")
 
-    # LUT方式の画像は従来どおり保存する。
-    print(f"{'target':>7} {'LUT画素値(0-255)':>20} {'備考':>16}")
-    for Yt in ADD_TARGETS:
-        if sp_y_grid is not None and sp_px_grid is not None:
-            px = np.array([
-                np.interp(float(Yt), sp_y_grid, sp_px_grid[:, channel])
-                for channel in range(3)
-            ])
-            note = "区間別SP LUT"
-        else:
-            px = add_sim_pixel(Yt)
-            note = "★SP LUT未生成→旧LUT"
-        plt.imsave(
-            os.path.join(FG_ADD_DIR, f"AddSim_Y{int(Yt):02d}.png"),
-            np.tile(px, (PATCH, PATCH, 1)),
-        )
-        print(
-            f"{Yt:7d} {str(np.round(px * 255).astype(int)):>20} "
-            f"{note:>16}"
-        )
+    # 比較画像は必要なときだけTrueにする。本番Matrix生成には依存しない。
+    SAVE_LUT_COMPARISON_IMAGES = False
+    SAVE_TWO_C_COMPARISON_IMAGES = False
+
+    if SAVE_LUT_COMPARISON_IMAGES:
+        print(f"{'target':>7} {'LUT画素値(0-255)':>20} {'備考':>16}")
+        for Yt in ADD_TARGETS:
+            if sp_y_grid is not None and sp_px_grid is not None:
+                px = np.array([
+                    np.interp(
+                        float(Yt), sp_y_grid, sp_px_grid[:, channel]
+                    )
+                    for channel in range(3)
+                ])
+                note = "区間別SP LUT"
+            else:
+                px = add_sim_pixel(Yt)
+                note = "★SP LUT未生成→旧LUT"
+            plt.imsave(
+                os.path.join(
+                    FG_ADD_DIR, f"AddSim_Y{int(Yt):02d}.png"
+                ),
+                np.tile(px, (PATCH, PATCH, 1)),
+            )
+            print(
+                f"{Yt:7d} "
+                f"{str(np.round(px * 255).astype(int)):>20} "
+                f"{note:>16}"
+            )
 
     # Matrix方式は実際の加算測定と同じBG/FG条件を個別に予測し、
     # 同一合計輝度ごとにXYZ空間で平均してからFG再現画像へ変換する。
@@ -812,46 +821,53 @@ else:
             f"{str(np.round(matrix_px * 255).astype(int)):>23}"
         )
 
-    # 比較用2C方式: 合計目標Yの半分を実測BG LUTで線形RGBへ変換し、
-    # そのC補正後の寄与を線形RGB空間で2倍してFG画像にする。
-    print("\n==== 2Cシミュレート画像 ====")
-    print(f"{'target':>7} {'2C画素値(0-255)':>20}")
-    for total_target in sorted(matrix_xyz_by_total):
-        half_reference_linear = reference_linear_for_luminance(
-            float(total_target) / 2.0
-        )
-        foreground_linear_2c = 2.0 * (C @ half_reference_linear)
-        if np.any(foreground_linear_2c < -1e-9) or np.any(
-            foreground_linear_2c > 1.0 + 1e-9
-        ):
-            print(
-                "WARN: 2C simulation is out of gamut: "
-                f"Y={total_target}, "
-                f"linearRGB={np.round(foreground_linear_2c, 6)}"
+    # 比較用2C方式は明示的に有効化したときだけ生成する。
+    if SAVE_TWO_C_COMPARISON_IMAGES:
+        print("\n==== 2Cシミュレート画像 ====")
+        print(f"{'target':>7} {'2C画素値(0-255)':>20}")
+        for total_target in sorted(matrix_xyz_by_total):
+            half_reference_linear = reference_linear_for_luminance(
+                float(total_target) / 2.0
             )
-        two_c_px = np.clip(
-            g_f_inv(np.clip(foreground_linear_2c, 0.0, None)),
-            0.0,
-            1.0,
-        )
-        plt.imsave(
-            os.path.join(
-                TWO_C_SIM_DIR,
-                f"2CSim_Y{int(total_target):02d}.png",
-            ),
-            np.tile(two_c_px, (PATCH, PATCH, 1)),
-        )
-        print(
-            f"{total_target:7d} "
-            f"{str(np.round(two_c_px * 255).astype(int)):>20}"
-        )
+            foreground_linear_2c = 2.0 * (
+                C @ half_reference_linear
+            )
+            if np.any(foreground_linear_2c < -1e-9) or np.any(
+                foreground_linear_2c > 1.0 + 1e-9
+            ):
+                print(
+                    "WARN: 2C simulation is out of gamut: "
+                    f"Y={total_target}, "
+                    f"linearRGB={np.round(foreground_linear_2c, 6)}"
+                )
+            two_c_px = np.clip(
+                g_f_inv(np.clip(foreground_linear_2c, 0.0, None)),
+                0.0,
+                1.0,
+            )
+            plt.imsave(
+                os.path.join(
+                    TWO_C_SIM_DIR,
+                    f"2CSim_Y{int(total_target):02d}.png",
+                ),
+                np.tile(two_c_px, (PATCH, PATCH, 1)),
+            )
+            print(
+                f"{total_target:7d} "
+                f"{str(np.round(two_c_px * 255).astype(int)):>20}"
+            )
 
-    print(f"[保存] LUT前景画像 {len(ADD_TARGETS)}枚 -> {FG_ADD_DIR}")
+    if SAVE_LUT_COMPARISON_IMAGES:
+        print(
+            f"[保存] LUT前景画像 {len(ADD_TARGETS)}枚 "
+            f"-> {FG_ADD_DIR}"
+        )
     print(
         f"[保存] Matrix平均画像 {len(matrix_xyz_by_total)}枚 "
         f"-> {MATRIX_SIM_DIR}"
     )
-    print(
-        f"[保存] 2C画像 {len(matrix_xyz_by_total)}枚 "
-        f"-> {TWO_C_SIM_DIR}"
-    )
+    if SAVE_TWO_C_COMPARISON_IMAGES:
+        print(
+            f"[保存] 2C画像 {len(matrix_xyz_by_total)}枚 "
+            f"-> {TWO_C_SIM_DIR}"
+        )

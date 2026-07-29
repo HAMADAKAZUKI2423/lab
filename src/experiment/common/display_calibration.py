@@ -29,8 +29,6 @@ class DisplayCalibration:
     bg_pixels: np.ndarray
     ext_lum_y: np.ndarray | None
     ext_lum_px: np.ndarray | None
-    singleplane_add_lut_y: np.ndarray | None
-    singleplane_add_lut_px: np.ndarray | None
 
 
 def _load_matrix(path: Path) -> np.ndarray:
@@ -91,9 +89,6 @@ def load_display_calibration(display_dir: Path) -> DisplayCalibration:
         bg_pixels = np.array([0.0, 255.0], dtype=np.float64)
 
     ext_lum_y, ext_lum_px = _load_extended_lut(display_dir / "ext_lum_lut.csv")
-    singleplane_add_lut_y, singleplane_add_lut_px = _load_extended_lut(
-        display_dir / "singleplane_add_lut.csv"
-    )
     t_prime = _load_required_matrix(display_dir / "T_prime.csv")
     r_prime = _load_required_matrix(display_dir / "R_prime.csv")
     r_prime_inv = np.linalg.inv(r_prime)
@@ -108,6 +103,4 @@ def load_display_calibration(display_dir: Path) -> DisplayCalibration:
         bg_pixels=np.asarray(bg_pixels, dtype=np.float64),
         ext_lum_y=ext_lum_y,
         ext_lum_px=ext_lum_px,
-        singleplane_add_lut_y=singleplane_add_lut_y,
-        singleplane_add_lut_px=singleplane_add_lut_px,
     )

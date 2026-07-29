@@ -136,59 +136,36 @@ def generate_trial_photos(
     config: MatchingSessionConfig,
     calibration: DisplayCalibration,
 ):
-    """Single planeはPDF行列法または実測加算LUT、DPは光学加算で生成する。"""
-    reference_luminance = config.l_ref * (
-        1.0 + reference_contrast * prepared.gabor_base
+    """Single planeはT'・R'のMatrix法、DPは実際の光学加算で生成する。"""
+    # ReferenceもBG/FGの2経路に分け、T'とR'でXYZ加算してFG1画面へ再現する。
+    component_total = config.l_bg + config.l_fg
+    if component_total <= 0:
+        raise ValueError("l_bg + l_fg must be positive")
+    reference_modulation = 1.0 + (
+        reference_contrast * prepared.gabor_base
     )
-    if config.singleplane_reproduction_mode == "matrix":
-        # referenceもBG/FGの2経路に分け、T'とR'でXYZ加算してFG1画面へ再現する。
-        component_total = config.l_bg + config.l_fg
-        if component_total <= 0:
-            raise ValueError("l_bg + l_fg must be positive")
-        reference_modulation = 1.0 + (
-            reference_contrast * prepared.gabor_base
+    reference_background_luminance = (
+        config.l_ref * config.l_bg / component_total
+        * reference_modulation
+    )
+    reference_foreground_luminance = (
+        config.l_ref * config.l_fg / component_total
+        * reference_modulation
+    )
+    reference_photo = (
+        photometry.luminance_components_to_matrix_singleplane_photo(
+            reference_background_luminance,
+            reference_foreground_luminance,
+            calibration.bg_lums,
+            calibration.bg_pixels,
+            calibration.color_matrix,
+            calibration.t_prime,
+            calibration.r_prime,
+            calibration.r_prime_inv,
+            calibration.gamma_bg,
+            calibration.gamma_fg,
         )
-        reference_background_luminance = (
-            config.l_ref * config.l_bg / component_total
-            * reference_modulation
-        )
-        reference_foreground_luminance = (
-            config.l_ref * config.l_fg / component_total
-            * reference_modulation
-        )
-        reference_photo = (
-            photometry.luminance_components_to_matrix_singleplane_photo(
-                reference_background_luminance,
-                reference_foreground_luminance,
-                calibration.bg_lums,
-                calibration.bg_pixels,
-                calibration.color_matrix,
-                calibration.t_prime,
-                calibration.r_prime,
-                calibration.r_prime_inv,
-                calibration.gamma_bg,
-                calibration.gamma_fg,
-            )
-        )
-    elif config.singleplane_reproduction_mode == "measured_lut":
-        if (
-            calibration.singleplane_add_lut_y is None
-            or calibration.singleplane_add_lut_px is None
-        ):
-            raise RuntimeError(
-                "singleplane_add_lut.csvがありません。"
-                "create_color_correction_marix.pyを先に実行してください。"
-            )
-        reference_photo = photometry.luminance_to_singleplane_photo(
-            reference_luminance,
-            calibration.singleplane_add_lut_y,
-            calibration.singleplane_add_lut_px,
-        )
-    else:
-        raise ValueError(
-            "unknown singleplane_reproduction_mode: "
-            f"{config.singleplane_reproduction_mode}"
-        )
+    )
 
     foreground_luminance = config.l_fg * (
         1.0 + test_contrast * prepared.gabor_base
@@ -212,45 +189,22 @@ def generate_trial_photos(
             ),
         }
 
-    if config.singleplane_reproduction_mode == "matrix":
-        # PDF一般式をそのまま用い、BGにはT'、FGにはR'を適用した
-        # XYZ増分を加算してから、inv(R')でFG1画面へ戻す。
-        test_photo = (
-            photometry.luminance_components_to_matrix_singleplane_photo(
-                prepared.background_luminance,
-                foreground_luminance,
-                calibration.bg_lums,
-                calibration.bg_pixels,
-                calibration.color_matrix,
-                calibration.t_prime,
-                calibration.r_prime,
-                calibration.r_prime_inv,
-                calibration.gamma_bg,
-                calibration.gamma_fg,
-            )
+    # PDF一般式をそのまま用い、BGにはT'、FGにはR'を適用した
+    # XYZ増分を加算してから、inv(R')でFG1画面へ戻す。
+    test_photo = (
+        photometry.luminance_components_to_matrix_singleplane_photo(
+            prepared.background_luminance,
+            foreground_luminance,
+            calibration.bg_lums,
+            calibration.bg_pixels,
+            calibration.color_matrix,
+            calibration.t_prime,
+            calibration.r_prime,
+            calibration.r_prime_inv,
+            calibration.gamma_bg,
+            calibration.gamma_fg,
         )
-    elif config.singleplane_reproduction_mode == "measured_lut":
-        total_luminance = (
-            prepared.background_luminance + foreground_luminance
-        )
-        if (
-            calibration.singleplane_add_lut_y is None
-            or calibration.singleplane_add_lut_px is None
-        ):
-            raise RuntimeError(
-                "singleplane_add_lut.csvがありません。"
-                "create_color_correction_marix.pyを先に実行してください。"
-            )
-        test_photo = photometry.luminance_to_singleplane_photo(
-            total_luminance,
-            calibration.singleplane_add_lut_y,
-            calibration.singleplane_add_lut_px,
-        )
-    else:
-        raise ValueError(
-            "unknown singleplane_reproduction_mode: "
-            f"{config.singleplane_reproduction_mode}"
-        )
+    )
     return {
         "photo_ref_fg": reference_photo,
         "photo_test": test_photo,
