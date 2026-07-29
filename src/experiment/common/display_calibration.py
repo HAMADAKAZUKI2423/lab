@@ -20,6 +20,9 @@ FALLBACK_COLOR_MATRIX = np.array(
 @dataclass
 class DisplayCalibration:
     color_matrix: np.ndarray
+    t_prime: np.ndarray
+    r_prime: np.ndarray
+    r_prime_inv: np.ndarray
     gamma_bg: dict[str, float] | None
     gamma_fg: dict[str, float] | None
     bg_lums: np.ndarray
@@ -36,6 +39,21 @@ def _load_matrix(path: Path) -> np.ndarray:
     except (OSError, ValueError) as exc:
         print(f"WARN: {path.name} could not be loaded ({exc}); using fallback.")
         return FALLBACK_COLOR_MATRIX.copy()
+
+
+def _load_required_matrix(path: Path) -> np.ndarray:
+    """Matrix再現に必須の表示経路行列を読み込む。"""
+    try:
+        matrix = np.loadtxt(path, delimiter=",")
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(
+            f"{path.name} could not be loaded: {exc}"
+        ) from exc
+    if matrix.shape != (3, 3):
+        raise RuntimeError(
+            f"{path.name} must be a 3x3 matrix: {matrix.shape}"
+        )
+    return matrix
 
 
 def _load_gamma(path: Path) -> dict[str, float] | None:
@@ -76,8 +94,14 @@ def load_display_calibration(display_dir: Path) -> DisplayCalibration:
     singleplane_add_lut_y, singleplane_add_lut_px = _load_extended_lut(
         display_dir / "singleplane_add_lut.csv"
     )
+    t_prime = _load_required_matrix(display_dir / "T_prime.csv")
+    r_prime = _load_required_matrix(display_dir / "R_prime.csv")
+    r_prime_inv = np.linalg.inv(r_prime)
     return DisplayCalibration(
         color_matrix=_load_matrix(display_dir / "C.csv"),
+        t_prime=t_prime,
+        r_prime=r_prime,
+        r_prime_inv=r_prime_inv,
         gamma_bg=_load_gamma(display_dir / "gamma_bg.csv"),
         gamma_fg=_load_gamma(display_dir / "gamma_fg.csv"),
         bg_lums=np.asarray(bg_lums, dtype=np.float64),

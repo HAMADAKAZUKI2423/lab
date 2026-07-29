@@ -100,36 +100,44 @@ def luminance_components_to_matrix_singleplane_photo(
     background_luminances,
     background_pixels,
     color_matrix,
+    t_prime,
+    r_prime,
+    r_prime_inv,
     gamma_background,
     gamma_foreground,
 ):
-    """PDFの線形加算モデルで2成分を前景1画面用RGBへ変換する。
+    """T'とR'を明示的に使い、2経路のXYZ増分を加算してFGで再現する。"""
 
-    各成分を基準側（背景）の線形RGBへ変換し、
-    C = inv(R') @ T' により前景側へ写像してから線形空間で加算する。
-    これは d_rep = inv(R') (T'd_bg + R'd_fg) の簡略形に対応する。
-    """
-    linear_foreground_sum = None
-    for luminance in (background_luminance, foreground_luminance):
+    def to_background_linear(luminance):
         pixels = np.clip(
-            np.interp(luminance, background_luminances, background_pixels),
+            np.interp(
+                luminance,
+                background_luminances,
+                background_pixels,
+            ),
             0,
             255,
         ) / 255.0
-        linear_background = np.stack(
+        return np.stack(
             [
                 _apply_gamma(gamma_background, channel, pixels)
                 for channel in "RGB"
             ],
             axis=-1,
         )
-        component_foreground = linear_background @ color_matrix.T
-        if linear_foreground_sum is None:
-            linear_foreground_sum = component_foreground
-        else:
-            linear_foreground_sum = (
-                linear_foreground_sum + component_foreground
-            )
+
+    # 実験で表示する実際の入力を個別に構築する。
+    linear_bg = to_background_linear(background_luminance)
+    linear_fg_reference = to_background_linear(foreground_luminance)
+    linear_fg = linear_fg_reference @ color_matrix.T
+
+    # PDF一般式: XYZ_sum = T'd_bg + R'd_fg
+    xyz_bg = linear_bg @ t_prime.T
+    xyz_fg = linear_fg @ r_prime.T
+    xyz_sum = xyz_bg + xyz_fg
+
+    # BGは黒表示のままなので、共通黒を除いたXYZ増分だけをFG入力へ戻す。
+    linear_foreground_sum = xyz_sum @ r_prime_inv.T
 
     out_of_gamut = (
         np.any(linear_foreground_sum < -1e-9)

@@ -141,15 +141,34 @@ def generate_trial_photos(
         1.0 + reference_contrast * prepared.gabor_base
     )
     if config.singleplane_reproduction_mode == "matrix":
-        # referenceは前景1画面だけで表示するため、背景基準の輝度を
-        # C = inv(R') @ T' で前景RGBへ写像する。
-        reference_photo = photometry.luminance_to_dualplane_photo(
-            reference_luminance,
-            calibration.bg_lums,
-            calibration.bg_pixels,
-            calibration.color_matrix,
-            calibration.gamma_bg,
-            calibration.gamma_fg,
+        # referenceもBG/FGの2経路に分け、T'とR'でXYZ加算してFG1画面へ再現する。
+        component_total = config.l_bg + config.l_fg
+        if component_total <= 0:
+            raise ValueError("l_bg + l_fg must be positive")
+        reference_modulation = 1.0 + (
+            reference_contrast * prepared.gabor_base
+        )
+        reference_background_luminance = (
+            config.l_ref * config.l_bg / component_total
+            * reference_modulation
+        )
+        reference_foreground_luminance = (
+            config.l_ref * config.l_fg / component_total
+            * reference_modulation
+        )
+        reference_photo = (
+            photometry.luminance_components_to_matrix_singleplane_photo(
+                reference_background_luminance,
+                reference_foreground_luminance,
+                calibration.bg_lums,
+                calibration.bg_pixels,
+                calibration.color_matrix,
+                calibration.t_prime,
+                calibration.r_prime,
+                calibration.r_prime_inv,
+                calibration.gamma_bg,
+                calibration.gamma_fg,
+            )
         )
     elif config.singleplane_reproduction_mode == "measured_lut":
         if (
@@ -194,10 +213,8 @@ def generate_trial_photos(
         }
 
     if config.singleplane_reproduction_mode == "matrix":
-        # PDF方式:
-        # d_rep = inv(R') (T'd_bg + R'd_fg)
-        # 個別色合わせ後は C(d_bg + d_fg) と等価なので、
-        # 背景・前景成分を線形RGB空間で変換・加算する。
+        # PDF一般式をそのまま用い、BGにはT'、FGにはR'を適用した
+        # XYZ増分を加算してから、inv(R')でFG1画面へ戻す。
         test_photo = (
             photometry.luminance_components_to_matrix_singleplane_photo(
                 prepared.background_luminance,
@@ -205,6 +222,9 @@ def generate_trial_photos(
                 calibration.bg_lums,
                 calibration.bg_pixels,
                 calibration.color_matrix,
+                calibration.t_prime,
+                calibration.r_prime,
+                calibration.r_prime_inv,
                 calibration.gamma_bg,
                 calibration.gamma_fg,
             )
