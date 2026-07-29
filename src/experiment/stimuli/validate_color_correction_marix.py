@@ -623,6 +623,9 @@ for Yt in [0.0, 15.0, 30.0]:
 #        setlumごとの実測Yxyを使用する。
 _ADDSIM_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add", "add")
 _SIM_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add", "sim")
+_MATRIX_SIM_CSV_DIR = os.path.join(
+    TABLE_DIR, "foreground_add", "simulation_matarix"
+)
 
 
 def _load_latest_sim_by_target(dir_path):
@@ -699,15 +702,25 @@ def _load_add_by_target(dir_path):
 
 _add_by_target = _load_add_by_target(_ADDSIM_CSV_DIR)
 _sim_by_target, _sim_csv_path = _load_latest_sim_by_target(_SIM_CSV_DIR)
+_matrix_sim_by_target, _matrix_sim_csv_path = _load_latest_sim_by_target(
+    _MATRIX_SIM_CSV_DIR
+)
 
 if 0 not in _add_by_target:
     raise ValueError("Add実測にtarget=0の共通黒測定がありません")
 if 0 not in _sim_by_target:
-    raise ValueError("sim実測にtarget=0の共通黒測定がありません")
+    raise ValueError("LUT sim実測にtarget=0の共通黒測定がありません")
+if 0 not in _matrix_sim_by_target:
+    raise ValueError("Matrix sim実測にtarget=0の共通黒測定がありません")
 ADD_COMMON_BLACK_XYZ = Yxy_to_XYZ(_add_by_target[0])
 SIM_COMMON_BLACK_XYZ = Yxy_to_XYZ(_sim_by_target[0])
+MATRIX_SIM_COMMON_BLACK_XYZ = Yxy_to_XYZ(_matrix_sim_by_target[0])
 print("[共通黒] Add XYZ =", np.round(ADD_COMMON_BLACK_XYZ, 6))
-print("[共通黒] sim XYZ =", np.round(SIM_COMMON_BLACK_XYZ, 6))
+print("[共通黒] LUT sim XYZ =", np.round(SIM_COMMON_BLACK_XYZ, 6))
+print(
+    "[共通黒] Matrix sim XYZ =",
+    np.round(MATRIX_SIM_COMMON_BLACK_XYZ, 6),
+)
 
 def _add_meas_for(target, tol=5):
     """狙い輝度 target に対応する実測加算Yxyを返す。完全一致優先、無ければ
@@ -763,3 +776,66 @@ if _addsim_dE:
     _avg = sum(d for _, d in _addsim_dE) / len(_addsim_dE)
     _worst = max(_addsim_dE, key=lambda x: x[1])
     print(f"\n平均 ΔE00 = {_avg:.3f} / 最大 ΔE00 = {_worst[1]:.3f} ({_worst[0]})")
+
+# =============================================================
+# Add(加算) vs Matrix sim の色差・輝度差
+#   simulation_matarix/*.csv の最新ファイルを、LUT simと同じ形式で検証する。
+#   符号は Matrix sim - Add。双方のtarget=0を共通黒として差し引く。
+# =============================================================
+MATRIX_ADDSIM = [
+    (
+        f"Y{target}",
+        _add_meas_for(target),
+        _matrix_sim_by_target[target],
+    )
+    for target in sorted(_matrix_sim_by_target)
+]
+
+print(
+    "\n==== Add(加算) vs Matrix sim 色差・輝度差 "
+    "[符号 = Matrix sim - Add] ===="
+)
+print(
+    f"{'target':>7} {'ΔE00':>8} {'ΔL*':>8} {'Δa*':>8} "
+    f"{'Δb*':>8} {'ΔY':>7} {'Y_add':>7} {'Y_matrix':>9}"
+)
+
+_matrix_addsim_dE = []
+for name, add_row, matrix_row in MATRIX_ADDSIM:
+    if add_row is None or matrix_row is None:
+        continue
+    if any(v is None for v in add_row) or any(
+        v is None for v in matrix_row
+    ):
+        continue
+
+    xyz_add = Yxy_to_XYZ(add_row) - ADD_COMMON_BLACK_XYZ
+    xyz_matrix = (
+        Yxy_to_XYZ(matrix_row) - MATRIX_SIM_COMMON_BLACK_XYZ
+    )
+    Lab_add = XYZ_to_Lab(xyz_add, ADDSIM_WHITE)
+    Lab_matrix = XYZ_to_Lab(xyz_matrix, ADDSIM_WHITE)
+
+    dE00 = ciede2000(Lab_add, Lab_matrix)
+    dL = Lab_matrix[0] - Lab_add[0]
+    da = Lab_matrix[1] - Lab_add[1]
+    db = Lab_matrix[2] - Lab_add[2]
+    dY = xyz_matrix[1] - xyz_add[1]
+
+    _matrix_addsim_dE.append((name, dE00))
+    print(
+        f"{name:>7} {dE00:8.3f} {dL:+8.3f} {da:+8.3f} "
+        f"{db:+8.3f} {dY:+7.2f} "
+        f"{xyz_add[1]:7.2f} {xyz_matrix[1]:9.2f}"
+    )
+
+if _matrix_addsim_dE:
+    _matrix_avg = sum(d for _, d in _matrix_addsim_dE) / len(
+        _matrix_addsim_dE
+    )
+    _matrix_worst = max(_matrix_addsim_dE, key=lambda x: x[1])
+    print(
+        f"\nMatrix平均 ΔE00 = {_matrix_avg:.3f} / "
+        f"最大 ΔE00 = {_matrix_worst[1]:.3f} "
+        f"({_matrix_worst[0]})"
+    )
