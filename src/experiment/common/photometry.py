@@ -94,17 +94,77 @@ def luminance_to_dualplane_photo(
     return ImageTk.PhotoImage(image)
 
 
-def luminance_to_singleplane_photo(luminance, luminance_grid, pixel_grid):
-    """拡張輝度LUTを使ってPhotoImageへ変換する。"""
-    luminance = np.asarray(luminance, dtype=np.float64)
-    output = np.empty(luminance.shape + (3,), dtype=np.float64)
-    for channel in range(3):
-        output[..., channel] = np.interp(
-            luminance, luminance_grid, pixel_grid[:, channel]
+def luminance_components_to_matrix_singleplane_photo(
+    background_luminance,
+    foreground_luminance,
+    background_luminances,
+    background_pixels,
+    color_matrix,
+    t_prime,
+    r_prime,
+    r_prime_inv,
+    gamma_background,
+    gamma_foreground,
+):
+    """T'とR'を明示的に使い、2経路のXYZ増分を加算してFGで再現する。"""
+
+    def to_background_linear(luminance):
+        pixels = np.clip(
+            np.interp(
+                luminance,
+                background_luminances,
+                background_pixels,
+            ),
+            0,
+            255,
+        ) / 255.0
+        return np.stack(
+            [
+                _apply_gamma(gamma_background, channel, pixels)
+                for channel in "RGB"
+            ],
+            axis=-1,
+        )
+
+    # 実験で表示する実際の入力を個別に構築する。
+    linear_bg = to_background_linear(background_luminance)
+    linear_fg_reference = to_background_linear(foreground_luminance)
+    linear_fg = linear_fg_reference @ color_matrix.T
+
+    # PDF一般式: XYZ_sum = T'd_bg + R'd_fg
+    xyz_bg = linear_bg @ t_prime.T
+    xyz_fg = linear_fg @ r_prime.T
+    xyz_sum = xyz_bg + xyz_fg
+
+    # BGは黒表示のままなので、共通黒を除いたXYZ増分だけをFG入力へ戻す。
+    linear_foreground_sum = xyz_sum @ r_prime_inv.T
+
+    out_of_gamut = (
+        np.any(linear_foreground_sum < -1e-9)
+        or np.any(linear_foreground_sum > 1.0 + 1e-9)
+    )
+    if out_of_gamut:
+        print(
+            "WARN: matrix Single plane RGB is out of gamut: "
+            f"min={float(np.min(linear_foreground_sum)):.6f}, "
+            f"max={float(np.max(linear_foreground_sum)):.6f}"
+        )
+
+    linear_foreground_sum = np.clip(
+        linear_foreground_sum, 0.0, 1.0
+    )
+    output = np.empty_like(linear_foreground_sum)
+    for index, channel in enumerate("RGB"):
+        output[..., index] = _apply_gamma(
+            gamma_foreground,
+            channel,
+            linear_foreground_sum[..., index],
+            inverse=True,
         )
     return ImageTk.PhotoImage(
         Image.fromarray(
-            np.clip(output * 255.0, 0, 255).astype(np.uint8), mode="RGB"
+            np.clip(output * 255.0, 0, 255).astype(np.uint8),
+            mode="RGB",
         )
     )
 
@@ -116,8 +176,6 @@ def luminance_to_window2_photo(
     color_matrix,
     gamma_background=None,
     gamma_foreground=None,
-    luminance_grid=None,
-    pixel_grid=None,
     condition="",
 ):
     """実験条件に応じたWindow 2用PhotoImageを返す。"""
@@ -130,10 +188,6 @@ def luminance_to_window2_photo(
         return luminance_to_dualplane_photo(
             luminance, luminances, pixels, color_matrix,
             gamma_background, gamma_foreground,
-        )
-    if condition.startswith("Single plane") and luminance_grid is not None:
-        return luminance_to_singleplane_photo(
-            luminance, luminance_grid, pixel_grid
         )
     pixel_values = np.interp(luminance, luminances, pixels)
     if color_matrix is None:

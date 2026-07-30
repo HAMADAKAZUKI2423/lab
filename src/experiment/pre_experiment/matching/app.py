@@ -25,6 +25,7 @@ from .stimuli import (
     contrast_to_slider,
     generate_trial_photos,
     prepare_trial_stimulus,
+    save_preview_images,
     slider_to_contrast,
 )
 
@@ -289,7 +290,7 @@ class MatchingExperimentApp(ExperimentBaseUI):
         self._destroy_frame("ctrl_frame")
         self.clear_key_bindings()
         self.ctrl_frame = tk.Frame(self.root, bg="gray")
-        self.ctrl_frame.place(relx=0.5, rely=0.7, anchor="center")
+        self.ctrl_frame.place(relx=0.5, rely=0.8, anchor="center")
         if is_new_eye:
             eye = self.calibration_eyes[self.current_calib_eye_idx]
             text = f"[{eye} Eye Calibration]\nUse arrow keys to align the red frame."
@@ -335,6 +336,13 @@ class MatchingExperimentApp(ExperimentBaseUI):
         self.offset_x.set(calibration["offset_x"])
         self.offset_y.set(calibration["offset_y"])
         self.current_pd_mean = calibration["pd_mean"]
+        if self.session_config.save_preview:
+            save_preview_images(
+                Path(self.result_dir) / "stimulus_previews",
+                self.session_config,
+                self.display_calibration,
+                self.current_pd_mean,
+            )
         self.blocks = build_blocks(self.session_config, self.rng)
         self.current_block_index = 0
         self.current_trial_in_experiment = 0
@@ -411,10 +419,10 @@ class MatchingExperimentApp(ExperimentBaseUI):
         self._destroy_frame("ctrl_frame")
         self.clear_key_bindings()
         self.ctrl_frame = tk.Frame(self.root, bg="gray")
-        self.ctrl_frame.place(relx=0.5, rely=0.7, anchor="center")
+        self.ctrl_frame.place(relx=0.5, rely=0.8, anchor="center")
         self.slider_val = tk.DoubleVar(value=self.init_slider_val)
-        # 操作方法を理解するため、実験全体の最初の1試行だけ表示する。
-        if self.current_trial_in_experiment == 0:
+        # 表示条件×眼条件の各ブロックで、最初の1試行だけ表示する。
+        if self.current_trial_in_block == 0:
             tk.Scale(
                 self.ctrl_frame,
                 from_=1.0,

@@ -97,13 +97,32 @@ print("[CSV読込] 階調ランプ (レベル数):")
 for _side, _ramp in (("BG", RAMP_BG), ("FG", RAMP_FG)):
     print(f"  {_side}: " + ", ".join(f"{_ch}={len(_ramp.get(_ch, []))}" for _ch in CHANNELS))
 
+
+def estimate_common_black_xyz(*ramps):
+    """指定ランプの全channel・pixel=0をXYZ空間で平均する。"""
+    samples = []
+    for ramp in ramps:
+        for channel in ("R", "G", "B", "W"):
+            for pixel, Y, x, y in ramp.get(channel, []):
+                if int(pixel) == 0:
+                    samples.append(_yxy2xyz(Y, x, y))
+    if not samples:
+        raise ValueError("ランプにpixel=0の共通黒測定がありません")
+    return np.mean(np.asarray(samples, dtype=float), axis=0)
+
+
+RAMP_COMMON_BLACK_XYZ = estimate_common_black_xyz(RAMP_BG, RAMP_FG)
+RAMP_COMMON_BLACK_Y = float(RAMP_COMMON_BLACK_XYZ[1])
+print("[共通黒] ramp XYZ =", np.round(RAMP_COMMON_BLACK_XYZ, 6))
+
+
 def _prep_ramp(ramp_channel, remove_black=True):
     """ramp [(pixel,Y,x,y),...] -> (v, yn, Y0)"""
     pts = [(p[0] / 255.0, p[1]) for p in ramp_channel if p[1] is not None]
     pts.sort(key=lambda t: t[0])
     v = np.array([p[0] for p in pts], dtype=float)
     Y = np.array([p[1] for p in pts], dtype=float)
-    Y0 = Y[np.argmin(v)] if remove_black else 0.0
+    Y0 = RAMP_COMMON_BLACK_Y if remove_black else 0.0
     Ymax = Y[np.argmax(v)]
     denom = (Ymax - Y0) if (Ymax - Y0) != 0 else 1.0
     yn = np.clip((Y - Y0) / denom, 0.0, None)
@@ -399,6 +418,13 @@ except FileNotFoundError as _e:
     RAMP_FG_CORR = {}
     print(f"\n[補正後ランプ] 未測定のためプロットをスキップ: {_e}")
 
+RAMP_FG_CORR_BLACK_XYZ = (
+    estimate_common_black_xyz(RAMP_FG_CORR)
+    if RAMP_FG_CORR else None
+)
+if RAMP_FG_CORR_BLACK_XYZ is not None:
+    print("[共通黒] corrected ramp XYZ =", np.round(RAMP_FG_CORR_BLACK_XYZ, 6))
+
 CORR_PLOT_DIR = os.path.join(RAMP_FIG_DIR, "corrected_linearity")
 for _ch in [c for c in RAMP_FG_RAW if c in RAMP_FG_CORR]:
     plot_corrected_linearity(_ch, RAMP_FG_RAW[_ch], RAMP_FG_CORR[_ch], plot_dir=CORR_PLOT_DIR)
@@ -484,16 +510,21 @@ if not RAMP_FG_CORR:
     print("  補正後ランプ(foreground/corrected_ramps)が未読込のためスキップ")
 else:
     print(f"{'ch':>3} {'ΔE00_avg':>9} {'ΔE00_max':>9} {'ΔY_avg':>8} {'点数':>5}")
-    for _ch in [c for c in CHANNELS if c in RAMP_BG and c in RAMP_FG_CORR]:
+    for _ch in [
+        c for c in ("R", "G", "B", "W")
+        if c in RAMP_BG and c in RAMP_FG_CORR
+    ]:
         _T = _ramp_by_level(RAMP_BG[_ch])
         _R = _ramp_by_level(RAMP_FG_CORR[_ch])
         _levels = sorted(set(_T) & set(_R))
         _dE, _dY = [], []
         for _lv in _levels:
-            _Lab_T = XYZ_to_Lab(Yxy_to_XYZ(_T[_lv]), WHITE_XYZ)
-            _Lab_R = XYZ_to_Lab(Yxy_to_XYZ(_R[_lv]), WHITE_XYZ)
+            _xyz_T = Yxy_to_XYZ(_T[_lv]) - RAMP_COMMON_BLACK_XYZ
+            _xyz_R = Yxy_to_XYZ(_R[_lv]) - RAMP_FG_CORR_BLACK_XYZ
+            _Lab_T = XYZ_to_Lab(_xyz_T, WHITE_XYZ)
+            _Lab_R = XYZ_to_Lab(_xyz_R, WHITE_XYZ)
             _dE.append(ciede2000(_Lab_T, _Lab_R))
-            _dY.append(_R[_lv][0] - _T[_lv][0])   # ΔY = Y_R - Y_T
+            _dY.append(_xyz_R[1] - _xyz_T[1])  # 共通黒差引き後のΔY
         if not _dE:
             print(f"{_ch:>3} {'--':>9}  (共通レベルなし)")
             continue
@@ -569,14 +600,14 @@ print(f"反射の出せる上限 Y_white_max = {Y_white_max:6.2f} cd/m^2 (k_max=
 print(f"透過白の上限    Y_bg_white   = {Y_bg_white_now:6.2f} cd/m^2 (背景)")
 print(f"LUT: {LUT_N} 点（g_f_inv の評価は構築時のみ）")
 
-# --- 前景: 好きな輝度を指定（上限 Y_white_max 以下）---
-print("\n-- 前景(反射)画像 --")
-for Yt in [15.0, 30.0, 45.0, 60.0]:
+# --- 加算測定用の前景画像: FG=0,5,10,15,20,25,30 ---
+print("\n-- 前景(反射)加算測定画像 --")
+for Yt in [0.0, 5.0, 10.0, 15.0, 20.0, 25.0, 30.0]:
     white_drive_for_luminance(Yt)
 
-# --- 背景: 検証用に透過後 15, 30 になる画像 ---
-print("\n-- 背景(透過)検証画像 --")
-for Yt in [15.0, 30.0]:
+# --- 加算測定用の背景画像: BG=0,15,30（BG=10,20は出力しない）---
+print("\n-- 背景(透過)加算測定画像 --")
+for Yt in [0.0, 15.0, 30.0]:
     bg_image_for_transmitted_luminance(Yt)
 
 # =============================================================
@@ -591,7 +622,9 @@ for Yt in [15.0, 30.0]:
 #   sim: foreground_add/sim/*.csv のうち更新日時が最新の1ファイルを読み、
 #        setlumごとの実測Yxyを使用する。
 _ADDSIM_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add", "add")
-_SIM_CSV_DIR = os.path.join(TABLE_DIR, "foreground_add", "sim")
+_MATRIX_SIM_CSV_DIR = os.path.join(
+    TABLE_DIR, "foreground_add", "simulation_matarix"
+)
 
 
 def _load_latest_sim_by_target(dir_path):
@@ -667,7 +700,21 @@ def _load_add_by_target(dir_path):
     return {k: _xyz2yxy(np.mean(np.array(v), axis=0)) for k, v in acc.items()}
 
 _add_by_target = _load_add_by_target(_ADDSIM_CSV_DIR)
-_sim_by_target, _sim_csv_path = _load_latest_sim_by_target(_SIM_CSV_DIR)
+_matrix_sim_by_target, _matrix_sim_csv_path = _load_latest_sim_by_target(
+    _MATRIX_SIM_CSV_DIR
+)
+
+if 0 not in _add_by_target:
+    raise ValueError("Add実測にtarget=0の共通黒測定がありません")
+if 0 not in _matrix_sim_by_target:
+    raise ValueError("Matrix sim実測にtarget=0の共通黒測定がありません")
+ADD_COMMON_BLACK_XYZ = Yxy_to_XYZ(_add_by_target[0])
+MATRIX_SIM_COMMON_BLACK_XYZ = Yxy_to_XYZ(_matrix_sim_by_target[0])
+print("[共通黒] Add XYZ =", np.round(ADD_COMMON_BLACK_XYZ, 6))
+print(
+    "[共通黒] Matrix sim XYZ =",
+    np.round(MATRIX_SIM_COMMON_BLACK_XYZ, 6),
+)
 
 def _add_meas_for(target, tol=5):
     """狙い輝度 target に対応する実測加算Yxyを返す。完全一致優先、無ければ
@@ -679,47 +726,67 @@ def _add_meas_for(target, tol=5):
     k = min(_add_by_target, key=lambda kk: abs(kk - target))
     return _add_by_target[k] if abs(k - target) <= tol else None
 
-# 最新sim CSVに存在するsetlumだけを、同じ狙い輝度のAdd実測と対応付ける。
-ADDSIM = [
-    (f"Y{target}", _add_meas_for(target), _sim_by_target[target])
-    for target in sorted(_sim_by_target)
+ADDSIM_WHITE = WHITE_XYZ
+
+# =============================================================
+# Add(加算) vs Matrix sim の色差・輝度差
+#   simulation_matarix/*.csv の最新ファイルを検証する。
+#   符号は Matrix sim - Add。双方のtarget=0を共通黒として差し引く。
+# =============================================================
+MATRIX_ADDSIM = [
+    (
+        f"Y{target}",
+        _add_meas_for(target),
+        _matrix_sim_by_target[target],
+    )
+    for target in sorted(_matrix_sim_by_target)
 ]
 
-print("\n[Add実測] foreground_add/add の加算後Yxyを引用（狙い輝度=bg+fg で平均）")
-for _name, _add_row, _sim in ADDSIM:
-    _s = "（実測なし→スキップ）" if _add_row is None \
-         else f"Y={_add_row[0]:.2f}, x={_add_row[1]:.4f}, y={_add_row[2]:.4f}"
-    print(f"  {_name:>4}: {_s}")
+print(
+    "\n==== Add(加算) vs Matrix sim 色差・輝度差 "
+    "[符号 = Matrix sim - Add] ===="
+)
+print(
+    f"{'target':>7} {'ΔE00':>8} {'ΔL*':>8} {'Δa*':>8} "
+    f"{'Δb*':>8} {'ΔY':>7} {'Y_add':>7} {'Y_matrix':>9}"
+)
 
-ADDSIM_WHITE = WHITE_XYZ   # Lab 基準白（Yw=100スケール）。必要なら実測白に変更可。
-
-print("\n==== Add(加算) vs sim(シミュレート) 色差・輝度差  [符号 = sim - add] ====")
-print(f"{'target':>7} {'ΔE00':>8} {'ΔL*':>8} {'Δa*':>8} {'Δb*':>8} "
-      f"{'ΔY':>7} {'Y_add':>7} {'Y_sim':>7}")
-
-_addsim_dE = []
-for name, add_row, sim_row in ADDSIM:
-    if add_row is None or sim_row is None:
+_matrix_addsim_dE = []
+for name, add_row, matrix_row in MATRIX_ADDSIM:
+    if add_row is None or matrix_row is None:
         continue
-    if any(v is None for v in add_row) or any(v is None for v in sim_row):
+    if any(v is None for v in add_row) or any(
+        v is None for v in matrix_row
+    ):
         continue
 
-    xyz_add = Yxy_to_XYZ(add_row)
-    xyz_sim = Yxy_to_XYZ(sim_row)
+    xyz_add = Yxy_to_XYZ(add_row) - ADD_COMMON_BLACK_XYZ
+    xyz_matrix = (
+        Yxy_to_XYZ(matrix_row) - MATRIX_SIM_COMMON_BLACK_XYZ
+    )
     Lab_add = XYZ_to_Lab(xyz_add, ADDSIM_WHITE)
-    Lab_sim = XYZ_to_Lab(xyz_sim, ADDSIM_WHITE)
+    Lab_matrix = XYZ_to_Lab(xyz_matrix, ADDSIM_WHITE)
 
-    dE00 = ciede2000(Lab_add, Lab_sim)
-    dL = Lab_sim[0] - Lab_add[0]        # ΔL* = sim - add
-    da = Lab_sim[1] - Lab_add[1]        # Δa*
-    db = Lab_sim[2] - Lab_add[2]        # Δb*
-    dY = sim_row[0] - add_row[0]        # ΔY (絶対輝度差)
+    dE00 = ciede2000(Lab_add, Lab_matrix)
+    dL = Lab_matrix[0] - Lab_add[0]
+    da = Lab_matrix[1] - Lab_add[1]
+    db = Lab_matrix[2] - Lab_add[2]
+    dY = xyz_matrix[1] - xyz_add[1]
 
-    _addsim_dE.append((name, dE00))
-    print(f"{name:>7} {dE00:8.3f} {dL:+8.3f} {da:+8.3f} {db:+8.3f} "
-          f"{dY:+7.2f} {add_row[0]:7.2f} {sim_row[0]:7.2f}")
+    _matrix_addsim_dE.append((name, dE00))
+    print(
+        f"{name:>7} {dE00:8.3f} {dL:+8.3f} {da:+8.3f} "
+        f"{db:+8.3f} {dY:+7.2f} "
+        f"{xyz_add[1]:7.2f} {xyz_matrix[1]:9.2f}"
+    )
 
-if _addsim_dE:
-    _avg = sum(d for _, d in _addsim_dE) / len(_addsim_dE)
-    _worst = max(_addsim_dE, key=lambda x: x[1])
-    print(f"\n平均 ΔE00 = {_avg:.3f} / 最大 ΔE00 = {_worst[1]:.3f} ({_worst[0]})")
+if _matrix_addsim_dE:
+    _matrix_avg = sum(d for _, d in _matrix_addsim_dE) / len(
+        _matrix_addsim_dE
+    )
+    _matrix_worst = max(_matrix_addsim_dE, key=lambda x: x[1])
+    print(
+        f"\nMatrix平均 ΔE00 = {_matrix_avg:.3f} / "
+        f"最大 ΔE00 = {_matrix_worst[1]:.3f} "
+        f"({_matrix_worst[0]})"
+    )

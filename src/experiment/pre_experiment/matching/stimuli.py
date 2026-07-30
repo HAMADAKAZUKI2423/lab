@@ -136,34 +136,45 @@ def generate_trial_photos(
     config: MatchingSessionConfig,
     calibration: DisplayCalibration,
 ):
-    """matching条件を共通の輝度変換関数へ割り当てる。"""
-    reference_luminance = config.l_ref * (
-        1.0 + reference_contrast * prepared.gabor_base
+    """Single planeはT'・R'のMatrix法、DPは実際の光学加算で生成する。"""
+    # ReferenceもBG/FGの2経路に分け、T'とR'でXYZ加算してFG1画面へ再現する。
+    component_total = config.l_bg + config.l_fg
+    if component_total <= 0:
+        raise ValueError("l_bg + l_fg must be positive")
+    reference_modulation = 1.0 + (
+        reference_contrast * prepared.gabor_base
+    )
+    reference_background_luminance = (
+        config.l_ref * config.l_bg / component_total
+        * reference_modulation
+    )
+    reference_foreground_luminance = (
+        config.l_ref * config.l_fg / component_total
+        * reference_modulation
+    )
+    reference_photo = (
+        photometry.luminance_components_to_matrix_singleplane_photo(
+            reference_background_luminance,
+            reference_foreground_luminance,
+            calibration.bg_lums,
+            calibration.bg_pixels,
+            calibration.color_matrix,
+            calibration.t_prime,
+            calibration.r_prime,
+            calibration.r_prime_inv,
+            calibration.gamma_bg,
+            calibration.gamma_fg,
+        )
+    )
+
+    foreground_luminance = config.l_fg * (
+        1.0 + test_contrast * prepared.gabor_base
     )
     if condition in DUAL_CONDITIONS:
-        if calibration.ext_lum_y is not None and calibration.ext_lum_px is not None:
-            reference_photo = photometry.luminance_to_singleplane_photo(
-                reference_luminance,
-                calibration.ext_lum_y,
-                calibration.ext_lum_px,
-            )
-        else:
-            reference_photo = photometry.luminance_to_window2_photo(
-                reference_luminance,
-                calibration.bg_lums,
-                calibration.bg_pixels,
-                calibration.color_matrix,
-                calibration.gamma_bg,
-                calibration.gamma_fg,
-                condition=condition,
-            )
-        test_luminance = config.l_fg * (
-            1.0 + test_contrast * prepared.gabor_base
-        )
         return {
             "photo_ref_fg": reference_photo,
             "photo_test_fg": photometry.luminance_to_window2_photo(
-                test_luminance,
+                foreground_luminance,
                 calibration.bg_lums,
                 calibration.bg_pixels,
                 calibration.color_matrix,
@@ -177,29 +188,26 @@ def generate_trial_photos(
                 calibration.bg_pixels,
             ),
         }
-    test_luminance = (
-        prepared.background_luminance
-        + config.l_fg * (1.0 + test_contrast * prepared.gabor_base)
+
+    # PDF一般式をそのまま用い、BGにはT'、FGにはR'を適用した
+    # XYZ増分を加算してから、inv(R')でFG1画面へ戻す。
+    test_photo = (
+        photometry.luminance_components_to_matrix_singleplane_photo(
+            prepared.background_luminance,
+            foreground_luminance,
+            calibration.bg_lums,
+            calibration.bg_pixels,
+            calibration.color_matrix,
+            calibration.t_prime,
+            calibration.r_prime,
+            calibration.r_prime_inv,
+            calibration.gamma_bg,
+            calibration.gamma_fg,
+        )
     )
     return {
-        "photo_ref_fg": photometry.luminance_to_window2_photo(
-            reference_luminance,
-            calibration.bg_lums,
-            calibration.bg_pixels,
-            calibration.color_matrix,
-            luminance_grid=calibration.ext_lum_y,
-            pixel_grid=calibration.ext_lum_px,
-            condition=condition,
-        ),
-        "photo_test": photometry.luminance_to_window2_photo(
-            test_luminance,
-            calibration.bg_lums,
-            calibration.bg_pixels,
-            calibration.color_matrix,
-            luminance_grid=calibration.ext_lum_y,
-            pixel_grid=calibration.ext_lum_px,
-            condition=condition,
-        ),
+        "photo_ref_fg": reference_photo,
+        "photo_test": test_photo,
     }
 
 
@@ -209,11 +217,21 @@ def save_preview_images(
     calibration: DisplayCalibration,
     pupil_diameter_mm: float,
 ) -> None:
-    """乱数状態を変えず、代表刺激を保存する。"""
+    """重複を除いた代表刺激を、指定コントラストごとに保存する。"""
     save_dir.mkdir(parents=True, exist_ok=True)
     rng = np.random.default_rng(42)
-    for condition in config.conditions:
-        prepared = prepare_trial_stimulus(
+    test_contrasts = (0.1, 1.0)
+    reference_contrasts = (0.1, 0.2)
+
+    def save_photo(photo, filename: str) -> None:
+        tk_photo = getattr(photo, "_PhotoImage__photo", None)
+        if tk_photo is None:
+            print(f"WARN: preview image could not be saved: {filename}")
+            return
+        tk_photo.write(str(save_dir / filename), format="png")
+
+    prepared_by_condition = {
+        condition: prepare_trial_stimulus(
             condition=condition,
             ocularity="binocular",
             dominant_eye="Right",
@@ -222,15 +240,80 @@ def save_preview_images(
             config=config,
             rng=rng,
         )
+        for condition in config.conditions
+    }
+
+    # ref前景は条件間で共通なので、参照コントラストごとに1枚だけ保存する。
+    reference_condition = config.conditions[0]
+    reference_prepared = prepared_by_condition[reference_condition]
+    for contrast in reference_contrasts:
         photos = generate_trial_photos(
-            prepared,
-            condition=condition,
-            test_contrast=1.0,
-            reference_contrast=0.2,
+            reference_prepared,
+            condition=reference_condition,
+            test_contrast=test_contrasts[0],
+            reference_contrast=contrast,
             config=config,
             calibration=calibration,
         )
-        for key, photo in photos.items():
-            image = getattr(photo, "_PhotoImage__photo", None)
-            if isinstance(image, Image.Image):
-                image.save(save_dir / f"{condition}_{key}.png")
+        save_photo(photos["photo_ref_fg"], f"ref_fg_c{contrast:g}.png")
+
+    # Single plane系は背景と前景を合成したtest画像を条件・コントラスト別に保存する。
+    for condition in ("Single plane", "Single plane + defocus simulation"):
+        if condition not in prepared_by_condition:
+            continue
+        prepared = prepared_by_condition[condition]
+        condition_label = (
+            "single_defocus" if condition.endswith("defocus simulation") else "single"
+        )
+        for contrast in test_contrasts:
+            photos = generate_trial_photos(
+                prepared,
+                condition=condition,
+                test_contrast=contrast,
+                reference_contrast=reference_contrasts[0],
+                config=config,
+                calibration=calibration,
+            )
+            save_photo(
+                photos["photo_test"],
+                f"{condition_label}_test_c{contrast:g}.png",
+            )
+
+    # Dual plane系のtest前景は条件間で共通なので、コントラストごとに1枚だけ保存する。
+    dual_condition = next(
+        (condition for condition in ("Dual plane", "Dual plane flat")
+         if condition in prepared_by_condition),
+        None,
+    )
+    if dual_condition is not None:
+        prepared = prepared_by_condition[dual_condition]
+        for contrast in test_contrasts:
+            photos = generate_trial_photos(
+                prepared,
+                condition=dual_condition,
+                test_contrast=contrast,
+                reference_contrast=reference_contrasts[0],
+                config=config,
+                calibration=calibration,
+            )
+            save_photo(
+                photos["photo_test_fg"],
+                f"dual_test_fg_c{contrast:g}.png",
+            )
+
+    # Dual plane背景はnoise/flatごとに1枚だけ保存する。
+    for condition, label in (
+        ("Dual plane", "noise"),
+        ("Dual plane flat", "flat"),
+    ):
+        if condition not in prepared_by_condition:
+            continue
+        photos = generate_trial_photos(
+            prepared_by_condition[condition],
+            condition=condition,
+            test_contrast=test_contrasts[0],
+            reference_contrast=reference_contrasts[0],
+            config=config,
+            calibration=calibration,
+        )
+        save_photo(photos["photo_noise_bg"], f"dual_test_bg_{label}.png")

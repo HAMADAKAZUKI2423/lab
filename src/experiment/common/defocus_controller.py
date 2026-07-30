@@ -48,11 +48,10 @@ def _show_step(app) -> None:
     trial = app.defocus_match_trials[app.current_match_idx]
     prepare_defocus_trial(app, cpd=trial["cpd"], seed=trial["seed"])
     app.ctrl_frame = tk.Frame(app.root, bg="gray")
-    app.ctrl_frame.place(relx=0.5, rely=0.7, anchor="center")
+    app.ctrl_frame.place(relx=0.5, rely=0.8, anchor="center")
     app.pupil_diameter_val.set(4.0)
-    # 操作方法を理解するため、セッション全体の最初の1試行だけ表示する。
-    show_slider = not getattr(app, "_defocus_slider_has_been_shown", False)
-    if show_slider:
+    # 右眼・左眼それぞれの最初の1試行だけ表示する。
+    if app.current_match_idx == 0:
         tk.Scale(
             app.ctrl_frame,
             from_=6.0,
@@ -63,7 +62,6 @@ def _show_step(app) -> None:
             variable=app.pupil_diameter_val,
             command=lambda *_: update_defocus_view(app),
         ).pack(pady=10)
-        app._defocus_slider_has_been_shown = True
     current_step = app.current_match_idx + 1
     total_steps = len(app.defocus_match_trials)
     button_text = "Matching Done" if current_step == total_steps else "Next Matching"

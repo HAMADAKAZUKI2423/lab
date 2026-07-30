@@ -20,12 +20,13 @@ FALLBACK_COLOR_MATRIX = np.array(
 @dataclass
 class DisplayCalibration:
     color_matrix: np.ndarray
+    t_prime: np.ndarray
+    r_prime: np.ndarray
+    r_prime_inv: np.ndarray
     gamma_bg: dict[str, float] | None
     gamma_fg: dict[str, float] | None
     bg_lums: np.ndarray
     bg_pixels: np.ndarray
-    ext_lum_y: np.ndarray | None
-    ext_lum_px: np.ndarray | None
 
 
 def _load_matrix(path: Path) -> np.ndarray:
@@ -34,6 +35,21 @@ def _load_matrix(path: Path) -> np.ndarray:
     except (OSError, ValueError) as exc:
         print(f"WARN: {path.name} could not be loaded ({exc}); using fallback.")
         return FALLBACK_COLOR_MATRIX.copy()
+
+
+def _load_required_matrix(path: Path) -> np.ndarray:
+    """Matrix再現に必須の表示経路行列を読み込む。"""
+    try:
+        matrix = np.loadtxt(path, delimiter=",")
+    except (OSError, ValueError) as exc:
+        raise RuntimeError(
+            f"{path.name} could not be loaded: {exc}"
+        ) from exc
+    if matrix.shape != (3, 3):
+        raise RuntimeError(
+            f"{path.name} must be a 3x3 matrix: {matrix.shape}"
+        )
+    return matrix
 
 
 def _load_gamma(path: Path) -> dict[str, float] | None:
@@ -50,17 +66,6 @@ def _load_gamma(path: Path) -> dict[str, float] | None:
         return None
 
 
-def _load_extended_lut(path: Path):
-    try:
-        values = np.loadtxt(path, delimiter=",", skiprows=1)
-        if values.ndim != 2 or values.shape[1] < 4:
-            raise ValueError("expected Y,R,G,B columns")
-        return values[:, 0], values[:, 1:4]
-    except (OSError, ValueError) as exc:
-        print(f"WARN: {path.name} could not be loaded ({exc}).")
-        return None, None
-
-
 def load_display_calibration(display_dir: Path) -> DisplayCalibration:
     bg_lums, bg_pixels = load_luminance_lut(
         str(display_dir / "bg_luminance_lut.csv")
@@ -70,13 +75,16 @@ def load_display_calibration(display_dir: Path) -> DisplayCalibration:
         bg_lums = np.array([0.0, 100.0], dtype=np.float64)
         bg_pixels = np.array([0.0, 255.0], dtype=np.float64)
 
-    ext_lum_y, ext_lum_px = _load_extended_lut(display_dir / "ext_lum_lut.csv")
+    t_prime = _load_required_matrix(display_dir / "T_prime.csv")
+    r_prime = _load_required_matrix(display_dir / "R_prime.csv")
+    r_prime_inv = np.linalg.inv(r_prime)
     return DisplayCalibration(
         color_matrix=_load_matrix(display_dir / "C.csv"),
+        t_prime=t_prime,
+        r_prime=r_prime,
+        r_prime_inv=r_prime_inv,
         gamma_bg=_load_gamma(display_dir / "gamma_bg.csv"),
         gamma_fg=_load_gamma(display_dir / "gamma_fg.csv"),
         bg_lums=np.asarray(bg_lums, dtype=np.float64),
         bg_pixels=np.asarray(bg_pixels, dtype=np.float64),
-        ext_lum_y=ext_lum_y,
-        ext_lum_px=ext_lum_px,
     )

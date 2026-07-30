@@ -11,7 +11,7 @@ _DEFAULTS = {
     "L_ref": 30.0,
     "VISUAL_ANGLE_DEG": 7.9,
     "DISTANCE_FG": 50,
-    "DISTANCE_BG": 150,
+    "DISTANCE_BG": 125,
     "BG_COLOR": "black"
 }
 
