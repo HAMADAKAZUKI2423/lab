@@ -1,0 +1,11 @@
+ID,Eye,Pattern,Spatial_Freq(cpd),Matched_PD(mm)
+0,Right,checker,4,1.0
+0,Right,border,4,4.0
+0,Right,noise,4,4.0
+0,Right,checker_45,4,4.0
+0,Right,stripe,4,4.0
+0,Left,checker_45,4,4.0
+0,Left,stripe,4,4.0
+0,Left,noise,4,4.0
+0,Left,checker,4,4.0
+0,Left,border,4,4.0

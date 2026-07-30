@@ -1,0 +1,411 @@
+\documentclass[a4j,10pt,fleqn]{rinkoj}
+\usepackage{latexsym}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage[dvipdfmx,pagebackref=true,breaklinks=true,letterpaper=true,colorlinks,bookmarks=false]{hyperref}
+\usepackage{pxjahyper}
+\usepackage{graphicx}
+\usepackage{comment}
+\usepackage{otf}
+\usepackage{caption}
+\captionsetup[table]{justification=centering}
+\captionsetup[figure]{justification=centering}
+\usepackage{siunitx}
+\usepackage{indentfirst}
+\usepackage{booktabs}
+\sloppy
+%\setlength{\columnsep}{1.5em}
+
+\begin{document}
+
+	\title{光学シースルー拡張現実における重畳コンテンツの知覚的視認性予測}
+	\etitle{Perceptual Visibility Prediction of Overlaid Content in Optical See-Through Augmented Reality}
+	\labname{指導教員：大石岳史 准教授}
+	\studentnumber{37-256559}
+	\date{2026年5月15日}
+	\grade{修士二年}
+	
+	\author{\UTF{6FF5}田　和希}
+	\maketitle
+
+\begin{abstract}
+Optical see-through (OST) augmented reality (AR) displays additively mix virtual content with environmental light, degrading the perceptual visibility of overlaid content.
+Existing prediction models address individual perceptual factors—color, luminance, or transparency—but none of them integrates them comprehensively. 
+To address this, we extend Fukiage's content-adaptive visibility predictor, originally developed for alpha-blended images, to OST-AR. 
+The extension requires additional mechanisms addressing OST-AR-specific perceptual processes, such as defocus blur and uncrossed disparity. 
+As a first step, we conducted a preliminary psychophysical experiment using Gabor patches to identify which phenomena meaningfully affect visibility.
+Results show that foreground and background luminance and spatial frequency dominate visibility degradation, whereas the effects of defocus and disparity could not be resolved with the discrete rating scale method used. Based on these findings, we redesign the main experiment with a contrast-matching procedure and a single-plane control condition, enabling  a more accurate calibration of the extended model.
+\end{abstract}
+
+\section{研究背景・目的}
+Augmented Reality(AR)はXR技術の一つであり，現実環境の中に仮想オブジェクトが重畳された環境，およびそれを実現する技術である\cite{Milgram1994TaxonomyMRD}．
+XRとは，実世界と仮想世界を連続的に捉え，その間に位置する環境を実現するための技術の総称で，
+近年はハードウェア技術，ソフトウェア技術の発展に伴い，研究や活用が盛んな領域である\cite{Rauschnabel2022WhatisXR}．
+
+ARの中でも，光学シースルー(OST)方式は，ビームスプリッターを用いて半透明スクリーンに仮想物体を投影し，現実環境の見えと加法混色で直接混合して表示する技術である\cite{lu2025comparison}．
+この方式の利点として，現実環境を直接視認できるため，現実感が高いことなどが挙げられる．
+一方，この方式が持つ課題として，仮想表示が周囲光と光学的に加算，混合された状態であるため，表示されるコンテンツの知覚的視認性が損なわれることが挙げられる(Fig. \ref{fig:Visredeg})．
+このような視認性の低下は，OST-AR環境におけるUXや安全性を損なうものである\cite{Erickson2021DarkMode,Hussain2023EffectofTrans}．
+そのため，この視認性の予測・向上が課題となっており，近年研究が行われている．
+
+\begin{figure}[t]
+\centering
+\begin{minipage}[b]{0.49\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/col.pdf}
+\end{minipage}
+\begin{minipage}[b]{0.49\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/col_mask.pdf}
+\end{minipage}
+\caption{Example of visibility degradation in OST-AR}
+\label{fig:Visredeg}
+\end{figure}
+
+視認性予測の基盤は，人間の知覚システム(\textbf{human visual system: HVS})におけるコントラスト知覚である\cite{Erickson2020limitations,Fukiage2023Contentadap}．
+HVSにおいて，コントラストを生むチャネルは，色対立チャネル2種と，輝度チャネル1種の，計3種類があると知られている\cite{Fukiage2023Contentadap,Liu2019Saliency}．
+そのためOST-AR環境では，色，輝度，そして各コントラストを変動させる透明度などの要素について，特有の知覚現象と，それに伴う視認性の低下，そしてその予測モデルの研究が行われている\cite{Gabbard2010Morethaneye,Merenda2016Effectofrealbg,Kim2020Studyonhowimprobe,Erickson2020limitations,Zhang2021PerceivedTrans,Li2022Usertrans}．
+しかし，提案されているモデルの多くは，個別の知覚要素に対応してその影響を予測するものであり，これらの要因を包括的に考慮した視認性予測モデルは未確立のままである．
+
+この課題の解決に向けた基盤となりうるのが，Fukiageらによって提案された，コンテンツ適応型の視認性予測モデルである\cite{Fukiage2023Contentadap}．
+このモデルは$\alpha$ブレンドによる半透明表示を対象としたものであるが，複数の知覚要素を包括的に考慮してターゲットの視認性を予測している.
+内部構造として，コンテンツ適応型の特徴量集約や，ターゲット成分抽出，除算正規化によるHVSのコントラスト知覚の再現などが行われており，$\alpha$ブレンドによる半透明表示の視認性予測では，既存モデルの精度を上回っていた．
+Fukiageらによると，このモデルは，同じく半透明表現を伴うOST-AR環境への応用が期待される．しかし，正確な予測のための課題として，OST-AR環境において起こり得る知覚プロセスへの対応が必要であるとも述べている．
+
+そこで本研究では，OST-AR環境における表示コンテンツの知覚的視認性の予測を目標として，Fukiageモデルの拡張を行う．
+拡張にあたり，心理物理学実験を実施することで，Fukiageらによって指摘されている知覚プロセスを含め，OST-AR環境下におけるHVSのはたらきが知覚的視認性に与える影響を明らかにする．
+この結果をもとに，主にモデルへの入力部分に処理を追加することで，モデルの拡張を行う．
+また，拡張モデルの検証は，実験によって得られた人間による視認性評価値と，モデルによる予測値との比較分析によって行う方針である．
+
+本稿では，実施する心理物理学実験に先立つ予備実験について触れ，その結果と分析を述べる．また，この結果を受けた，今後行う本実験の方針について述べる．
+
+なお，本研究においては，「知覚的視認性」の定義について，Fukiageらの定義\cite{Fukiage2023Contentadap}を採用するが，次章の関連研究においては，必ずしもこの指標を扱っているものではない．
+しかし，いずれも重畳コンテンツの知覚可能性に影響する要因を扱っている点においては，本研究が採用する知覚的視認性と密接に関連する．
+よって本稿では，「視認性」とは異なるものの，重畳コンテンツの知覚可能性に関する指標については，本研究の目的に照らして知覚的視認性に関連する評価として扱う．
+
+\section{関連研究}
+\subsection{コントラスト知覚}
+人間の視認性知覚は，HVSにおけるコントラスト知覚に依るものとされている\cite{Erickson2020limitations,Fukiage2023Contentadap}．
+これは人間の視覚において，物理的刺激を見分ける能力が，大きさと周囲環境とのコントラストに基づくものであることに起因する\cite{Erickson2020limitations}．
+さらに，このコントラストに対する人間の識別能力の限界は，空間周波数に依存しており，これはコントラスト感度関数(CSF: Contrast Sensitivity Function)として定義されている\cite{Campbell1968CSF}．
+本研究で拡張を行うモデルは，感度関数の閾値上（supra-threshold）のコントラストを扱っているため，直接CSFを扱ってはいないものの，空間周波数ごとに重み付けを行い，トレーニングを行うことで，知覚差を考慮している\cite{Fukiage2023Contentadap}．
+また，本稿で述べる予備実験においては，閾値付近のコントラストを扱うため，空間周波数を実験パラメータとして採用している．
+
+本研究において扱う，視認性に影響を与えるコントラスト知覚現象は，コントラストマスキングである\cite{Boynton1999masking}．これはFig. \ref{fig:masking}に見られるような，背景ノイズの重畳によって，前景パターンの知覚的視認性が低下する現象である．このメカニズムは，HVSにおいては除算正規化によって説明され，モデルの中でも実装されているが，その詳細は後述する\cite{Fukiage2023Contentadap,Boynton1999masking}．
+本研究では，OST-AR環境におけるこの現象の効果を定量化することで，単一平面環境との知覚的差異を明らかにし，モデルの拡張に繋げる．
+
+\begin{figure}[t]
+\centering
+\begin{minipage}[b]{0.49\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/gabor.pdf}
+    \caption*{(a)Signal}
+\end{minipage}
+\begin{minipage}[b]{0.49\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/gabor_mask.pdf}
+    \caption*{(b)Signal + Mask}
+\end{minipage}
+\caption{Degradation of visibility due to contrast masking}
+\label{fig:masking}
+\end{figure}
+
+\subsection{OST-AR環境における表示視認性の予測・向上}
+OST-AR環境における表示の知覚的視認性の予測や向上については，色，輝度，透明度といった個別の要素に対応したモデルが提案されている．
+
+色については，色空間においてその視認性を定量化し，仮想表示の色を背景の補色方向にシフトすることで，その向上を図るアルゴリズムが提案されている\cite{Yoon2017colorHUD,Zhang2022colorcontrast}．これらの手法においては，HVSが補色関係にある色を最も強く知覚するという特性を利用しているが，元の色が持つ意味を保つため，色のシフトに制約条件をつけている．これにより観察者にとって自然な色シフトを実現しているが，一方で識別性では視認性ベースの手法に劣るという結果も出ている\cite{Zhang2022colorcontrast}．
+
+輝度や透明度については，実験で得られたデータを元に，視認性の予測を行う手法が提案されている．
+Liuらは，OST-AR環境において，仮想オブジェクトが不透明に知覚されるために必要な輝度を明らかにし，またそれを予測するモデルを提案した\cite{Liu2022howbr}．彼らは，輝度やコントラストが，透明度知覚にどのように影響を与えるのかを明らかにする実験を行い，その結果をもとにモデルを構築，フィッティングを行った．
+また，Zhangらは，輝度やコントラストなどの背景要素が，表示の透明度知覚に与える影響を調べる実験を行った\cite{Zhang2021PerceivedTrans}．さらにこの結果をもとに，知覚される透明度を予測するモデルを提案した．
+
+これらの提案手法・モデルは，各々の研究の中では既存手法を上回る精度が確認されている．
+一方で，これらは個々の知覚要素に着目したものであり，これらを包括的に考慮し，OST-ARの視認性を予測・向上させる手法は確認できていない．
+
+\subsection{IQAモデルとAR視認性予測}
+\textbf{Image quality assessment (IQA)}は，複数の知覚要素を考慮し，総合的な表示の品質を評価するという点において，視認性研究と密接に関連する．
+実際に，IQAモデルを用いた半透明AR表示の視認性予測手法も提案されている\cite{Fukiage2014Vbb}．
+
+近年では，IQAの研究もまた，標準的なディスプレイ環境から，OST-AR環境に進んでいる．
+しかしこの分野においても，OST-AR環境特有の知覚現象の存在から，既存手法の直接的な応用の限界が示唆されている．
+Chapiroらによる，OST-AR環境において既存IQAモデルの性能を評価した研究では，背景の割引効果の存在が示唆された\cite{Chapiro2024ARDAVID}．この研究の中では，背景の重みを0.2とした時に，既存モデルの品質予測精度が最大となっており，この結果からChapiroらは，単純な光学的ブレンディングだけではOST-AR環境の品質予測に不十分であり，背景割引メカニズムを適切にモデルに組み込む必要があると述べている．
+なお，この効果については，Kimらによって，さらに詳細な研究が行われている\cite{Kim2025supra}．この研究によると，背景割引の直接的な原因として，背景輝度の追加によるコントラスト知覚の向上や，defocus blurなどがあるとされている．
+一方で，Murdochによる研究では，背景ではなくOST-AR表示の割引効果の存在が示唆されている\cite{Murdoch2020brightnessMathch}．これらのOST-AR環境特有の知覚現象のメカニズムを解明し，モデルに組み込むことが，より精度の高い視認性予測に求められている．
+
+\subsection{コンテンツ適応型視認性予測モデル}
+IQAモデルと同様に，複数の知覚要素を考慮しつつ，メカニズムの追加によってOST-AR環境への応用が期待される手法として，Fukiageらによるコンテンツ適応型視認性予測モデルがある\cite{Fukiage2023Contentadap}．
+本モデルは$\alpha$ブレンドによる半透明表示内のターゲットの知覚的視認性を予測するために提案されたものであり，HVSのコントラスト知覚を再現する複数のメカニズムを組み合わせることで，$\alpha$ブレンド画像におけるターゲット成分の視認性を予測する．以下に，主なメカニズムの詳細を述べる．
+
+\paragraph{ラプラシアンピラミッド分解}
+HVSの色対立チャネルを模擬するため，入力画像をCIE\,$L^{*}a^{*}b^{*}$色空間へ変換する．さらに，コントラスト知覚の空間周波数依存性を再現するため，各色チャネルに対してラプラシアンピラミッドによる多重解像度分解を行う．これにより，後段の処理を色・輝度の空間周波数帯ごとに行えるようになる．
+
+\paragraph{ターゲット成分抽出}
+従来のIQAモデルを用いた手法\cite{Fukiage2014Vbb}では，表示がほぼ不透明な場合でも背景成分が視認性予測に強く影響する課題が指摘されていた．これに対し本モデルでは，ブレンド画像から$5\times 5$局所窓における最小二乗フィットで推定した局所重み$l_i$を用いて参照成分を差し引き，ターゲット由来成分のみを抽出している．
+\begin{equation}
+\Delta I_{i}^{\mathrm{tg}} = \Delta I_{i}^{\mathrm{bl}} - l_{i}\,\Delta I_{i}^{\mathrm{rf}},\quad
+l_{i} \approx \frac{\sum_{j \in \mathcal{N}(i)} \Delta I_{j}^{\mathrm{bl}}\,\Delta I_{j}^{\mathrm{rf}}}
+{\sum_{j \in \mathcal{N}(i)} \left(\Delta I_{j}^{\mathrm{rf}}\right)^{2} + \epsilon}.
+\label{eq:target_extraction}
+\end{equation}
+これにより，表示の透明度によらずターゲット成分のコントラストを安定に取り出せる．
+
+\paragraph{除算正規化}
+各帯域成分に対して，HVSのコントラストマスキングを再現する除算正規化を適用する．
+\begin{equation}
+R_{i} = \frac{\left|\Delta I_{i}^{\mathrm{tg}}\right|}
+{\left(B^{2} + \dfrac{1}{|\mathcal{N}|}\displaystyle\sum_{j \in \mathcal{N}(i)} \left|\Delta I_{j}^{\mathrm{bl}}\right|^{2}\right)^{\gamma}}.
+\label{eq:divisive_normalization}
+\end{equation}
+これにより，背景によるマスキング効果を色・輝度の空間周波数帯ごとに定量化することができる．
+
+\paragraph{コンテンツ適応型特徴集約}
+従来モデルでは特徴集約の重みが固定的で多様なコンテンツに対して安定した予測が困難であった．本モデルでは，ブレンディング前のターゲット画像を不透明合成した場合の応答$\mathbf{r}^{\mathrm{op}}$から，各特徴チャネルの重み$\mathbf{w}$を動的に算出する．
+\begin{equation}
+\mathbf{w} = \mathrm{sigmoid}\!\left(\mathbf{X}\,\mathbf{r}^{\mathrm{op}} + \mathbf{b}\right).
+\label{eq:adaptive_weight}
+\end{equation}
+これにより，ターゲットの空間周波数・色チャネルごとの特徴に応じた重み付けが可能となる．
+
+これらの各機能における自由パラメータは，心理物理実験で較正されており，視認性予測による評価では，既存モデルを上回る予測精度を達成している\cite{Fukiage2023Contentadap}．
+
+この結果を受け，Fukiageらは本モデルのOST-ARへの応用可能性を示している．しかし同時に，そのためにはOST-AR環境特有の知覚現象，特に調節および両眼融合のプロセスを追加メカニズムとして考慮する必要があると指摘している\cite{Fukiage2023Contentadap}．本研究においては，これに加え，表示と背景の線形合成と，背景割引効果\cite{Chapiro2024ARDAVID}の再現を追加すべきメカニズムとして提案する．
+
+\section{手法}
+本章以降，Fukiageらの視認性予測モデル\cite{Fukiage2023Contentadap}を，単にモデルと呼ぶ．
+
+\subsection{視認性評価実験}\label{subsec:hvs_exp}
+まず，モデルの拡張に先立ち，OST-AR環境特有の知覚現象が，表示の視認性知覚に与える影響を調べるため，心理物理学実験を行う．主に扱う知覚現象は，defocus blurやuncrossed disparity，両眼融合による背景知覚の変化と，これに伴う背景割引効果，そして，輝度の線形加算によるコントラスト知覚の変化である．実験の中では，これらの知覚現象を引き起こす条件をパラメータとして変化させ，知覚的視認性の変化を定量的に測定する．結果の分析を通じて，知覚的視認性に有意に影響を与える知覚現象を特定し，モデルに実装すべき拡張処理と，そのパラメータのフィッティングを行う．実験の具体的な手法やパラメータは，次章で述べる予備実験の結果により決定する．
+
+\subsection{モデルの拡張}
+実験結果を受けたモデルの拡張は，主にモデルの入力部における，背景への追加処理として実装する．現在検討している処理を以下に述べる．
+
+\paragraph{Defocus blur}
+調節に伴う背景のdefocus blurは，2次元点像分布関数(point spread function (PSF))$h$を畳み込むことで再現する．視角 $\vec{u}$に関するPSFを，diopter difference $\Delta D$ および瞳孔径 $p$をパラメータとして以下のように定義する．
+
+\begin{equation}
+h(\vec{u};\, \Delta D,\, p) =
+\begin{cases}
+1, & \|\vec{u}\| < p\,\Delta D / 2, \\
+0, & \text{otherwise.}
+\end{cases}
+\label{eq:psf}
+\end{equation}
+
+$\|\cdot\|$ は与えられたベクトルの $\ell_2$ ノルムを表す．
+瞳孔径 $p$は，defocus matching実験を行うことで，実験環境における平均値を測定，算出する．
+
+\paragraph{Uncrossed disparity・両眼融合}
+輻輳によるuncrossed disparityは，瞳孔間距離とdiopter differenceから幾何学的に計算することができる．一方で，その両眼融合については，優位眼や左右の刺激差により，複雑な知覚現象が確認されており，単純な左右平均を採用した例\cite{Chapiro2024ARDAVID}や，ゲインコントロールに基づくモデルの提案\cite{jian2006gain}など，既存研究における扱いは様々である．よって本研究では，単純な平均をベースにしつつ，実験の結果とのフィッティングを通じて，モデルを選定する．
+
+\paragraph{線形合成}
+OST-AR環境における前景背景の線形合成は，$\alpha$ブレンドと異なり，合成結果がHDRになり得るが，モデルはSDR入力前提である．本稿執筆段階においては，代表的なSDR化手法であるReinhardらによるトーンマッピング\cite{Reinhard2002tonemap}を用いてSDR化することを予定しているが，次節で述べる拡張モデルの評価によっては，他の応用的な手法の採用も検討している．
+
+また，背景割引効果を考慮する場合，defocus blurやuncrossed disparityなどの光学的な処理に加え，背景に対する減衰処理を追加する．この減衰処理を説明するパラメータは，diopter differenceの採用や，実験によるフィッティングによる決定を予定している．
+
+\subsection{拡張モデルの評価}
+前節で挙げた処理によって拡張したモデルの評価は，心理物理学実験によって得た結果の予測によって行う．ここで行う実験は，\ref{subsec:hvs_exp}で述べた実験とは異なり，OST-AR環境における視認性の定量評価を，一般的なテクスチャ画像を用いて行う実験である．この実験によって得られた，人間による視認性評価値と，モデルによる視認性予測値との間で決定係数を算出し，モデルの評価を行う．
+
+\section{予備実験}
+\subsection{実験目的}
+今回の予備実験の目的は，本実験において操作するパラメータや適切な条件を特定することである．そのために，defocusやuncrossed disparityといった視覚現象が，コントラスト知覚に基づく視認性知覚に与える影響を，空間周波数や輝度といった刺激パラメータ，diopter differenceやocularityといった観察条件ごとに定量評価した．
+
+\subsection{実験装置}
+本研究においては，Fig. \ref{fig:exp_diagram}に示す光学系を構築し，実験に用いる．
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=1.0\linewidth]{figures/Schematic_diagram_of_experiment.pdf}
+    \caption{Schematic diagram of experiment}
+    \label{fig:exp_diagram}
+\end{figure}
+
+この光学系においては，透過率が20$\sim$30\%，反射率が50$\sim$60\%のビームスプリッターを用いて，2台のLCDディスプレイ(27"ADS 2560$\times$1440, LCD-MCQ271EDB)にそれぞれ表示された前景表示と背景表示を重畳させた．なお，この反射率及び透過率は，波長ごとに変動するため，別途測定を行い，実験条件やモデルへの入力補正に適用する．
+今回の実験においては輝度のみを扱うため，輝度計(DA-PH/CCS1)を用いて，提示可能な輝度範囲を測定した．結果，ビームスプリッターによる反射，透過後において，前景最大輝度は100 $\mathrm{cd/m^2}$，背景最大輝度は30 $\mathrm{cd/m^2}$であった．
+
+観察者の頭部は顎台によって固定し，前景平面および背景平面までの距離は，この時の観察者の眼球位置を基準とした．配置可能な距離範囲は，前景は50$\sim$130 cm，背景は70$\sim$150 cmであり，ディスプレイ及びビームスプリッターを直接動かすことで調節した．
+また，実験は暗室で行った．
+
+\subsection{手順と刺激}
+予備実験では，ガボールパッチ(Fig. \ref{fig:masking}(a))とランダムノイズの重畳に対する視認性評価タスクにより，OST-AR環境における様々な知覚現象が視認性知覚に与える影響を定量評価した．評価手法としては，多岐にわたる実験条件における検証を，観察者に負担をかけず，効率よく行うために，離散的な評価尺度法を採用した．
+
+今回の予備実験における観察者は著者1名であった．観察者は，逐次提示されるreference刺激とtest刺激を比較し，視認性を1 (Invisible) $\sim$ 5 (Very clear)の5段階で評価した．
+まず，reference刺激として，前景にガボールパッチのみを提示した．その後，test刺激として，前景にガボールパッチ，背景にランダムノイズを同時に提示した．各刺激の提示時間は0.5 sとし，その間に1.0 sの暗転を挟んだ(Fig. \ref{fig:timeline})．
+
+\begin{figure}[t]
+    \centering
+    \includegraphics[width=0.6\linewidth]{figures/trial.pdf}
+    \caption{Trial timeline of the visibility evaluation.}
+    \label{fig:timeline}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{Experimental specifications.}
+\label{tab:exp_spec}
+\resizebox{\columnwidth}{!}
+{%
+\begin{tabular}{ll}
+\toprule
+Specification & Value \\
+\midrule
+Stimuli size & $7.9^\circ \times 7.9^\circ$ \\
+Envelope of Gabor patch ($\sigma$) & $1^\circ \times 1^\circ$ \\
+Spatial frequency (cpd in Gabor patch) & 2, 4, 6, 8 cpd \\
+Foreground luminance($Y_{\mathrm{FG}}$) & 50 cd/m$^2$ or 5 cd/m$^2$ \\
+Background luminance($Y_{\mathrm{BG}}$) & 15 cd/m$^2$ or 5 cd/m$^2$ \\
+Foreground contrast($C_{\mathrm{FG}}$) & 1.0 \\
+Background contrast($C_{\mathrm{BG}}$) & 1.0 or 0.0 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+ガボールパッチ及びランダムノイズの輝度やコントラスト等のパラメータは，Table \ref{tab:exp_spec}に示す．なお，ランダムノイズには，ガボールパッチの空間周波数を中心周波数とする1オクターブのバンドパスフィルタを適用した．
+
+刺激は，次節で述べる各条件において，空間周波数，$Y_{\mathrm{FG}}$，$Y_{\mathrm{BG}}$，$C_{\mathrm{BG}}$によって構成されるtest刺激パラメータの全ての組み合わせを，2回ずつランダムな順番で提示した．
+reference刺激について，空間周波数は，test刺激の空間周波数と一致させたが，輝度$Y_{\mathrm{FG}}$はtest刺激に関わらず50 $\mathrm{cd/m^2}$に固定し，空間周波数ごとに共通した刺激を基準として評価を行った．なお，ガボールパッチの方位は常に垂直方向とした．
+
+\subsection{条件}
+diopter differenceによるdefocus blurやuncrossed disparityの影響の変化を調べるため，今回の実験は，刺激提示距離を4条件，両眼観察/単眼観察のocularityを2条件設け，計8条件で行った．
+
+距離条件はTable \ref{tab:distance_pairs}に示す．Diopter differenceの条件は0.57 Dと1.00 Dを設けた．このdiopter differenceは，人間の眼の被写界深度とされる0.3 Dを上回る数値であり，defocus blurが生じる条件である\cite{Campbe1957DoF}．さらに前景・背景提示距離の直接的な影響を調べるために，それぞれ2通りの提示距離条件を設けた．なお，これらの距離条件の順序は，Table内のPair numに従うことで，$d_{\mathrm{FG}}$の連続を避け，注視距離の順序効果の低減を図った．
+
+また，ocularity条件は，uncrossed disparityおよび両眼融合の有無を切り替えるために設定した．
+
+\begin{table}[t]
+\centering
+\caption{Stimulus presentation distances and diopter differences}
+\label{tab:distance_pairs}
+\resizebox{\columnwidth}{!}{%
+\begin{tabular}{cccccc}
+\toprule
+Pair num & $d_{\mathrm{FG}}$ [m] & $d_{\mathrm{BG}}$ [m] & $D_{\mathrm{FG}}$ [D] & $D_{\mathrm{BG}}$ [D] & $\Delta D$ [D] \\
+\midrule
+1 & 0.50 & 0.70 & 2.00 & 1.43 & 0.57 \\
+2 & 0.81 & 1.50 & 1.23 & 0.67 & 0.57 \\
+3 & 0.50 & 1.00 & 2.00 & 1.00 & 1.00 \\
+4 & 0.60 & 1.50 & 1.67 & 0.67 & 1.00 \\
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{結果}
+本稿における分析対象は，$C_{\mathrm{BG}}=0.0$と$C_{\mathrm{BG}}=1.0$の条件間における視認性評価値の差分とした．これは，実験目的に照らし，コントラスト知覚に焦点を当てるためである．また分析の方針として，本実験の目的に対して，どのような条件下における実験が適切か，どのような条件間比較が適切かを明らかにする．
+
+単眼観察条件における結果をFig．\ref{fig:VisScore_M}に，両眼観察条件における結果をFig. \ref{fig:VisScore_B}に示す．各ヒートマップにおいては，スコアが高いほど視認性の低下を示している．また，縦軸が空間周波数，横軸が距離条件に対応しており，左2列と右2列の比較は，diopter差の比較に対応している．
+
+\begin{figure*}[t]
+\centering
+\begin{minipage}[b]{0.5\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/heatmap_diff_Monocular_bg5.0_fg5.0.pdf}
+    \caption*{(a) $Y_{\mathrm{FG}}=5.0 \mathrm{cd/m^2}$，$Y_{\mathrm{BG}}=5.0 \mathrm{cd/m^2}$}
+    \label{fig:M_LL}
+\end{minipage}
+\begin{minipage}[b]{0.5\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/heatmap_diff_Monocular_bg15.0_fg5.0.pdf}
+    \caption*{(b) $Y_{\mathrm{FG}}=5.0 \mathrm{cd/m^2}$，$Y_{\mathrm{BG}}=15.0 \mathrm{cd/m^2}$}
+    \label{fig:M_LH}
+\end{minipage}
+\begin{minipage}[b]{0.5\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/heatmap_diff_Monocular_bg5.0_fg50.0.pdf}
+    \caption*{(c) $Y_{\mathrm{FG}}=50.0 \mathrm{cd/m^2}$，$Y_{\mathrm{BG}}=5.0 \mathrm{cd/m^2}$}
+    \label{fig:M_HL}
+\end{minipage}
+\begin{minipage}[b]{0.5\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/heatmap_diff_Monocular_bg15.0_fg50.0.pdf}
+    \caption*{(d) $Y_{\mathrm{FG}}=50.0 \mathrm{cd/m^2}$，$Y_{\mathrm{BG}}=15.0 \mathrm{cd/m^2}$}
+    \label{fig:M_HH}
+\end{minipage}
+\caption{Visibility degradation scores under monocular viewing}
+\label{fig:VisScore_M}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\begin{minipage}[b]{0.5\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/heatmap_diff_Binocular_bg5.0_fg5.0.pdf}
+    \caption*{(a) $Y_{\mathrm{FG}}=5.0 \mathrm{cd/m^2}$，$Y_{\mathrm{BG}}=5.0 \mathrm{cd/m^2}$}
+    \label{fig:B_LL}
+\end{minipage}
+\begin{minipage}[b]{0.5\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/heatmap_diff_Binocular_bg15.0_fg5.0.pdf}
+    \caption*{(b) $Y_{\mathrm{FG}}=5.0 \mathrm{cd/m^2}$，$Y_{\mathrm{BG}}=15.0 \mathrm{cd/m^2}$}
+    \label{fig:B_LH}
+\end{minipage}
+\begin{minipage}[b]{0.5\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/heatmap_diff_Binocular_bg5.0_fg50.0.pdf}
+    \caption*{(c) $Y_{\mathrm{FG}}=50.0 \mathrm{cd/m^2}$，$Y_{\mathrm{BG}}=5.0 \mathrm{cd/m^2}$}
+    \label{fig:B_HL}
+\end{minipage}
+\begin{minipage}[b]{0.5\columnwidth}
+    \centering
+    \includegraphics[width=0.9\columnwidth]{figures/heatmap_diff_Binocular_bg15.0_fg50.0.pdf}
+    \caption*{(d) $Y_{\mathrm{FG}}=50.0 \mathrm{cd/m^2}$，$Y_{\mathrm{BG}}=15.0 \mathrm{cd/m^2}$}
+    \label{fig:B_HH}
+\end{minipage}
+\caption{Visibility degradation scores under binocular viewing}
+\label{fig:VisScore_B}
+\end{figure*}
+
+まず，両観察条件に共通する結果として，輝度と空間周波数の影響が挙げられる．
+特に$Y_{\mathrm{FG}}$，$Y_{\mathrm{BG}}$の組み合わせは，視認性の低下にもっとも大きく影響している．両条件に共通して，$Y_{\mathrm{FG}}$が低く，$Y_{\mathrm{BG}}$が高いほど，視認性の低下が顕著になる傾向が確認される．
+空間周波数の影響は，輝度条件ごとに傾向が異なるものの，概ね2 cpd, 4cpdといった低い空間周波数の方が，視認性の低下が顕著である．
+これらの影響は，観察条件やdiopter差に関わらず共通しているため，defocus blurやuncrossed disparityに与える影響も確認されなかった．
+また，両条件に共通して，負のスコアが確認されるが，これは背景コントラストの追加によって視認性が向上したと解釈される．
+
+次に，defocus blurの影響をみると，単眼観察条件において，diopter差の増加，つまりdefocus blurの強化が視認性に与える一貫した傾向は見られなかった．
+
+また，Fig. \ref{fig:VisScore_M}とFig. \ref{fig:VisScore_B}との比較により，uncrossed disparityの影響をみた場合も，一貫した傾向はみられなかった．
+
+\subsection{本実験の方針}
+以上の結果を分析し，今後の本実験で採用・追加すべき条件や手法の方針を定める．
+
+まず，図中の負のスコアについて述べる．これらは，背景コントラストの追加によって視認性が向上したと解釈される．これはコントラストマスキング効果と矛盾する結果である．
+この結果は，マスキング効果が小さい条件において離散的な評価手法を用いたことに起因する．
+マスキングが小さい条件では，背景コントラストの有無による真の評価値差も微小となる．
+今回の予備実験では各条件のスコアを2回の離散評価の平均で与えているため，観察者が隣接する2段階の間で判断を迷う条件では，試行間でスコアが変動しうる．背景コントラスト追加後に偶然高めのスコアが付されれば，追加前後の差は負となる．
+したがって，マスキング効果が小さい条件は，離散評価ではモデル切り分けに必要な分解能が得られず，今後の本実験の条件設計から除外すべきである．
+
+次に，輝度条件と空間周波数条件について述べる．
+前節でも触れた通り，$Y_{\mathrm{FG}}$が低く，$Y_{\mathrm{BG}}$が高い条件(Fig. \ref{fig:VisScore_M}(b), Fig. \ref{fig:VisScore_B}(b))，そして空間周波数が低い条件において，視認性の低下が顕著になる．
+一方で，$Y_{\mathrm{FG}}$が低い条件においては，$C_{\mathrm{BG}}=0.0$において，視認性評価値が最低値となることも確認されており，この場合は背景コントラスト追加による視認性低下を確認することができない．
+よって，輝度条件については，背景輝度を最大としつつ，前景輝度は$C_{\mathrm{BG}}=0.0$における視認性評価値が下限に達しない範囲で低下させる．また空間周波数条件については，2 cpdや4cpdなど，低い条件に設定する．
+またこれらのパラメータによる影響は，defocus blurやuncrossed disparityの影響と独立しているため，今後の本実験においては，単一，または極めて少ない条件で実験を行うことで，実験の効率化を図る．
+
+次に，視認性の評価手法について述べる．
+今回の予備実験においては，離散的な評価手法を要因とする負のスコアが確認された．
+この結果は，評価の粗さに起因するものであり，本実験の目的に適う測定のためには，より細かな知覚的差異を正確に捉えるための評価手法の採用が必要である．
+今回の予備実験における評価手法としては，実験の効率化のため，評価尺度法を採用した．しかし，今回の結果を踏まえ，今後の本実験においては，実験条件を絞ることで，マッチング法など，時間はかかるが正確性の高い手法を採用する．
+
+最後に，実験条件の追加について述べる．
+今回の予備実験はOST-AR環境のみを条件として，diopter差によってdefocus blurやuncrossed disparityの影響を明らかにすることを試みたものの，結果としてこれらの影響は確認されなかった．
+しかし，OST-AR環境における視認性知覚が，単一平面環境と異なることは関連研究から明らかである．よって，これらの要素の影響をより正確に測定するためには，単一平面環境を条件に加え，比較を行う必要がある．
+今後の本実験においては，線形加算やdefocus blurをシミュレートした単一平面環境を条件として加えることで，OST-AR環境特有の知覚現象の影響の分析を図る．
+
+\section{結論・今後の方針}
+本稿では，本研究の全体像と，本実験に先立つ予備実験について述べた．
+
+本研究においては，OST-AR環境における表示コンテンツの知覚的視認性の予測を目標として，Fukiageモデルの拡張を行う．
+その拡張に向け，心理物理学実験を通じて，OST-AR環境下におけるHVSのはたらきが，知覚的視認性に与える影響を明らかにする．
+本稿で扱った予備実験は，この心理物理学実験の適切な設計に向けたものである．
+
+今回行った実験においては，本実験として適切な実験条件を明らかにするため，defocus blurやuncrossed disparityといった，OST-AR特有の知覚現象について扱った．結果として，今回設定した条件において，これらが視認性知覚に与える影響は十分に確認されなかったものの，本実験に向けて削るべき条件や追加すべき条件などの方針を立てることに大きく寄与した．
+適切な輝度条件や空間周波数条件が特定されたことは，今後のモデル拡張においても，重要な指針となる．また，これに伴い評価手法の変更と単一平面条件の追加が可能となった点は，今後の実験再設計において重要な知見である．
+
+今後は，今回行った実験の結果に基づき本実験を設計し，確認のための予備実験を再度実施する．
+その後，倫理審査委員会の審査を経て，被験者を募り本実験を実施する．
+得られたデータをもとにFukiage モデルを拡張し，その精度を評価する．
+
+{\small
+\bibliographystyle{jIEEEtran}
+	\bibliography{myrefs}
+}
+\end{document}

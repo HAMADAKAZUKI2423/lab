@@ -1,0 +1,7 @@
+ID,Age,Gender,IPD,Dominance
+<<<<<<< HEAD
+0,23,Male,62,Right
+1,39,Male,6.8,Right
+=======
+0,23,Male,66,Right
+>>>>>>> 365f5fe (data: 正確な輝度系でキャリブレーション)
