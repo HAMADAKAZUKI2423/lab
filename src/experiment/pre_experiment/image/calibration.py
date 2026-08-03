@@ -12,15 +12,15 @@ def initialize_defocus_calibration(
     app,
     display_dir: Path,
 ) -> DisplayCalibration:
-    """defocus matchingでのみ使う輝度・色校正を読み込む。"""
+    """defocus matchingとSingle plane生成用の校正を読み込む。"""
     calibration = load_display_calibration(display_dir)
+
     app.color_matrix = calibration.color_matrix
     app.gamma_bg = calibration.gamma_bg
     app.gamma_fg = calibration.gamma_fg
     app.bg_lums = calibration.bg_lums
     app.bg_pixels = calibration.bg_pixels
-    app.ext_lum_Y = calibration.ext_lum_y
-    app.ext_lum_px = calibration.ext_lum_px
+
     return calibration
 
 

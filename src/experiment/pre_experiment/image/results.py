@@ -11,7 +11,10 @@ RESULT_FIELDS = [
     "Distance_FG(cm)", "Distance_BG(cm)",
     "PD_Right", "OffsetX_Right", "OffsetY_Right",
     "PD_Left", "OffsetX_Left", "OffsetY_Left",
-    "Trial_ID", "Image_Win1", "Image_Win2", "Score",
+    "Trial_ID", "Block_ID", "Condition", "Image_Win1", "Image_Win2", "Score",
+    "Defocus_Difference(D)", "Disparity_Total(px)",
+    "Background_Left_Weight", "Background_Right_Weight",
+    "Out_Of_Gamut_Ratio",
 ]
 
 
@@ -51,7 +54,7 @@ def save_participant(path: Path, participant: dict[str, str]) -> None:
 
 
 def build_result_row(app, score: int) -> dict[str, Any]:
-    trial = app.trial_list[app.current_trial_index]
+    trial = app.current_trial
     right = app.calib_results.get("Right", {})
     left = app.calib_results.get("Left", {})
     return {
@@ -69,9 +72,16 @@ def build_result_row(app, score: int) -> dict[str, Any]:
         "OffsetX_Left": left.get("offset_x"),
         "OffsetY_Left": left.get("offset_y"),
         "Trial_ID": app.current_trial_index + 1,
+        "Block_ID": app.current_block_index + 1,
+        "Condition": trial.condition,
         "Image_Win1": trial.background_path.name,
         "Image_Win2": trial.foreground_path.name,
         "Score": int(score),
+        "Defocus_Difference(D)": app.prepared_stimulus.defocus_difference_d,
+        "Disparity_Total(px)": app.prepared_stimulus.disparity_total_px,
+        "Background_Left_Weight": 0.5,
+        "Background_Right_Weight": 0.5,
+        "Out_Of_Gamut_Ratio": app.prepared_stimulus.out_of_gamut_ratio,
     }
 
 

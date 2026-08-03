@@ -24,7 +24,11 @@ from .results import (
     save_participant,
     save_session_results,
 )
-from .stimuli import build_trials, discover_images, prepare_trial_stimulus
+from .stimuli import (
+    build_condition_blocks,
+    discover_images,
+    prepare_trial_stimulus,
+)
 
 
 WIN1_MARKER_COLOR = "red"
@@ -58,13 +62,18 @@ class ImageExperimentApp(ExperimentBaseUI):
         )
 
         self.rng = random.Random()
+        self.blocks: list[list] = []
+        self.current_block_index = 0
         self.trial_list = []
+        self.current_trial_in_block = 0
         self.current_trial_index = 0
         self.results: list[dict] = []
         self.eval_buttons: list[dict] = []
         self.current_trial = None
+        self.prepared_stimulus = None
         self.photo_background = None
         self.photo_foreground = None
+        self.photo_singleplane = None
         self.result_dir: Path = session_config.result_root
 
         self._setup_windows()
@@ -242,6 +251,10 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.current_calib_eye_idx = 0
         self.calib_results = {}
         self.detailed_defocus_results = []
+        self.blocks = []
+        self.current_block_index = 0
+        self.trial_list = []
+        self.current_trial_in_block = 0
         self.current_trial_index = 0
         self.results = []
         self.start_eye_calibration()
@@ -395,31 +408,108 @@ class ImageExperimentApp(ExperimentBaseUI):
             )
             self._reset_to_setup_ui()
             return
-        self.trial_list = build_trials(
-            background_paths, foreground_paths, self.rng
+        self.blocks = build_condition_blocks(
+            self.session_config,
+            background_paths,
+            foreground_paths,
+            self.rng,
         )
+        self.current_block_index = 0
+        self.current_trial_index = 0
+        total_trials = sum(len(block) for block in self.blocks)
         print(
             f"Found {len(background_paths)} background images and "
             f"{len(foreground_paths)} foreground images."
         )
-        print(f"Total trials: {len(self.trial_list)}")
+        print(
+            f"Condition blocks: {len(self.blocks)} / "
+            f"Total trials: {total_trials}"
+        )
+        self.canvas1.delete("all")
+        self.canvas2.delete("all")
+        self.start_block()
+
+    def start_block(self) -> None:
+        """次の条件ブロックを準備し、条件確認画面を表示する。"""
+        self._destroy_frame("ctrl_frame")
+        self.clear_key_bindings()
+        self.canvas1.delete("all")
+        self.canvas2.delete("all")
+        if self.current_block_index >= len(self.blocks):
+            self.finish_experiment()
+            return
+
+        self.trial_list = self.blocks[self.current_block_index]
+        self.current_trial_in_block = 0
+        self._show_block_confirmation()
+
+    def _show_block_confirmation(self) -> None:
+        condition = self.trial_list[0].condition
+        self.ctrl_frame = tk.Frame(
+            self.root, bg="gray", padx=30, pady=30
+        )
+        self.ctrl_frame.place(relx=0.5, rely=0.5, anchor="center")
+        tk.Label(
+            self.ctrl_frame,
+            text=(
+                f"[Block {self.current_block_index + 1}/"
+                f"{len(self.blocks)}]\n"
+                f"Condition: {condition}\n"
+                f"Trials: {len(self.trial_list)}\n\n"
+                "Press Enter to start this block."
+            ),
+            bg="gray",
+            fg="white",
+            font=("Arial", 16),
+        ).pack(pady=20, padx=40)
+        tk.Button(
+            self.ctrl_frame,
+            text="Start Block",
+            command=self._start_current_block,
+        ).pack(pady=10)
+        self.key_bindings["<Return>"] = self.root.bind(
+            "<Return>", lambda event: self._start_current_block()
+        )
+        self.root.focus_set()
+
+    def _start_current_block(self) -> None:
+        self._destroy_frame("ctrl_frame")
+        self.clear_key_bindings()
         self.canvas1.delete("all")
         self.canvas2.delete("all")
         self.run_trial()
 
     def run_trial(self) -> None:
-        if self.current_trial_index >= len(self.trial_list):
-            self.finish_experiment()
+        if self.current_trial_in_block >= len(self.trial_list):
+            self.current_block_index += 1
+            self.root.after(500, self.start_block)
             return
-        self.current_trial = self.trial_list[self.current_trial_index]
-        prepared = prepare_trial_stimulus(
-            self.current_trial, self.session_config
+        self.current_trial = self.trial_list[self.current_trial_in_block]
+        left_result = self.calib_results.get("Left", {})
+        right_result = self.calib_results.get("Right", {})
+        self.prepared_stimulus = prepare_trial_stimulus(
+            self.current_trial,
+            self.session_config,
+            self.defocus_display_calibration,
+            left_pupil_mm=float(left_result.get("pd_mean", 4.0)),
+            right_pupil_mm=float(right_result.get("pd_mean", 4.0)),
+            ipd_mm=float(self.participant_ipd.get()),
         )
-        self.photo_background = ImageTk.PhotoImage(prepared.background)
-        self.photo_foreground = ImageTk.PhotoImage(prepared.foreground)
+        self.photo_foreground = ImageTk.PhotoImage(
+            self.prepared_stimulus.foreground
+        )
+        self.photo_background = (
+            ImageTk.PhotoImage(self.prepared_stimulus.background)
+            if self.prepared_stimulus.background is not None else None
+        )
+        self.photo_singleplane = (
+            ImageTk.PhotoImage(self.prepared_stimulus.singleplane)
+            if self.prepared_stimulus.singleplane is not None else None
+        )
 
         self.canvas1.configure(bg=self.session_config.background_color)
         self.canvas1.delete("all")
+        self.canvas2.delete("all")
         self.canvas2.create_image(
             self.canvas2.winfo_width() // 2,
             self.canvas2.winfo_height() // 2,
@@ -450,20 +540,31 @@ class ImageExperimentApp(ExperimentBaseUI):
 
     def phase_both(self) -> None:
         self.canvas2.delete("calib")
-        self.canvas1.create_image(
-            self.width // 2 + self.offset_x.get(),
-            self.height // 2 + self.offset_y.get(),
-            image=self.photo_background,
-            anchor="center",
-            tags="img",
-        )
-        self.canvas2.create_image(
-            self.canvas2.winfo_width() // 2,
-            self.canvas2.winfo_height() // 2,
-            image=self.photo_foreground,
-            anchor="center",
-            tags="img",
-        )
+        if self.current_trial.condition == "Dual plane":
+            self.canvas1.create_image(
+                self.width // 2 + self.offset_x.get(),
+                self.height // 2 + self.offset_y.get(),
+                image=self.photo_background,
+                anchor="center",
+                tags="img",
+            )
+            self.canvas2.create_image(
+                self.canvas2.winfo_width() // 2,
+                self.canvas2.winfo_height() // 2,
+                image=self.photo_foreground,
+                anchor="center",
+                tags="img",
+            )
+        else:
+            # Single plane系ではWindow 1を黒のままにし、合成像をWindow 2へ出す。
+            self.canvas1.delete("all")
+            self.canvas2.create_image(
+                self.canvas2.winfo_width() // 2,
+                self.canvas2.winfo_height() // 2,
+                image=self.photo_singleplane,
+                anchor="center",
+                tags="img",
+            )
         self.root.after(
             self.session_config.time_both_ms, self.phase_end_trial
         )
@@ -479,6 +580,7 @@ class ImageExperimentApp(ExperimentBaseUI):
             build_result_row(self, self.evaluation_val.get())
         )
         self._destroy_frame("eval_frame")
+        self.current_trial_in_block += 1
         self.current_trial_index += 1
         break_due = (
             self.current_trial_index

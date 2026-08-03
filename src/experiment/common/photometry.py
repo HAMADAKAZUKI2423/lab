@@ -169,6 +169,73 @@ def luminance_components_to_matrix_singleplane_photo(
     )
 
 
+def rgb_paths_to_matrix_singleplane_image(
+    background_image,
+    foreground_image,
+    t_prime,
+    r_prime,
+    r_prime_inv,
+    gamma_background,
+    gamma_foreground,
+):
+    """BG/FGの実表示RGBをXYZ加算し、FG一面で再現するPIL画像を返す。"""
+    if gamma_background is None or gamma_foreground is None:
+        raise RuntimeError("Single plane reproduction requires BG/FG gamma data")
+
+    background = np.asarray(background_image.convert("RGB"), dtype=np.float64) / 255.0
+    foreground = np.asarray(foreground_image.convert("RGB"), dtype=np.float64) / 255.0
+    if background.shape != foreground.shape:
+        raise ValueError(
+            "background and foreground must have the same shape: "
+            f"{background.shape} != {foreground.shape}"
+        )
+
+    linear_background = np.empty_like(background)
+    linear_foreground = np.empty_like(foreground)
+    for index, channel in enumerate("RGB"):
+        linear_background[..., index] = _apply_gamma(
+            gamma_background, channel, background[..., index]
+        )
+        linear_foreground[..., index] = _apply_gamma(
+            gamma_foreground, channel, foreground[..., index]
+        )
+
+    # Dual planeで実際に生じるBG透過光とFG反射光のXYZ増分を加算する。
+    xyz_target = (
+        linear_background @ t_prime.T
+        + linear_foreground @ r_prime.T
+    )
+    # 同じXYZ増分をFG経路だけで出すための線形RGBへ戻す。
+    linear_singleplane = xyz_target @ r_prime_inv.T
+    out_of_gamut = np.any(
+        (linear_singleplane < -1e-9) | (linear_singleplane > 1.0 + 1e-9),
+        axis=-1,
+    )
+    out_of_gamut_ratio = float(np.mean(out_of_gamut))
+    if out_of_gamut_ratio > 0:
+        print(
+            "WARN: image Single plane RGB is out of gamut: "
+            f"ratio={out_of_gamut_ratio:.6f}, "
+            f"min={float(np.min(linear_singleplane)):.6f}, "
+            f"max={float(np.max(linear_singleplane)):.6f}"
+        )
+
+    linear_singleplane = np.clip(linear_singleplane, 0.0, 1.0)
+    output = np.empty_like(linear_singleplane)
+    for index, channel in enumerate("RGB"):
+        output[..., index] = _apply_gamma(
+            gamma_foreground,
+            channel,
+            linear_singleplane[..., index],
+            inverse=True,
+        )
+    image = Image.fromarray(
+        np.clip(output * 255.0, 0, 255).astype(np.uint8),
+        mode="RGB",
+    )
+    return image, out_of_gamut_ratio
+
+
 def luminance_to_window2_photo(
     luminance,
     luminances,
