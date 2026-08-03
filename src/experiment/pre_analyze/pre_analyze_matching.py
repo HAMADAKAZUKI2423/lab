@@ -71,17 +71,32 @@ def matching_result_path(session_dir):
 
 
 def discover_session_dirs(explicit_dirs=None):
-    """省略時は本実験、明示時は本実験・trainingの両方を受け付ける。"""
+    """セッションフォルダ、またはその親フォルダから解析対象を見つける。"""
     if explicit_dirs:
-        session_dirs = [os.path.abspath(path) for path in explicit_dirs]
+        candidate_dirs = []
+        for path in explicit_dirs:
+            path = os.path.abspath(path)
+            if matching_result_path(path) is not None:
+                # 例: .../experiment/3_20260730_164234
+                candidate_dirs.append(path)
+            elif os.path.isdir(path):
+                # 例: .../experiment を指定した場合は、直下の全セッションを使う。
+                candidate_dirs.extend(
+                    sorted(
+                        child for child in glob.glob(os.path.join(path, "*"))
+                        if os.path.isdir(child)
+                    )
+                )
+            else:
+                print(f"WARN: ディレクトリが見つかりません: {path}")
     else:
-        session_dirs = sorted(
+        candidate_dirs = sorted(
             path for path in glob.glob(os.path.join(EXPERIMENT_RESULT_ROOT, "*"))
             if os.path.isdir(path)
         )
 
     valid_dirs = []
-    for session_dir in session_dirs:
+    for session_dir in candidate_dirs:
         csv_path = matching_result_path(session_dir)
         if csv_path is not None:
             valid_dirs.append(session_dir)
@@ -90,7 +105,7 @@ def discover_session_dirs(explicit_dirs=None):
                 "WARN: contrast_matching.csv / contrast_matching_training.csv "
                 f"がないため除外: {session_dir}"
             )
-    return valid_dirs
+    return list(dict.fromkeys(valid_dirs))
 
 
 def load_matching_results(session_dirs):
@@ -339,7 +354,7 @@ def save_outputs(df, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Analyze pre-experiment contrast matching results."
+        description="Analyze contrast matching results."
     )
     parser.add_argument(
         "session_dirs",
@@ -393,8 +408,18 @@ def main():
     participant_label = "-".join(participant_ids) or "unknown"
     participant_label = re.sub(r"[^0-9A-Za-z_-]+", "_", participant_label)
 
+    all_participants_mode = (
+        not args.session_dirs
+        or any(
+            os.path.abspath(path) == os.path.abspath(EXPERIMENT_RESULT_ROOT)
+            for path in args.session_dirs
+        )
+    )
     output_dir = args.output_dir or os.path.join(
-        default_figure_root, f"analysis_{participant_label}_{timestamp}"
+        default_figure_root,
+        "all_participants"
+        if all_participants_mode
+        else f"analyze_{participant_label}_{timestamp}",
     )
     save_outputs(analyzed, output_dir)
 

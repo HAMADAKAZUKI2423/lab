@@ -123,6 +123,11 @@ def _record_and_continue(app) -> None:
     average = sum(app.match_pd_results) / len(app.match_pd_results)
     app.pupil_diameter_val.set(round(average, 2))
     app.current_pd_mean = average
+    current_eye = app.calibration_eyes[app.current_calib_eye_idx]
+    print(
+        f"Defocus matching mean: eye={current_eye}, "
+        f"n={len(app.match_pd_results)}, mean={average:.3f}mm"
+    )
     count = len(app.match_pd_results)
     app.current_pd_std = (
         math.sqrt(

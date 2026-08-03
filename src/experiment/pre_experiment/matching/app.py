@@ -514,6 +514,21 @@ class MatchingExperimentApp(ExperimentBaseUI):
         self._destroy_frame("ctrl_frame")
         self.clear_key_bindings()
         matched = slider_to_contrast(self.slider_val.get())
+        trial = self.trial_list[self.current_trial_in_block]
+        luminance_total = self.session_config.l_fg + self.session_config.l_bg
+        matched_ar = (
+            self.session_config.l_fg * matched / luminance_total
+            if luminance_total > 0
+            else float("nan")
+        )
+        print(
+            "Contrast match result: "
+            f"trial={self.current_trial_in_experiment + 1}, "
+            f"condition={self.current_block_cond['condition']}, "
+            f"ocularity={self.current_block_cond['ocularity']}, "
+            f"ref={trial['ref_contrast']}, "
+            f"matched_ar={matched_ar:.4f}"
+        )
         self.results.append(build_result_row(self, matched))
         self.current_trial_in_block += 1
         self.current_trial_in_experiment += 1
