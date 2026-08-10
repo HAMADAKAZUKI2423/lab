@@ -59,7 +59,7 @@ all_data = []
 
 CURRENT_DISTANCE_COLUMNS = ("Distance_FG(cm)", "Distance_BG(cm)")
 LEGACY_DISTANCE_COLUMNS = ("Distance1(cm)", "Distance2(cm)")
-REQUIRED_COLUMNS = {"Image_Win1", "Image_Win2", "Score"}
+REQUIRED_COLUMNS = {"Condition", "Image_Win1", "Image_Win2", "Score"}
 
 for file in file_paths:
     # 現行のimage実験が出力するCSVを読み込む。
@@ -151,133 +151,172 @@ for f in unique_bg_files:
 final_df['bg_image'] = final_df['Image_Win1'].apply(lambda x: extract_label(x, "bg"))
 final_df['bg_image'] = pd.Categorical(final_df['bg_image'], categories=bg_labels, ordered=True)
 
-# 4. 条件ごとの平均値と標準誤差を算出
-summary_df = final_df.groupby(['distance', 'diopter_diff', 'd1', 'fg_image'])['Score'].agg(['mean', 'sem']).reset_index()
+# 4条件を固定順で解析する。
+CONDITION_ORDER = [
+    "Single plane",
+    "Single plane + defocus simulation",
+    "Single plane + defocus + binocular overlay",
+    "Dual plane",
+]
+CONDITION_SLUGS = {
+    "Single plane": "single_plane",
+    "Single plane + defocus simulation": "single_plane_defocus",
+    "Single plane + defocus + binocular overlay": "single_plane_defocus_binocular",
+    "Dual plane": "dual_plane",
+}
+BASELINE_CONDITION = "Single plane"
 
-# CSVに含まれる距離条件から表示順を自動生成する。
-distance_order = (
-    final_df[["distance", "diopter_diff", "d1"]]
-    .drop_duplicates()
-    .sort_values(["diopter_diff", "d1"])["distance"]
-    .tolist()
+final_df["Score"] = pd.to_numeric(final_df["Score"], errors="coerce")
+if final_df["Score"].isna().any():
+    raise ValueError("Scoreに数値へ変換できない値が含まれています")
+
+available_conditions = set(final_df["Condition"].dropna().astype(str))
+missing_conditions = [
+    condition for condition in CONDITION_ORDER
+    if condition not in available_conditions
+]
+if missing_conditions:
+    raise ValueError(
+        "解析に必要なConditionが不足しています: "
+        f"{missing_conditions}; found={sorted(available_conditions)}"
+    )
+unexpected_conditions = sorted(available_conditions - set(CONDITION_ORDER))
+if unexpected_conditions:
+    print(f"WARN: 未定義のConditionは解析対象外です: {unexpected_conditions}")
+
+# この解析の出力を毎回5枚だけにするため、同じ出力先の既存PNGを削除する。
+for old_png in glob.glob(os.path.join(OUTPUT_DIR, "*.png")):
+    os.remove(old_png)
+
+# --- ConditionごとのBG×FGヒートマップ（4枚） ---
+for condition in CONDITION_ORDER:
+    condition_df = final_df[final_df["Condition"] == condition]
+    heatmap_df = (
+        condition_df
+        .groupby(["bg_image", "fg_image"], observed=False)["Score"]
+        .mean()
+        .reset_index()
+    )
+    heatmap_pivot = heatmap_df.pivot(
+        index="bg_image", columns="fg_image", values="Score"
+    ).reindex(
+        index=final_df["bg_image"].cat.categories,
+        columns=final_df["fg_image"].cat.categories,
+    )
+
+    fig, ax = plt.subplots(figsize=(10, 8))
+    image = ax.imshow(
+        heatmap_pivot.to_numpy(dtype=float),
+        cmap="Reds",
+        vmin=1,
+        vmax=5,
+        origin="lower",
+        aspect="auto",
+    )
+    ax.set_xticks(np.arange(len(heatmap_pivot.columns)))
+    ax.set_yticks(np.arange(len(heatmap_pivot.index)))
+    ax.set_xticklabels(heatmap_pivot.columns, rotation=45, ha="right")
+    ax.set_yticklabels(heatmap_pivot.index)
+    ax.set_xlabel("Foreground image")
+    ax.set_ylabel("Background image")
+    ax.set_title(f"BG × FG score heatmap\n{condition}")
+
+    for row_index in range(len(heatmap_pivot.index)):
+        for column_index in range(len(heatmap_pivot.columns)):
+            value = heatmap_pivot.iloc[row_index, column_index]
+            if pd.notna(value):
+                ax.text(
+                    column_index,
+                    row_index,
+                    f"{value:.2f}",
+                    ha="center",
+                    va="center",
+                    color="white" if value > 3.5 else "black",
+                )
+
+    colorbar = fig.colorbar(image, ax=ax)
+    colorbar.set_label("Mean score")
+    fig.tight_layout()
+    output_path = os.path.join(
+        OUTPUT_DIR,
+        f"score_heatmap_{CONDITION_SLUGS[condition]}.png",
+    )
+    fig.savefig(output_path, dpi=300)
+    plt.close(fig)
+    print(f"Saved heatmap: {output_path}")
+
+# --- 画像ペアごとにSingle planeとの差を求め、その平均を4本で表示（1枚） ---
+# 差の符号は「各ConditionのScore - Single planeのScore」とする。
+# 同一条件・同一画像ペアに複数試行がある場合は、先にペア内平均を取る。
+pair_scores = (
+    final_df[final_df["Condition"].isin(CONDITION_ORDER)]
+    .groupby(
+        ["Image_Win1", "Image_Win2", "Condition"],
+        as_index=False,
+    )["Score"]
+    .mean()
 )
-summary_df["distance"] = pd.Categorical(
-    summary_df["distance"], categories=distance_order, ordered=True
+pair_pivot = pair_scores.pivot(
+    index=["Image_Win1", "Image_Win2"],
+    columns="Condition",
+    values="Score",
 )
-summary_df = summary_df.sort_values("distance")
 
-# グラフ描画用にピボット（行：距離ラベル、列：前景画像、値：平均スコア）
-pivot_df = summary_df.pivot_table(index='distance', columns='fg_image', values='mean')
-error_df = summary_df.pivot_table(index='distance', columns='fg_image', values='sem')
+complete_pairs = pair_pivot.dropna(subset=CONDITION_ORDER).copy()
+if complete_pairs.empty:
+    raise ValueError(
+        "4条件がそろった画像ペアがないため、Single plane基準のスコア差を計算できません"
+    )
 
-# 4. グラフの描画
-# 棒グラフに変更
-fig, ax = plt.subplots(figsize=(12, 6))
-
-# pandasのplot機能を使って棒グラフを描画
-# x軸: distance (index), 凡例: fg_image (columns)
-pivot_df.plot(kind='bar', yerr=error_df, ax=ax, capsize=4, rot=0)
-
-# 軸ラベルとタイトルの設定
-ax.set_xlabel('Distance Combination', fontsize=12)
-ax.set_ylabel('Average Score', fontsize=12)
-ax.set_title('Average Score by Distance and Foreground Image', fontsize=14)
-ax.set_ylim(0, 5.5) # スコアの範囲に合わせて調整
-ax.legend(title='FG Image', bbox_to_anchor=(1.05, 1), loc='upper left')
-ax.grid(axis='y', linestyle='--', alpha=0.7)
-
-plt.tight_layout()
-plt.savefig(os.path.join(OUTPUT_DIR, 'score_vs_distance_bar.png'))
-# 続けて背景画像のグラフを描画するため、ここではshow()せず最後にまとめて表示
-
-# --- 追加: 背景画像ごとの集計とグラフ描画 ---
-summary_bg_df = final_df.groupby(['distance', 'bg_image'])['Score'].agg(['mean', 'sem']).reset_index()
-summary_bg_df["distance"] = pd.Categorical(
-    summary_bg_df["distance"], categories=distance_order, ordered=True
+score_differences = complete_pairs[CONDITION_ORDER].subtract(
+    complete_pairs[BASELINE_CONDITION], axis=0
 )
-summary_bg_df = summary_bg_df.sort_values("distance")
+# 棒の高さは画像ペアごとのスコア差の平均、誤差棒はそのSEM。
+difference_mean = score_differences.mean(axis=0).reindex(CONDITION_ORDER)
+difference_sem = score_differences.sem(axis=0).reindex(CONDITION_ORDER).fillna(0.0)
+# 基準条件自身との差は各画像ペアで必ず0なので、明示的に固定する。
+difference_mean.loc[BASELINE_CONDITION] = 0.0
+difference_sem.loc[BASELINE_CONDITION] = 0.0
 
-pivot_bg_df = summary_bg_df.pivot_table(index='distance', columns='bg_image', values='mean')
-error_bg_df = summary_bg_df.pivot_table(index='distance', columns='bg_image', values='sem')
-
-fig_bg, ax_bg = plt.subplots(figsize=(12, 6))
-pivot_bg_df.plot(kind='bar', yerr=error_bg_df, ax=ax_bg, capsize=4, rot=0)
-
-ax_bg.set_xlabel('Distance Combination', fontsize=12)
-ax_bg.set_ylabel('Average Score', fontsize=12)
-ax_bg.set_title('Average Score by Distance and Background Luminance', fontsize=14)
-ax_bg.set_ylim(0, 5.5)
-ax_bg.legend(title='BG Image', bbox_to_anchor=(1.05, 1), loc='upper left')
-ax_bg.grid(axis='y', linestyle='--', alpha=0.7)
-
-plt.tight_layout()
-plt.savefig(os.path.join(OUTPUT_DIR, 'score_vs_distance_bg_bar.png'))
-
-# --- 追加: 前景・背景輝度のヒートマップ (距離ごとに作成) ---
-sorted_distances = distance_order
-
-for dist in sorted_distances:
-    dist_df = final_df[final_df['distance'] == dist]
-    
-    # 集計
-    heatmap_df = dist_df.groupby(['bg_image', 'fg_image'])['Score'].mean().reset_index()
-    heatmap_pivot = heatmap_df.pivot(index='bg_image', columns='fg_image', values='Score')
-    # カテゴリ順序を保持して再インデックス（データが存在しない組み合わせも表示するため）
-    heatmap_pivot = heatmap_pivot.reindex(index=final_df['bg_image'].cat.categories, columns=final_df['fg_image'].cat.categories)
-
-    fig_hm, ax_hm = plt.subplots(figsize=(8, 8))
-    im = ax_hm.imshow(heatmap_pivot, cmap='Reds', vmin=1, vmax=5, origin='lower')
-
-    ax_hm.set_xticks(np.arange(len(heatmap_pivot.columns)))
-    ax_hm.set_yticks(np.arange(len(heatmap_pivot.index)))
-    ax_hm.set_xticklabels(heatmap_pivot.columns, rotation=45, ha="right")
-    ax_hm.set_yticklabels(heatmap_pivot.index)
-    ax_hm.set_xlabel('Foreground Luminance')
-    ax_hm.set_ylabel('Background Luminance')
-    ax_hm.set_title(f'Average Score Heatmap (FG vs BG)\nDistance: {dist}')
-
-    for i in range(len(heatmap_pivot.index)):
-        for j in range(len(heatmap_pivot.columns)):
-            val = heatmap_pivot.iloc[i, j]
-            if not np.isnan(val):
-                text_color = "white" if val > 3.5 else "black"
-                ax_hm.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color)
-
-    cbar = ax_hm.figure.colorbar(im, ax=ax_hm)
-    cbar.set_label('Average Score')
-
-    plt.tight_layout()
-    safe_dist = str(dist).replace(' ', '_')
-    plt.savefig(os.path.join(OUTPUT_DIR, f'score_heatmap_fg_bg_{safe_dist}.png'))
-
-# --- 追加: 全距離平均のヒートマップ ---
-heatmap_all_df = final_df.groupby(['bg_image', 'fg_image'])['Score'].mean().reset_index()
-heatmap_all_pivot = heatmap_all_df.pivot(index='bg_image', columns='fg_image', values='Score')
-# カテゴリ順序を保持して再インデックス
-heatmap_all_pivot = heatmap_all_pivot.reindex(index=final_df['bg_image'].cat.categories, columns=final_df['fg_image'].cat.categories)
-
-fig_hm_all, ax_hm_all = plt.subplots(figsize=(8, 8))
-im_all = ax_hm_all.imshow(heatmap_all_pivot, cmap='Reds', vmin=1, vmax=5, origin='lower')
-
-ax_hm_all.set_xticks(np.arange(len(heatmap_all_pivot.columns)))
-ax_hm_all.set_yticks(np.arange(len(heatmap_all_pivot.index)))
-ax_hm_all.set_xticklabels(heatmap_all_pivot.columns, rotation=45, ha="right")
-ax_hm_all.set_yticklabels(heatmap_all_pivot.index)
-ax_hm_all.set_xlabel('Foreground Luminance')
-ax_hm_all.set_ylabel('Background Luminance')
-ax_hm_all.set_title('Average Score Heatmap (FG vs BG)\nDistance: ALL')
-
-for i in range(len(heatmap_all_pivot.index)):
-    for j in range(len(heatmap_all_pivot.columns)):
-        val = heatmap_all_pivot.iloc[i, j]
-        if not np.isnan(val):
-            text_color = "white" if val > 3.5 else "black"
-            ax_hm_all.text(j, i, f"{val:.2f}", ha="center", va="center", color=text_color)
-
-cbar_all = ax_hm_all.figure.colorbar(im_all, ax=ax_hm_all)
-cbar_all.set_label('Average Score')
-
-plt.tight_layout()
-plt.savefig(os.path.join(OUTPUT_DIR, 'score_heatmap_fg_bg_ALL.png'))
-
-plt.show()
+fig, ax = plt.subplots(figsize=(12, 7))
+x_positions = np.arange(len(CONDITION_ORDER))
+bars = ax.bar(
+    x_positions,
+    difference_mean.to_numpy(dtype=float),
+    yerr=difference_sem.to_numpy(dtype=float),
+    capsize=5,
+    color=["#7f7f7f", "#4c78a8", "#f58518", "#54a24b"],
+)
+ax.axhline(0.0, color="black", linestyle="--", linewidth=1.5)
+ax.set_xticks(x_positions)
+ax.set_xticklabels(CONDITION_ORDER, rotation=15, ha="right")
+ax.set_xlabel("Condition")
+ax.set_ylabel("Score difference from Single plane")
+ax.set_title(
+    "Mean score difference across matched BG × FG image pairs\n"
+    f"n = {len(score_differences)} complete image pairs"
+)
+error_low = difference_mean.to_numpy() - difference_sem.to_numpy()
+error_high = difference_mean.to_numpy() + difference_sem.to_numpy()
+limit = max(
+    0.5,
+    float(np.nanmax(np.abs(np.concatenate([error_low, error_high])))) * 1.2,
+)
+ax.set_ylim(-limit, limit)
+ax.grid(axis="y", linestyle="--", alpha=0.5)
+for bar, value in zip(bars, difference_mean):
+    vertical_alignment = "bottom" if value >= 0 else "top"
+    offset = limit * 0.02 if value >= 0 else -limit * 0.02
+    ax.text(
+        bar.get_x() + bar.get_width() / 2,
+        value + offset,
+        f"{value:+.3f}",
+        ha="center",
+        va=vertical_alignment,
+    )
+fig.tight_layout()
+bar_path = os.path.join(OUTPUT_DIR, "score_difference_vs_single_plane.png")
+fig.savefig(bar_path, dpi=300)
+plt.close(fig)
+print(f"Saved score-difference bar chart: {bar_path}")
+print(f"Saved exactly 5 figures to: {OUTPUT_DIR}")
