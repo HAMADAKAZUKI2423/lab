@@ -215,9 +215,11 @@ def add_analysis_columns(df):
     return analyzed
 
 
-# TOSTの等価幅。現時点では参照コントラストの10%を暫定値とし、
-# 最終解析前に知覚的に無視できる最小差（SESOI）として事前に固定する。
-DEFAULT_EQUIVALENCE_MARGIN_RATIO = 0.10
+# TOSTの等価幅。log10コントラスト差で±log10(1.10)とする。
+# 条件間の幾何平均比が1/1.10〜1.10に収まることを等価とみなす。
+# 最終解析前に知覚的に無視できる最小比（SESOI）として事前に固定する。
+DEFAULT_EQUIVALENCE_RATIO_BOUND = 1.10
+LOG10_EQUIVALENCE_MARGIN = np.log10(DEFAULT_EQUIVALENCE_RATIO_BOUND)
 
 
 def _cohens_d_paired(diff_values):
@@ -272,7 +274,7 @@ def _holm_adjust(p_values):
 
 
 def _mean_difference_statistics(diff_values):
-    """差分系列に対する両側1標本t検定と記述統計を返す。"""
+    """log10差分系列に対する両側1標本t検定と記述統計を返す。"""
     from scipy import stats
 
     values = np.asarray(diff_values, dtype=float)
@@ -280,11 +282,11 @@ def _mean_difference_statistics(diff_values):
     n = len(values)
     result = {
         "n": n,
-        "mean_difference": float(np.mean(values)) if n else float("nan"),
-        "sd_difference": float("nan"),
-        "sem_difference": float("nan"),
-        "ci95_lower": float("nan"),
-        "ci95_upper": float("nan"),
+        "mean_log10_difference": float(np.mean(values)) if n else float("nan"),
+        "sd_log10_difference": float("nan"),
+        "sem_log10_difference": float("nan"),
+        "ci95_log10_lower": float("nan"),
+        "ci95_log10_upper": float("nan"),
         "t_statistic": float("nan"),
         "degrees_of_freedom": n - 1 if n else float("nan"),
         "p_value_two_sided": float("nan"),
@@ -294,11 +296,11 @@ def _mean_difference_statistics(diff_values):
     if n < 2:
         return result
 
-    mean_difference = result["mean_difference"]
+    mean_difference = result["mean_log10_difference"]
     sd_difference = float(np.std(values, ddof=1))
     sem_difference = sd_difference / np.sqrt(n)
-    result["sd_difference"] = sd_difference
-    result["sem_difference"] = sem_difference
+    result["sd_log10_difference"] = sd_difference
+    result["sem_log10_difference"] = sem_difference
 
     if np.isclose(sd_difference, 0.0):
         if np.isclose(mean_difference, 0.0):
@@ -318,8 +320,8 @@ def _mean_difference_statistics(diff_values):
 
     effect_size = _cohens_d_paired(values)
     result.update({
-        "ci95_lower": float(ci_low),
-        "ci95_upper": float(ci_high),
+        "ci95_log10_lower": float(ci_low),
+        "ci95_log10_upper": float(ci_high),
         "t_statistic": float(t_statistic),
         "p_value_two_sided": float(p_value),
         "cohens_dz": effect_size,
@@ -331,19 +333,19 @@ def _mean_difference_statistics(diff_values):
 
 
 def _tost_equivalence_statistics(diff_values, margin, alpha=0.05):
-    """差分平均が[-margin, +margin]内かを対応ありTOSTで検定する。"""
+    """log10差分平均が[-margin, +margin]内かをTOSTで検定する。"""
     from scipy import stats
 
     values = np.asarray(diff_values, dtype=float)
     values = values[np.isfinite(values)]
     n = len(values)
     result = {
-        "equivalence_margin": float(margin),
+        "equivalence_margin_log10": float(margin),
         "tost_p_lower": float("nan"),
         "tost_p_upper": float("nan"),
         "tost_p_value": float("nan"),
-        "tost_ci90_lower": float("nan"),
-        "tost_ci90_upper": float("nan"),
+        "tost_ci90_log10_lower": float("nan"),
+        "tost_ci90_log10_upper": float("nan"),
     }
     if n < 2 or not np.isfinite(margin) or margin <= 0:
         return result
@@ -377,8 +379,8 @@ def _tost_equivalence_statistics(diff_values, margin, alpha=0.05):
         "tost_p_lower": p_lower,
         "tost_p_upper": p_upper,
         "tost_p_value": max(p_lower, p_upper),
-        "tost_ci90_lower": float(ci_low),
-        "tost_ci90_upper": float(ci_high),
+        "tost_ci90_log10_lower": float(ci_low),
+        "tost_ci90_log10_upper": float(ci_high),
     })
     return result
 
@@ -415,13 +417,17 @@ def save_statistical_csv_outputs(df, output_dir):
     H2: SPDとDPの差、および等価性（対応のあるt検定・TOST）
     H3: DPFと参照コントラストの差・等価性、およびSPとの個人差相関
 
-    反復試行は参加者内で平均し、参加者を独立な解析単位とする。
+    各試行のAR_Matched_Contrastをlog10変換し、参加者×条件内の中央値を取る。
+    参加者を独立な解析単位とし、全検定をlog10コントラスト単位で行う。
     多重比較はSession_Type・Ref_Contrast・Orientation・仮説ごとに
     Holm-Bonferroni補正する。
     """
     from scipy import stats
 
-    value_column = "AR_Matched_Contrast"
+    source_value_column = "AR_Matched_Contrast"
+    value_column = "Log10_AR_Matched_Contrast"
+    analysis_scale = "log10_AR_Matched_Contrast"
+    participant_aggregation = "median_of_log10_trials"
     ocularities = ["binocular", "monocular"]
     h1_conditions = [
         "Single plane + defocus simulation",
@@ -432,21 +438,40 @@ def save_statistical_csv_outputs(df, output_dir):
         "ID", "Session_Type", "Condition", "Ocularity",
         "Ref_Contrast", "Orientation",
     ]
-    participant_means = (
-        df[keys + [value_column]]
-        .dropna(subset=keys + [value_column])
-        .groupby(keys, as_index=False)[value_column].mean()
+    statistical_data = df[keys + [source_value_column]].copy()
+    statistical_data[source_value_column] = pd.to_numeric(
+        statistical_data[source_value_column], errors="coerce"
+    )
+    statistical_data = statistical_data.dropna(subset=keys)
+    invalid_mask = (
+        ~np.isfinite(statistical_data[source_value_column])
+        | (statistical_data[source_value_column] <= 0)
+    )
+    if invalid_mask.any():
+        raise ValueError(
+            "log10統計解析にはAR_Matched_Contrast > 0が必要です。"
+            f"無効な試行数: {int(invalid_mask.sum())}"
+        )
+    statistical_data[value_column] = np.log10(
+        statistical_data[source_value_column].to_numpy(dtype=float)
+    )
+    participant_medians = (
+        statistical_data[keys + [value_column]]
+        .groupby(keys, as_index=False)[value_column].median()
     )
 
     test_rows = []
     correlation_rows = []
     analysis_groups = ["Session_Type", "Ref_Contrast", "Orientation"]
 
-    for group_values, group_df in participant_means.groupby(analysis_groups):
+    for group_values, group_df in participant_medians.groupby(analysis_groups):
         session_type, reference, orientation = group_values
-        equivalence_margin = (
-            abs(float(reference)) * DEFAULT_EQUIVALENCE_MARGIN_RATIO
-        )
+        if float(reference) <= 0:
+            raise ValueError(
+                f"Ref_Contrast must be positive for log10 analysis: {reference}"
+            )
+        reference_log10 = np.log10(float(reference))
+        equivalence_margin = LOG10_EQUIVALENCE_MARGIN
         group_test_rows = []
         group_correlation_rows = []
 
@@ -463,12 +488,12 @@ def save_statistical_csv_outputs(df, output_dir):
                 )
                 if run_tost
                 else {
-                    "equivalence_margin": float("nan"),
+                    "equivalence_margin_log10": float("nan"),
                     "tost_p_lower": float("nan"),
                     "tost_p_upper": float("nan"),
                     "tost_p_value": float("nan"),
-                    "tost_ci90_lower": float("nan"),
-                    "tost_ci90_upper": float("nan"),
+                    "tost_ci90_log10_lower": float("nan"),
+                    "tost_ci90_log10_upper": float("nan"),
                 }
             )
             condition_values = np.asarray(condition_values, dtype=float)
@@ -484,23 +509,62 @@ def save_statistical_csv_outputs(df, output_dir):
                 "Test_Type": test_type,
                 "Condition": condition,
                 "Baseline_Condition": baseline_condition,
+                "Analysis_Scale": analysis_scale,
+                "Participant_Aggregation": participant_aggregation,
                 "n": summary["n"],
-                "mean_condition": (
+                "mean_log10_condition": (
                     float(np.mean(condition_values))
                     if len(condition_values) else float("nan")
                 ),
-                "mean_baseline": (
+                "mean_log10_baseline": (
                     float(np.mean(baseline_values))
                     if len(baseline_values) else float("nan")
                 ),
+                "geometric_mean_condition": (
+                    float(10.0 ** np.mean(condition_values))
+                    if len(condition_values) else float("nan")
+                ),
+                "geometric_mean_baseline": (
+                    float(10.0 ** np.mean(baseline_values))
+                    if len(baseline_values) else float("nan")
+                ),
                 **summary,
+                "geometric_mean_ratio": (
+                    float(10.0 ** summary["mean_log10_difference"])
+                    if np.isfinite(summary["mean_log10_difference"])
+                    else float("nan")
+                ),
+                "ci95_ratio_lower": (
+                    float(10.0 ** summary["ci95_log10_lower"])
+                    if np.isfinite(summary["ci95_log10_lower"])
+                    else float("nan")
+                ),
+                "ci95_ratio_upper": (
+                    float(10.0 ** summary["ci95_log10_upper"])
+                    if np.isfinite(summary["ci95_log10_upper"])
+                    else float("nan")
+                ),
                 "holm_adjusted_p_value": float("nan"),
                 "significant_holm_alpha_0_05": False,
-                "equivalence_margin_ratio": (
-                    DEFAULT_EQUIVALENCE_MARGIN_RATIO
+                "equivalence_ratio_lower": (
+                    1.0 / DEFAULT_EQUIVALENCE_RATIO_BOUND
+                    if run_tost else float("nan")
+                ),
+                "equivalence_ratio_upper": (
+                    DEFAULT_EQUIVALENCE_RATIO_BOUND
                     if run_tost else float("nan")
                 ),
                 **tost,
+                "tost_ci90_ratio_lower": (
+                    float(10.0 ** tost["tost_ci90_log10_lower"])
+                    if np.isfinite(tost["tost_ci90_log10_lower"])
+                    else float("nan")
+                ),
+                "tost_ci90_ratio_upper": (
+                    float(10.0 ** tost["tost_ci90_log10_upper"])
+                    if np.isfinite(tost["tost_ci90_log10_upper"])
+                    else float("nan")
+                ),
                 "holm_adjusted_tost_p_value": float("nan"),
                 "equivalent_holm_alpha_0_05": False,
             }
@@ -561,7 +625,7 @@ def save_statistical_csv_outputs(df, output_dir):
                 & (group_df["Ocularity"] == ocularity),
                 value_column,
             ].to_numpy(dtype=float)
-            reference_values = np.full(len(dpf_values), float(reference))
+            reference_values = np.full(len(dpf_values), reference_log10)
             append_test_row(
                 hypothesis="H3",
                 family="H3_DPF_vs_reference",
@@ -572,7 +636,7 @@ def save_statistical_csv_outputs(df, output_dir):
                 ocularity=ocularity,
                 condition_values=dpf_values,
                 baseline_values=reference_values,
-                diff_values=dpf_values - float(reference),
+                diff_values=dpf_values - reference_log10,
                 run_tost=True,
             )
 
@@ -586,11 +650,11 @@ def save_statistical_csv_outputs(df, output_dir):
             )
             sp_offset = (
                 paired_sp_dpf["baseline_value"].to_numpy(dtype=float)
-                - float(reference)
+                - reference_log10
             )
             dpf_offset = (
                 paired_sp_dpf["condition_value"].to_numpy(dtype=float)
-                - float(reference)
+                - reference_log10
             )
             n_correlation = len(paired_sp_dpf)
             if (
@@ -609,12 +673,22 @@ def save_statistical_csv_outputs(df, output_dir):
                 "Orientation": orientation,
                 "Ocularity": ocularity,
                 "n_participants": n_correlation,
-                "mean_sp_offset_from_reference": (
+                "Analysis_Scale": analysis_scale,
+                "Participant_Aggregation": participant_aggregation,
+                "mean_sp_log10_offset_from_reference": (
                     float(np.mean(sp_offset))
                     if n_correlation else float("nan")
                 ),
-                "mean_dpf_offset_from_reference": (
+                "mean_dpf_log10_offset_from_reference": (
                     float(np.mean(dpf_offset))
+                    if n_correlation else float("nan")
+                ),
+                "geometric_mean_sp_ratio_to_reference": (
+                    float(10.0 ** np.mean(sp_offset))
+                    if n_correlation else float("nan")
+                ),
+                "geometric_mean_dpf_ratio_to_reference": (
+                    float(10.0 ** np.mean(dpf_offset))
                     if n_correlation else float("nan")
                 ),
                 "pearson_r": pearson_r,
