@@ -1,0 +1,5 @@
+﻿Hypothesis,Session_Type,Ref_Contrast,Orientation,Ocularity,n_participants,Analysis_Scale,Participant_Aggregation,mean_sp_log10_offset_from_reference,mean_dpf_log10_offset_from_reference,geometric_mean_sp_ratio_to_reference,geometric_mean_dpf_ratio_to_reference,pearson_r,p_value_two_sided,holm_adjusted_p_value,significant_holm_alpha_0_05
+H3,experiment,0.1,0,monocular,1,log10_AR_Matched_Contrast,median_of_log10_trials,0.4027770696103474,0.0023820749327607693,2.528,1.0055,,,,False
+H3,experiment,0.1,0,binocular,1,log10_AR_Matched_Contrast,median_of_log10_trials,0.4315245841874509,0.02796085978544749,2.701,1.0664999999999998,,,,False
+H3,experiment,0.2,0,monocular,1,log10_AR_Matched_Contrast,median_of_log10_trials,0.2157036409524053,0.014100321519620485,1.6432499999999997,1.0329999999999997,,,,False
+H3,experiment,0.2,0,binocular,1,log10_AR_Matched_Contrast,median_of_log10_trials,0.19402843735270603,0.022015739817720203,1.5632499999999996,1.0519999999999998,,,,False
