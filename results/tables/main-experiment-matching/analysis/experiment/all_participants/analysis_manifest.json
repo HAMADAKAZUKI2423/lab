@@ -1,0 +1,107 @@
+{
+  "Manifest_Version": 1,
+  "Generated_At_UTC": "2026-08-27T07:06:57.689743+00:00",
+  "Run_Name": "all_participants",
+  "Analysis_Mode": "full_analysis",
+  "Input_Mode": "all_participants",
+  "Participant_Aggregation": "mean_of_log10_trials",
+  "DPF_Correction_Method": "z_corrected = z_condition - z_DPF + log10(Ref)",
+  "Hypothesis_Rows_Per_Analysis_Group": 15,
+  "Analysis_Group_Count": 2,
+  "Session_Count": 7,
+  "Participant_Count": 7,
+  "Participant_IDs": [
+    "0",
+    "1",
+    "2",
+    "3",
+    "4",
+    "5",
+    "6"
+  ],
+  "Trial_Row_Count": 560,
+  "Uncorrected_Summary_Row_Count": 112,
+  "Corrected_Summary_Row_Count": 84,
+  "Hypothesis_Test_Row_Count": 30,
+  "Exclusion_Row_Count": 0,
+  "Input_Sessions": [
+    {
+      "ID": "0",
+      "Session_Type": "experiment",
+      "Session_Timestamp": "20260824_162125",
+      "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\0_20260824_162125",
+      "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\0_20260824_162125\\contrast_matching.csv",
+      "Trial_Count": 80
+    },
+    {
+      "ID": "1",
+      "Session_Type": "experiment",
+      "Session_Timestamp": "20260825_104420",
+      "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\1_20260825_104420",
+      "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\1_20260825_104420\\contrast_matching.csv",
+      "Trial_Count": 80
+    },
+    {
+      "ID": "2",
+      "Session_Type": "experiment",
+      "Session_Timestamp": "20260730_150655",
+      "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\2_20260730_150655",
+      "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\2_20260730_150655\\contrast_matching.csv",
+      "Trial_Count": 80
+    },
+    {
+      "ID": "3",
+      "Session_Type": "experiment",
+      "Session_Timestamp": "20260730_164234",
+      "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\3_20260730_164234",
+      "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\3_20260730_164234\\contrast_matching.csv",
+      "Trial_Count": 80
+    },
+    {
+      "ID": "4",
+      "Session_Type": "experiment",
+      "Session_Timestamp": "20260818_132449",
+      "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\4_20260818_132449",
+      "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\4_20260818_132449\\contrast_matching.csv",
+      "Trial_Count": 80
+    },
+    {
+      "ID": "5",
+      "Session_Type": "experiment",
+      "Session_Timestamp": "20260818_160423",
+      "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\5_20260818_160423",
+      "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\5_20260818_160423\\contrast_matching.csv",
+      "Trial_Count": 80
+    },
+    {
+      "ID": "6",
+      "Session_Type": "experiment",
+      "Session_Timestamp": "20260821_162308",
+      "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\6_20260821_162308",
+      "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\6_20260821_162308\\contrast_matching.csv",
+      "Trial_Count": 80
+    }
+  ],
+  "Output_Table_Directory": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants",
+  "Output_Figure_Directory": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants",
+  "Table_Files": {
+    "participant_summary_uncorrected": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\participant_summary_uncorrected.csv",
+    "participant_summary_dpf_corrected": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\participant_summary_dpf_corrected.csv",
+    "planned_hypothesis_tests": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\planned_hypothesis_tests.csv",
+    "analysis_exclusions": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\analysis_exclusions.csv"
+  },
+  "Figure_Files": {
+    "uncorrected": [
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\uncorrected\\uncorrected__experiment__ref_0p1__ori_0.png",
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\uncorrected\\uncorrected__experiment__ref_0p2__ori_0.png"
+    ],
+    "dpf_corrected": [
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\dpf_corrected\\dpf_corrected__experiment__ref_0p1__ori_0.png",
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\dpf_corrected\\dpf_corrected__experiment__ref_0p2__ori_0.png"
+    ],
+    "h4_interaction": [
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\h4_interaction\\h4_interaction__experiment__ref_0p1__ori_0.png",
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\h4_interaction\\h4_interaction__experiment__ref_0p2__ori_0.png"
+    ]
+  }
+}
