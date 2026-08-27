@@ -1,0 +1,3 @@
+﻿Hypothesis,Session_Type,Ref_Contrast,Orientation,Ocularity,n_participants,Analysis_Scale,Participant_Aggregation,mean_sp_log10_offset_from_reference,mean_dpf_log10_offset_from_reference,geometric_mean_sp_ratio_to_reference,geometric_mean_dpf_ratio_to_reference,pearson_r,p_value_two_sided,holm_adjusted_p_value,significant_holm_alpha_0_05
+H3,training,0.2,0,binocular,0,log10_AR_Matched_Contrast,median_of_log10_trials,,,,,,,,False
+H3,training,0.2,0,monocular,0,log10_AR_Matched_Contrast,median_of_log10_trials,,,,,,,,False

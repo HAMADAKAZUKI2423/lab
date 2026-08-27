@@ -164,7 +164,7 @@ def calculate_blur_attenuation_cached(
     width_px = int(width_base * WIN2_TOTAL_WIDTH_FACTOR)
     height_px = int(VISUAL_ANGLE_HEIGHT_DEG * ppd_fg)
 
-    # 実験のnoise生成と同じ関数を、解析ではseed固定で決定論的に使う。
+    # 実験のnoise生��と同じ関数を、解析ではseed固定で決定論的に使う。
     noise_base = patterns.create_noise_base(
         width_px,
         height_px,
@@ -215,30 +215,58 @@ def add_analysis_columns(df):
     return analyzed
 
 
-# TOSTの等価幅。log10コントラスト差で±log10(1.10)とする。
-# 条件間の幾何平均比が1/1.10〜1.10に収まることを等価とみなす。
-# 最終解析前に知覚的に無視できる最小比（SESOI）として事前に固定する。
+# Statistical analysis constants and helpers.
+ALPHA = 0.05
+ANALYSIS_SCALE = "log10_AR_Matched_Contrast"
+PARTICIPANT_AGGREGATION = "median_of_log10_trials"
+ANALYSIS_GROUP_COLUMNS = ("Session_Type", "Ref_Contrast", "Orientation")
+OCULARITIES = ("monocular", "binocular")
+
+SP_CONDITION = "Single plane"
+SPD_CONDITION = "Single plane + defocus simulation"
+DP_CONDITION = "Dual plane"
+DPF_CONDITION = "Dual plane flat"
+H1_CONDITIONS = (SPD_CONDITION, DP_CONDITION, DPF_CONDITION)
+
+# H2/H3の条件差に対する等価幅。比で1/1.10〜1.10を暫定SESOIとする。
 DEFAULT_EQUIVALENCE_RATIO_BOUND = 1.10
 LOG10_EQUIVALENCE_MARGIN = np.log10(DEFAULT_EQUIVALENCE_RATIO_BOUND)
 
+# H2-3の差の差に対する等価幅。比の比で1/1.10〜1.10を暫定値とする。
+# H2/H3とは意味が異なるため独立した定数にし、最終解析前に別途固定する。
+DEFAULT_INTERACTION_EQUIVALENCE_RATIO_BOUND = 1.10
+LOG10_INTERACTION_EQUIVALENCE_MARGIN = np.log10(
+    DEFAULT_INTERACTION_EQUIVALENCE_RATIO_BOUND
+)
 
-def _cohens_d_paired(diff_values):
-    """対応のある差の平均をそのSDで割った効果量（差の1標本t検定のdと等価）。"""
-    diff_values = np.asarray(diff_values, dtype=float)
-    diff_values = diff_values[np.isfinite(diff_values)]
-    if len(diff_values) < 2:
+
+def _finite_values(values):
+    values = np.asarray(values, dtype=float)
+    return values[np.isfinite(values)]
+
+
+def _pow10_or_nan(value):
+    return float(10.0 ** value) if np.isfinite(value) else float("nan")
+
+
+def _cohens_dz(diff_values):
+    """対応差の平均を差の標本SDで割ったCohen's dz。"""
+    values = _finite_values(diff_values)
+    if len(values) < 2:
         return float("nan")
-    sd = np.std(diff_values, ddof=1)
-    mean_diff = float(np.mean(diff_values))
-    if sd == 0:
-        return 0.0 if mean_diff == 0 else float(np.sign(mean_diff) * np.inf)
-    return mean_diff / sd
+    mean_difference = float(np.mean(values))
+    sd_difference = float(np.std(values, ddof=1))
+    if np.isclose(sd_difference, 0.0):
+        if np.isclose(mean_difference, 0.0):
+            return 0.0
+        return float(np.sign(mean_difference) * np.inf)
+    return mean_difference / sd_difference
 
 
 def _required_n_for_80pct_power(
-    effect_size, alpha=0.05, target_power=0.80, max_n=10000
+    effect_size, alpha=ALPHA, target_power=0.80, max_n=10000
 ):
-    """観測された効果量を仮定した両側t検定の必要サンプル数を返す。"""
+    """観測dzを仮定した両側1標本t検定の80%検出力に必要なn。"""
     from scipy import stats
 
     if np.isnan(effect_size) or effect_size == 0:
@@ -260,29 +288,34 @@ def _required_n_for_80pct_power(
 
 
 def _holm_adjust(p_values):
-    """Holm-Bonferroni補正済みp値（NaNはそのまま）を返す。"""
+    """Holm補正。NaNも事前に定めた検定数へ数えるが、出力はNaNのまま。"""
+    p_values = np.asarray(p_values, dtype=float)
     adjusted = np.full(len(p_values), np.nan)
-    valid = [i for i, p in enumerate(p_values) if np.isfinite(p)]
-    ordered = sorted(valid, key=lambda i: p_values[i])
+    valid_indices = [
+        index for index, p_value in enumerate(p_values) if np.isfinite(p_value)
+    ]
+    ordered_indices = sorted(valid_indices, key=lambda index: p_values[index])
+    family_size = len(p_values)
     running_maximum = 0.0
-    for rank, index in enumerate(ordered):
+    for rank, index in enumerate(ordered_indices):
         running_maximum = max(
-            running_maximum, (len(ordered) - rank) * p_values[index]
+            running_maximum,
+            (family_size - rank) * float(p_values[index]),
         )
         adjusted[index] = min(running_maximum, 1.0)
     return adjusted
 
 
 def _mean_difference_statistics(diff_values):
-    """log10差分系列に対する両側1標本t検定と記述統計を返す。"""
+    """log10差分系列の両側1標本t検定・95% CI・効果量を返す。"""
     from scipy import stats
 
-    values = np.asarray(diff_values, dtype=float)
-    values = values[np.isfinite(values)]
+    values = _finite_values(diff_values)
     n = len(values)
+    mean_difference = float(np.mean(values)) if n else float("nan")
     result = {
         "n": n,
-        "mean_log10_difference": float(np.mean(values)) if n else float("nan"),
+        "mean_log10_difference": mean_difference,
         "sd_log10_difference": float("nan"),
         "sem_log10_difference": float("nan"),
         "ci95_log10_lower": float("nan"),
@@ -296,7 +329,6 @@ def _mean_difference_statistics(diff_values):
     if n < 2:
         return result
 
-    mean_difference = result["mean_log10_difference"]
     sd_difference = float(np.std(values, ddof=1))
     sem_difference = sd_difference / np.sqrt(n)
     result["sd_log10_difference"] = sd_difference
@@ -308,45 +340,52 @@ def _mean_difference_statistics(diff_values):
         else:
             t_statistic = float(np.sign(mean_difference) * np.inf)
             p_value = 0.0
-        ci_low = ci_high = mean_difference
+        ci_lower = ci_upper = mean_difference
     else:
         t_statistic = mean_difference / sem_difference
-        p_value = float(
-            2.0 * stats.t.sf(abs(t_statistic), df=n - 1)
-        )
-        ci_low, ci_high = stats.t.interval(
-            0.95, n - 1, loc=mean_difference, scale=sem_difference
+        p_value = float(2.0 * stats.t.sf(abs(t_statistic), df=n - 1))
+        ci_lower, ci_upper = stats.t.interval(
+            0.95,
+            n - 1,
+            loc=mean_difference,
+            scale=sem_difference,
         )
 
-    effect_size = _cohens_d_paired(values)
-    result.update({
-        "ci95_log10_lower": float(ci_low),
-        "ci95_log10_upper": float(ci_high),
-        "t_statistic": float(t_statistic),
-        "p_value_two_sided": float(p_value),
-        "cohens_dz": effect_size,
-        "required_n_for_80pct_power": _required_n_for_80pct_power(
-            effect_size
-        ),
-    })
+    effect_size = _cohens_dz(values)
+    result.update(
+        {
+            "ci95_log10_lower": float(ci_lower),
+            "ci95_log10_upper": float(ci_upper),
+            "t_statistic": float(t_statistic),
+            "p_value_two_sided": p_value,
+            "cohens_dz": effect_size,
+            "required_n_for_80pct_power": _required_n_for_80pct_power(
+                effect_size
+            ),
+        }
+    )
     return result
 
 
-def _tost_equivalence_statistics(diff_values, margin, alpha=0.05):
-    """log10差分平均が[-margin, +margin]内かをTOSTで検定する。"""
-    from scipy import stats
-
-    values = np.asarray(diff_values, dtype=float)
-    values = values[np.isfinite(values)]
-    n = len(values)
-    result = {
-        "equivalence_margin_log10": float(margin),
+def _empty_tost_statistics():
+    return {
+        "equivalence_margin_log10": float("nan"),
         "tost_p_lower": float("nan"),
         "tost_p_upper": float("nan"),
         "tost_p_value": float("nan"),
         "tost_ci90_log10_lower": float("nan"),
         "tost_ci90_log10_upper": float("nan"),
     }
+
+
+def _tost_equivalence_statistics(diff_values, margin, alpha=ALPHA):
+    """log10平均差が[-margin,+margin]内かをTOSTで検定する。"""
+    from scipy import stats
+
+    values = _finite_values(diff_values)
+    result = _empty_tost_statistics()
+    result["equivalence_margin_log10"] = float(margin)
+    n = len(values)
     if n < 2 or not np.isfinite(margin) or margin <= 0:
         return result
 
@@ -362,11 +401,11 @@ def _tost_equivalence_statistics(diff_values, margin, alpha=0.05):
 
         t_lower = zero_se_t(mean_difference + margin)
         t_upper = zero_se_t(mean_difference - margin)
-        ci_low = ci_high = mean_difference
+        ci_lower = ci_upper = mean_difference
     else:
         t_lower = (mean_difference + margin) / sem_difference
         t_upper = (mean_difference - margin) / sem_difference
-        ci_low, ci_high = stats.t.interval(
+        ci_lower, ci_upper = stats.t.interval(
             1.0 - 2.0 * alpha,
             n - 1,
             loc=mean_difference,
@@ -375,77 +414,236 @@ def _tost_equivalence_statistics(diff_values, margin, alpha=0.05):
 
     p_lower = float(stats.t.sf(t_lower, df=n - 1))
     p_upper = float(stats.t.cdf(t_upper, df=n - 1))
-    result.update({
-        "tost_p_lower": p_lower,
-        "tost_p_upper": p_upper,
-        "tost_p_value": max(p_lower, p_upper),
-        "tost_ci90_log10_lower": float(ci_low),
-        "tost_ci90_log10_upper": float(ci_high),
-    })
+    result.update(
+        {
+            "tost_p_lower": p_lower,
+            "tost_p_upper": p_upper,
+            "tost_p_value": max(p_lower, p_upper),
+            "tost_ci90_log10_lower": float(ci_lower),
+            "tost_ci90_log10_upper": float(ci_upper),
+        }
+    )
     return result
 
 
 def _paired_condition_frame(
     group_df, baseline_condition, condition, ocularity, value_column
 ):
-    """同一IDの2条件を対応付けたDataFrameを返す。"""
-    baseline = group_df[
+    """同一IDの2条件を1対1で対応付ける。"""
+    baseline = group_df.loc[
         (group_df["Condition"] == baseline_condition)
-        & (group_df["Ocularity"] == ocularity)
-    ][["ID", value_column]].rename(columns={value_column: "baseline_value"})
-    comparison = group_df[
+        & (group_df["Ocularity"] == ocularity),
+        ["ID", value_column],
+    ].rename(columns={value_column: "baseline_value"})
+    comparison = group_df.loc[
         (group_df["Condition"] == condition)
-        & (group_df["Ocularity"] == ocularity)
-    ][["ID", value_column]].rename(columns={value_column: "condition_value"})
-    return pd.merge(baseline, comparison, on="ID", how="inner").dropna()
+        & (group_df["Ocularity"] == ocularity),
+        ["ID", value_column],
+    ].rename(columns={value_column: "condition_value"})
+    return pd.merge(
+        baseline,
+        comparison,
+        on="ID",
+        how="inner",
+        validate="one_to_one",
+    ).dropna()
+
+
+def _build_test_row(
+    *,
+    group_metadata,
+    hypothesis,
+    family,
+    claim_component,
+    comparison,
+    test_type,
+    condition,
+    baseline_condition,
+    ocularity,
+    condition_values,
+    baseline_values,
+    diff_values,
+    effect_scale="log10_condition_ratio",
+    equivalence_margin_log10=None,
+    primary_test="",
+):
+    """1比較分のt検定・TOST・比率換算を同一形式の行へまとめる。"""
+    condition_values = _finite_values(condition_values)
+    baseline_values = _finite_values(baseline_values)
+    diff_values = _finite_values(diff_values)
+    if not (
+        len(condition_values) == len(baseline_values) == len(diff_values)
+    ):
+        raise ValueError("condition/baseline/difference lengths must match")
+
+    summary = _mean_difference_statistics(diff_values)
+    run_tost = equivalence_margin_log10 is not None
+    tost = (
+        _tost_equivalence_statistics(diff_values, equivalence_margin_log10)
+        if run_tost
+        else _empty_tost_statistics()
+    )
+    ratio_bound = (
+        float(10.0 ** equivalence_margin_log10)
+        if run_tost
+        else float("nan")
+    )
+    row = {
+        "Hypothesis": hypothesis,
+        "Family": family,
+        "Claim_Component": claim_component,
+        **group_metadata,
+        "Ocularity": ocularity,
+        "Comparison": comparison,
+        "Test_Type": test_type,
+        "Primary_Test": primary_test,
+        "Condition": condition,
+        "Baseline_Condition": baseline_condition,
+        "Effect_Scale": effect_scale,
+        "Analysis_Scale": ANALYSIS_SCALE,
+        "Participant_Aggregation": PARTICIPANT_AGGREGATION,
+        "n": summary["n"],
+        "mean_log10_condition": (
+            float(np.mean(condition_values))
+            if len(condition_values)
+            else float("nan")
+        ),
+        "mean_log10_baseline": (
+            float(np.mean(baseline_values))
+            if len(baseline_values)
+            else float("nan")
+        ),
+        "geometric_mean_condition": (
+            _pow10_or_nan(float(np.mean(condition_values)))
+            if len(condition_values)
+            else float("nan")
+        ),
+        "geometric_mean_baseline": (
+            _pow10_or_nan(float(np.mean(baseline_values)))
+            if len(baseline_values)
+            else float("nan")
+        ),
+        **summary,
+        "geometric_mean_ratio": _pow10_or_nan(
+            summary["mean_log10_difference"]
+        ),
+        "ci95_ratio_lower": _pow10_or_nan(summary["ci95_log10_lower"]),
+        "ci95_ratio_upper": _pow10_or_nan(summary["ci95_log10_upper"]),
+        "holm_adjusted_p_value": float("nan"),
+        "significant_holm_alpha_0_05": False,
+        "equivalence_ratio_lower": (
+            1.0 / ratio_bound if run_tost else float("nan")
+        ),
+        "equivalence_ratio_upper": ratio_bound,
+        **tost,
+        "tost_ci90_ratio_lower": _pow10_or_nan(
+            tost["tost_ci90_log10_lower"]
+        ),
+        "tost_ci90_ratio_upper": _pow10_or_nan(
+            tost["tost_ci90_log10_upper"]
+        ),
+        "holm_adjusted_tost_p_value": float("nan"),
+        "equivalent_holm_alpha_0_05": False,
+        "Primary_P_Value": float("nan"),
+        "Primary_Reject_Alpha_0_05": False,
+        "Decision_Basis": "",
+        "H2_Conjunction_Evaluable": False,
+        "H2_Conjunction_All_Pass": False,
+    }
+    return row
 
 
 def _apply_holm_to_rows(rows, p_key, adjusted_key, decision_key):
-    """同一仮説ファミリー内のp値へHolm-Bonferroni補正を適用する。"""
-    adjusted = _holm_adjust([row[p_key] for row in rows])
-    for row, adjusted_p in zip(rows, adjusted):
+    adjusted_values = _holm_adjust([row[p_key] for row in rows])
+    for row, adjusted_p in zip(rows, adjusted_values):
         row[adjusted_key] = adjusted_p
         row[decision_key] = bool(
-            np.isfinite(adjusted_p) and adjusted_p < 0.05
+            np.isfinite(adjusted_p) and adjusted_p < ALPHA
         )
 
 
-def save_statistical_csv_outputs(df, output_dir):
-    """事前に定めた3仮説の検定結果を、必要最小限のCSVへ保存する。
+def _raw_t_tost_interpretation(row):
+    t_p = row["p_value_two_sided"]
+    tost_p = row["tost_p_value"]
+    if not np.isfinite(tost_p):
+        return ""
+    t_significant = np.isfinite(t_p) and t_p < ALPHA
+    tost_significant = tost_p < ALPHA
+    if t_significant and tost_significant:
+        return "different_but_within_equivalence_bounds"
+    if t_significant:
+        return "different_not_equivalent"
+    if tost_significant:
+        return "equivalent_no_detected_difference"
+    return "inconclusive"
 
-    H1: SPとSPD・DP・DPFの差（対応のあるt検定）
-    H2: SPDとDPの差、および等価性（対応のあるt検定・TOST）
-    H3: DPFと参照コントラストの差・等価性、およびSPとの個人差相関
 
-    各試行のAR_Matched_Contrastをlog10変換し、参加者×条件内の中央値を取る。
-    参加者を独立な解析単位とし、全検定をlog10コントラスト単位で行う。
-    多重比較はSession_Type・Ref_Contrast・Orientation・仮説ごとに
-    Holm-Bonferroni補正する。
-    """
-    from scipy import stats
+def _set_primary_decisions(group_test_rows):
+    """Holm判定とH2連言（IUT）の主判定を明示的な列へ格納する。"""
+    for row in group_test_rows:
+        hypothesis = row["Hypothesis"]
+        primary_test = row["Primary_Test"]
+        if hypothesis == "H1":
+            primary_p = row["holm_adjusted_p_value"]
+            basis = "Holm-adjusted two-sided t test"
+        elif hypothesis == "H3":
+            primary_p = row["holm_adjusted_tost_p_value"]
+            basis = "Holm-adjusted TOST"
+        elif hypothesis in {"H2", "H2_interaction"}:
+            primary_p = (
+                row["tost_p_value"]
+                if primary_test == "TOST"
+                else row["p_value_two_sided"]
+            )
+            basis = f"Unadjusted {primary_test} as IUT component"
+        else:
+            primary_p = float("nan")
+            basis = ""
+        row["Primary_P_Value"] = primary_p
+        row["Primary_Reject_Alpha_0_05"] = bool(
+            np.isfinite(primary_p) and primary_p < ALPHA
+        )
+        row["Decision_Basis"] = basis
+        row["Raw_T_and_TOST_Interpretation"] = _raw_t_tost_interpretation(
+            row
+        )
 
-    source_value_column = "AR_Matched_Contrast"
+    h2_rows = [
+        row
+        for row in group_test_rows
+        if row["Hypothesis"] in {"H2", "H2_interaction"}
+    ]
+    expected_components = {"H2-1", "H2-2", "H2-3"}
+    present_components = {row["Claim_Component"] for row in h2_rows}
+    evaluable = (
+        present_components == expected_components
+        and all(np.isfinite(row["Primary_P_Value"]) for row in h2_rows)
+    )
+    all_pass = evaluable and all(
+        row["Primary_Reject_Alpha_0_05"] for row in h2_rows
+    )
+    for row in h2_rows:
+        row["H2_Conjunction_Evaluable"] = evaluable
+        row["H2_Conjunction_All_Pass"] = all_pass
+
+
+def _prepare_participant_medians(df):
+    source_column = "AR_Matched_Contrast"
     value_column = "Log10_AR_Matched_Contrast"
-    analysis_scale = "log10_AR_Matched_Contrast"
-    participant_aggregation = "median_of_log10_trials"
-    ocularities = ["binocular", "monocular"]
-    h1_conditions = [
-        "Single plane + defocus simulation",
-        "Dual plane",
-        "Dual plane flat",
-    ]
     keys = [
-        "ID", "Session_Type", "Condition", "Ocularity",
-        "Ref_Contrast", "Orientation",
+        "ID",
+        *ANALYSIS_GROUP_COLUMNS,
+        "Condition",
+        "Ocularity",
     ]
-    statistical_data = df[keys + [source_value_column]].copy()
-    statistical_data[source_value_column] = pd.to_numeric(
-        statistical_data[source_value_column], errors="coerce"
+    statistical_data = df[keys + [source_column]].copy()
+    statistical_data[source_column] = pd.to_numeric(
+        statistical_data[source_column], errors="coerce"
     )
     statistical_data = statistical_data.dropna(subset=keys)
     invalid_mask = (
-        ~np.isfinite(statistical_data[source_value_column])
-        | (statistical_data[source_value_column] <= 0)
+        ~np.isfinite(statistical_data[source_column])
+        | (statistical_data[source_column] <= 0)
     )
     if invalid_mask.any():
         raise ValueError(
@@ -453,198 +651,146 @@ def save_statistical_csv_outputs(df, output_dir):
             f"無効な試行数: {int(invalid_mask.sum())}"
         )
     statistical_data[value_column] = np.log10(
-        statistical_data[source_value_column].to_numpy(dtype=float)
+        statistical_data[source_column].to_numpy(dtype=float)
     )
     participant_medians = (
-        statistical_data[keys + [value_column]]
-        .groupby(keys, as_index=False)[value_column].median()
+        statistical_data.groupby(keys, as_index=False)[value_column].median()
     )
+    return participant_medians, value_column
 
+
+def save_statistical_csv_outputs(df, output_dir):
+    """解析計画H1〜H3を実行し、検定表とH3相関表を保存する。
+
+    H1: SP vs SPD/DP/DPF（眼別の対応t、6検定をHolm補正）
+    H2-1: monocularのSPD vs DP等価性（主判定TOST、tも併記）
+    H2-2: binocularのSPD vs DP差（主判定t、TOSTも併記）
+    H2-3: SPD→DP効果のbinocular vs monocular差（対応t、TOSTも併記）
+           3主張の連言は各主判定の生p値によるIUTで評価する。
+           単体報告用として3行のt/TOSTには別途Holm補正値も出力する。
+    H3: DPF vs Ref（眼別の1標本t・TOST、2検定をHolm補正）
+        およびSP/DPFの参照オフセット相関（2眼をHolm補正）
+
+    各試行をlog10変換後、参加者×条件内の中央値を代表値とする。
+    """
+    from scipy import stats
+
+    os.makedirs(output_dir, exist_ok=True)
+    participant_medians, value_column = _prepare_participant_medians(df)
     test_rows = []
     correlation_rows = []
-    analysis_groups = ["Session_Type", "Ref_Contrast", "Orientation"]
 
-    for group_values, group_df in participant_medians.groupby(analysis_groups):
-        session_type, reference, orientation = group_values
-        if float(reference) <= 0:
+    for group_values, group_df in participant_medians.groupby(
+        list(ANALYSIS_GROUP_COLUMNS), sort=True
+    ):
+        group_metadata = dict(zip(ANALYSIS_GROUP_COLUMNS, group_values))
+        reference = float(group_metadata["Ref_Contrast"])
+        if reference <= 0:
             raise ValueError(
                 f"Ref_Contrast must be positive for log10 analysis: {reference}"
             )
-        reference_log10 = np.log10(float(reference))
-        equivalence_margin = LOG10_EQUIVALENCE_MARGIN
+        reference_log10 = np.log10(reference)
         group_test_rows = []
         group_correlation_rows = []
+        h2_effects = {}
 
-        def append_test_row(
-            *, hypothesis, family, comparison, test_type,
-            condition, baseline_condition, ocularity,
-            condition_values, baseline_values, diff_values,
-            run_tost=False,
-        ):
-            summary = _mean_difference_statistics(diff_values)
-            tost = (
-                _tost_equivalence_statistics(
-                    diff_values, equivalence_margin
-                )
-                if run_tost
-                else {
-                    "equivalence_margin_log10": float("nan"),
-                    "tost_p_lower": float("nan"),
-                    "tost_p_upper": float("nan"),
-                    "tost_p_value": float("nan"),
-                    "tost_ci90_log10_lower": float("nan"),
-                    "tost_ci90_log10_upper": float("nan"),
-                }
-            )
-            condition_values = np.asarray(condition_values, dtype=float)
-            baseline_values = np.asarray(baseline_values, dtype=float)
-            row = {
-                "Hypothesis": hypothesis,
-                "Family": family,
-                "Session_Type": session_type,
-                "Ref_Contrast": reference,
-                "Orientation": orientation,
-                "Ocularity": ocularity,
-                "Comparison": comparison,
-                "Test_Type": test_type,
-                "Condition": condition,
-                "Baseline_Condition": baseline_condition,
-                "Analysis_Scale": analysis_scale,
-                "Participant_Aggregation": participant_aggregation,
-                "n": summary["n"],
-                "mean_log10_condition": (
-                    float(np.mean(condition_values))
-                    if len(condition_values) else float("nan")
-                ),
-                "mean_log10_baseline": (
-                    float(np.mean(baseline_values))
-                    if len(baseline_values) else float("nan")
-                ),
-                "geometric_mean_condition": (
-                    float(10.0 ** np.mean(condition_values))
-                    if len(condition_values) else float("nan")
-                ),
-                "geometric_mean_baseline": (
-                    float(10.0 ** np.mean(baseline_values))
-                    if len(baseline_values) else float("nan")
-                ),
-                **summary,
-                "geometric_mean_ratio": (
-                    float(10.0 ** summary["mean_log10_difference"])
-                    if np.isfinite(summary["mean_log10_difference"])
-                    else float("nan")
-                ),
-                "ci95_ratio_lower": (
-                    float(10.0 ** summary["ci95_log10_lower"])
-                    if np.isfinite(summary["ci95_log10_lower"])
-                    else float("nan")
-                ),
-                "ci95_ratio_upper": (
-                    float(10.0 ** summary["ci95_log10_upper"])
-                    if np.isfinite(summary["ci95_log10_upper"])
-                    else float("nan")
-                ),
-                "holm_adjusted_p_value": float("nan"),
-                "significant_holm_alpha_0_05": False,
-                "equivalence_ratio_lower": (
-                    1.0 / DEFAULT_EQUIVALENCE_RATIO_BOUND
-                    if run_tost else float("nan")
-                ),
-                "equivalence_ratio_upper": (
-                    DEFAULT_EQUIVALENCE_RATIO_BOUND
-                    if run_tost else float("nan")
-                ),
-                **tost,
-                "tost_ci90_ratio_lower": (
-                    float(10.0 ** tost["tost_ci90_log10_lower"])
-                    if np.isfinite(tost["tost_ci90_log10_lower"])
-                    else float("nan")
-                ),
-                "tost_ci90_ratio_upper": (
-                    float(10.0 ** tost["tost_ci90_log10_upper"])
-                    if np.isfinite(tost["tost_ci90_log10_upper"])
-                    else float("nan")
-                ),
-                "holm_adjusted_tost_p_value": float("nan"),
-                "equivalent_holm_alpha_0_05": False,
-            }
-            group_test_rows.append(row)
-
-        for ocularity in ocularities:
-            # H1: SPを基準に、他の3条件を同一参加者内で比較する。
-            for condition in h1_conditions:
+        for ocularity in OCULARITIES:
+            # H1: SPを基準とする3つの条件差。
+            for condition in H1_CONDITIONS:
                 paired = _paired_condition_frame(
                     group_df,
-                    "Single plane",
+                    SP_CONDITION,
                     condition,
                     ocularity,
                     value_column,
                 )
                 baseline_values = paired["baseline_value"].to_numpy(dtype=float)
                 condition_values = paired["condition_value"].to_numpy(dtype=float)
-                append_test_row(
-                    hypothesis="H1",
-                    family="H1_SP_vs_others",
-                    comparison=f"{condition} vs Single plane",
-                    test_type="paired_t",
-                    condition=condition,
-                    baseline_condition="Single plane",
-                    ocularity=ocularity,
-                    condition_values=condition_values,
-                    baseline_values=baseline_values,
-                    diff_values=condition_values - baseline_values,
+                group_test_rows.append(
+                    _build_test_row(
+                        group_metadata=group_metadata,
+                        hypothesis="H1",
+                        family="H1_SP_vs_others",
+                        claim_component="",
+                        comparison=f"{condition} vs {SP_CONDITION}",
+                        test_type="paired_t",
+                        condition=condition,
+                        baseline_condition=SP_CONDITION,
+                        ocularity=ocularity,
+                        condition_values=condition_values,
+                        baseline_values=baseline_values,
+                        diff_values=condition_values - baseline_values,
+                        primary_test="t",
+                    )
                 )
 
-            # H2: SPDとDPの差を直接検定し、同時に等価性も評価する。
-            paired_spd_dp = _paired_condition_frame(
+            # H2-1/H2-2: 眼別のSPD→DP差。両方でtとTOSTを実行する。
+            paired_h2 = _paired_condition_frame(
                 group_df,
-                "Single plane + defocus simulation",
-                "Dual plane",
+                SPD_CONDITION,
+                DP_CONDITION,
                 ocularity,
                 value_column,
             )
-            spd_values = paired_spd_dp["baseline_value"].to_numpy(dtype=float)
-            dp_values = paired_spd_dp["condition_value"].to_numpy(dtype=float)
-            append_test_row(
-                hypothesis="H2",
-                family="H2_SPD_vs_DP",
-                comparison="Dual plane vs Single plane + defocus simulation",
-                test_type="paired_t_and_tost",
-                condition="Dual plane",
-                baseline_condition="Single plane + defocus simulation",
-                ocularity=ocularity,
-                condition_values=dp_values,
-                baseline_values=spd_values,
-                diff_values=dp_values - spd_values,
-                run_tost=True,
+            spd_values = paired_h2["baseline_value"].to_numpy(dtype=float)
+            dp_values = paired_h2["condition_value"].to_numpy(dtype=float)
+            h2_effects[ocularity] = pd.Series(
+                dp_values - spd_values,
+                index=paired_h2["ID"],
+                name=ocularity,
+                dtype=float,
+            )
+            is_monocular = ocularity == "monocular"
+            group_test_rows.append(
+                _build_test_row(
+                    group_metadata=group_metadata,
+                    hypothesis="H2",
+                    family="H2_SPD_DP_ocularity",
+                    claim_component="H2-1" if is_monocular else "H2-2",
+                    comparison=f"{DP_CONDITION} vs {SPD_CONDITION}",
+                    test_type="paired_t_and_tost",
+                    condition=DP_CONDITION,
+                    baseline_condition=SPD_CONDITION,
+                    ocularity=ocularity,
+                    condition_values=dp_values,
+                    baseline_values=spd_values,
+                    diff_values=dp_values - spd_values,
+                    equivalence_margin_log10=LOG10_EQUIVALENCE_MARGIN,
+                    primary_test="TOST" if is_monocular else "t",
+                )
             )
 
-            # H3: DPFのAR contrastが参照コントラストと一致するかを検定する。
+            # H3: DPFと物理的参照コントラストの一致。
             dpf_values = group_df.loc[
-                (group_df["Condition"] == "Dual plane flat")
+                (group_df["Condition"] == DPF_CONDITION)
                 & (group_df["Ocularity"] == ocularity),
                 value_column,
             ].to_numpy(dtype=float)
             reference_values = np.full(len(dpf_values), reference_log10)
-            append_test_row(
-                hypothesis="H3",
-                family="H3_DPF_vs_reference",
-                comparison="Dual plane flat vs Reference contrast",
-                test_type="one_sample_t_and_tost",
-                condition="Dual plane flat",
-                baseline_condition="Reference contrast",
-                ocularity=ocularity,
-                condition_values=dpf_values,
-                baseline_values=reference_values,
-                diff_values=dpf_values - reference_log10,
-                run_tost=True,
+            group_test_rows.append(
+                _build_test_row(
+                    group_metadata=group_metadata,
+                    hypothesis="H3",
+                    family="H3_DPF_vs_reference",
+                    claim_component="",
+                    comparison=f"{DPF_CONDITION} vs Reference contrast",
+                    test_type="one_sample_t_and_tost",
+                    condition=DPF_CONDITION,
+                    baseline_condition="Reference contrast",
+                    ocularity=ocularity,
+                    condition_values=dpf_values,
+                    baseline_values=reference_values,
+                    diff_values=dpf_values - reference_log10,
+                    equivalence_margin_log10=LOG10_EQUIVALENCE_MARGIN,
+                    primary_test="TOST",
+                )
             )
 
-            # H3補助分析: DPFとSPの参照値からのずれが参加者内で共変するか。
+            # H3補助: SPとDPFの参照オフセットの参加者間相関。
             paired_sp_dpf = _paired_condition_frame(
                 group_df,
-                "Single plane",
-                "Dual plane flat",
+                SP_CONDITION,
+                DPF_CONDITION,
                 ocularity,
                 value_column,
             )
@@ -666,86 +812,128 @@ def save_statistical_csv_outputs(df, output_dir):
                 pearson_r, pearson_p = float(pearson_r), float(pearson_p)
             else:
                 pearson_r = pearson_p = float("nan")
-            group_correlation_rows.append({
-                "Hypothesis": "H3",
-                "Session_Type": session_type,
-                "Ref_Contrast": reference,
-                "Orientation": orientation,
-                "Ocularity": ocularity,
-                "n_participants": n_correlation,
-                "Analysis_Scale": analysis_scale,
-                "Participant_Aggregation": participant_aggregation,
-                "mean_sp_log10_offset_from_reference": (
-                    float(np.mean(sp_offset))
-                    if n_correlation else float("nan")
-                ),
-                "mean_dpf_log10_offset_from_reference": (
-                    float(np.mean(dpf_offset))
-                    if n_correlation else float("nan")
-                ),
-                "geometric_mean_sp_ratio_to_reference": (
-                    float(10.0 ** np.mean(sp_offset))
-                    if n_correlation else float("nan")
-                ),
-                "geometric_mean_dpf_ratio_to_reference": (
-                    float(10.0 ** np.mean(dpf_offset))
-                    if n_correlation else float("nan")
-                ),
-                "pearson_r": pearson_r,
-                "p_value_two_sided": pearson_p,
-                "holm_adjusted_p_value": float("nan"),
-                "significant_holm_alpha_0_05": False,
-            })
+            group_correlation_rows.append(
+                {
+                    "Hypothesis": "H3",
+                    **group_metadata,
+                    "Ocularity": ocularity,
+                    "n_participants": n_correlation,
+                    "Analysis_Scale": ANALYSIS_SCALE,
+                    "Participant_Aggregation": PARTICIPANT_AGGREGATION,
+                    "mean_sp_log10_offset_from_reference": (
+                        float(np.mean(sp_offset))
+                        if n_correlation
+                        else float("nan")
+                    ),
+                    "mean_dpf_log10_offset_from_reference": (
+                        float(np.mean(dpf_offset))
+                        if n_correlation
+                        else float("nan")
+                    ),
+                    "geometric_mean_sp_ratio_to_reference": (
+                        _pow10_or_nan(float(np.mean(sp_offset)))
+                        if n_correlation
+                        else float("nan")
+                    ),
+                    "geometric_mean_dpf_ratio_to_reference": (
+                        _pow10_or_nan(float(np.mean(dpf_offset)))
+                        if n_correlation
+                        else float("nan")
+                    ),
+                    "pearson_r": pearson_r,
+                    "p_value_two_sided": pearson_p,
+                    "holm_adjusted_p_value": float("nan"),
+                    "significant_holm_alpha_0_05": False,
+                }
+            )
 
-        # 仮説ごとに別の多重比較ファミリーとして補正する。
-        for hypothesis in ("H1", "H2", "H3"):
-            family_rows = [
-                row for row in group_test_rows
-                if row["Hypothesis"] == hypothesis
-            ]
+        # H2-3: 各参加者のlog10(DP/SPD)を眼間で直接比較する。
+        interaction_frame = pd.concat(
+            [h2_effects["binocular"], h2_effects["monocular"]],
+            axis=1,
+            join="inner",
+        ).dropna()
+        binocular_effect = interaction_frame["binocular"].to_numpy(dtype=float)
+        monocular_effect = interaction_frame["monocular"].to_numpy(dtype=float)
+        group_test_rows.append(
+            _build_test_row(
+                group_metadata=group_metadata,
+                hypothesis="H2_interaction",
+                family="H2_SPD_DP_ocularity",
+                claim_component="H2-3",
+                comparison="(DP/SPD)_binocular vs (DP/SPD)_monocular",
+                test_type="paired_t_and_tost",
+                condition="binocular log10(DP/SPD)",
+                baseline_condition="monocular log10(DP/SPD)",
+                ocularity="binocular_minus_monocular",
+                condition_values=binocular_effect,
+                baseline_values=monocular_effect,
+                diff_values=binocular_effect - monocular_effect,
+                effect_scale="log10_ratio_of_ratios",
+                equivalence_margin_log10=(
+                    LOG10_INTERACTION_EQUIVALENCE_MARGIN
+                ),
+                primary_test="t",
+            )
+        )
+
+        # 事前に定めたファミリーごとのHolm補正（単体報告用）。
+        h1_rows = [row for row in group_test_rows if row["Hypothesis"] == "H1"]
+        h2_rows = [
+            row
+            for row in group_test_rows
+            if row["Hypothesis"] in {"H2", "H2_interaction"}
+        ]
+        h3_rows = [row for row in group_test_rows if row["Hypothesis"] == "H3"]
+        _apply_holm_to_rows(
+            h1_rows,
+            "p_value_two_sided",
+            "holm_adjusted_p_value",
+            "significant_holm_alpha_0_05",
+        )
+        for family_rows in (h2_rows, h3_rows):
             _apply_holm_to_rows(
                 family_rows,
                 "p_value_two_sided",
                 "holm_adjusted_p_value",
                 "significant_holm_alpha_0_05",
             )
-            if hypothesis in {"H2", "H3"}:
-                _apply_holm_to_rows(
-                    family_rows,
-                    "tost_p_value",
-                    "holm_adjusted_tost_p_value",
-                    "equivalent_holm_alpha_0_05",
-                )
+            _apply_holm_to_rows(
+                family_rows,
+                "tost_p_value",
+                "holm_adjusted_tost_p_value",
+                "equivalent_holm_alpha_0_05",
+            )
 
-        # 個人オフセット相関は2眼条件を1ファミリーとして補正する。
         _apply_holm_to_rows(
             group_correlation_rows,
             "p_value_two_sided",
             "holm_adjusted_p_value",
             "significant_holm_alpha_0_05",
         )
+        _set_primary_decisions(group_test_rows)
         test_rows.extend(group_test_rows)
         correlation_rows.extend(group_correlation_rows)
 
-    # 同じ出力先に残っている旧版の冗長な統計CSVを削除する。
-    legacy_statistical_files = [
+    legacy_statistical_files = (
         "one_sample_ttests_holm_cohens_d_power.csv",
         "paired_ttests_vs_single_plane_holm_cohens_d.csv",
         "participant_bias_corrected_values.csv",
         "bias_corrected_summary.csv",
-    ]
+    )
     for filename in legacy_statistical_files:
         legacy_path = os.path.join(output_dir, filename)
         if os.path.isfile(legacy_path):
             os.remove(legacy_path)
 
-    # 仮説に沿った検定表と相関表の2ファイルだけを出力する。
-    pd.DataFrame(test_rows).to_csv(
+    test_frame = pd.DataFrame(test_rows)
+    correlation_frame = pd.DataFrame(correlation_rows)
+    test_frame.to_csv(
         os.path.join(output_dir, "planned_hypothesis_tests.csv"),
         index=False,
         encoding="utf-8-sig",
     )
-    pd.DataFrame(correlation_rows).to_csv(
+    correlation_frame.to_csv(
         os.path.join(output_dir, "h3_dpf_sp_offset_correlation.csv"),
         index=False,
         encoding="utf-8-sig",
