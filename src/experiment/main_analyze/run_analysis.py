@@ -445,13 +445,25 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser = build_argument_parser()
     args = parser.parse_args(argv)
     try:
-        run_analysis(
+        result = run_analysis(
             args.input_paths or None,
             result_root=args.result_root,
             table_output_dir=args.table_output_dir,
             figure_output_dir=args.figure_output_dir,
             save_figures=not args.skip_figures,
         )
+        if result.analysis_mode == FULL_ANALYSIS_MODE:
+            # 既存解析の完了後に、all_participants専用の独立出力を追加する。
+            from .defocus_analysis import save_defocus_matching_outputs
+
+            save_defocus_matching_outputs(
+                result.session_dirs,
+                table_output_dir=result.output_paths.table_dir,
+                figure_output_dir=(
+                    result.output_paths.figure_dir / "defocus_matching"
+                ),
+                save_figure=not args.skip_figures,
+            )
     except (FileNotFoundError, ValueError, OSError, RuntimeError) as error:
         print(f"Analysis failed: {error}", file=sys.stderr)
         return 1
