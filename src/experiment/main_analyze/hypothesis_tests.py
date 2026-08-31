@@ -26,6 +26,11 @@ from .dpf_correction import CORRECTED_LOG10_COLUMN
 HYPOTHESIS_ROW_COUNTS = {"H1": 2, "H2": 6, "H3": 4, "H4": 3}
 EXPECTED_ROWS_PER_ANALYSIS_GROUP = sum(HYPOTHESIS_ROW_COUNTS.values())
 
+# 観測されたCohen's dzに基づく、両側t検定の参考必要人数。
+# TOSTの必要人数は参加者間差分SDの事前推定が未確定なため算出しない。
+T_TEST_TARGET_POWER = 0.80
+T_TEST_POWER_MAX_N = 10000
+
 
 class HypothesisTestError(ValueError):
     """仮説検定の入力構造または参加者対応が不正な場合の例外。"""
@@ -48,6 +53,56 @@ def _pow10(value: float) -> float:
     return float(10.0**value) if np.isfinite(value) else float("nan")
 
 
+def _required_n_for_t_test(
+    effect_size: float,
+    *,
+    alpha: float = ALPHA,
+    target_power: float = T_TEST_TARGET_POWER,
+    max_n: int = T_TEST_POWER_MAX_N,
+) -> int | float:
+    """観測Cohen's dzを仮定した両側t検定の参考必要人数を返す。
+
+    各行の未補正t検定を非心t分布で評価する。Holm補正および
+    TOSTの必要人数はこの値に含めない。
+    """
+    from scipy import stats
+
+    if not 0.0 < float(alpha) < 1.0:
+        raise ValueError(f"alpha must be between 0 and 1: {alpha}")
+    if not 0.0 < float(target_power) < 1.0:
+        raise ValueError(
+            f"target_power must be between 0 and 1: {target_power}"
+        )
+    if int(max_n) < 2:
+        raise ValueError(f"max_n must be at least 2: {max_n}")
+    if np.isnan(effect_size):
+        return float("nan")
+    if np.isinf(effect_size):
+        return 2
+
+    absolute_effect = abs(float(effect_size))
+    if np.isclose(absolute_effect, 0.0):
+        return float("inf")
+
+    for n in range(2, int(max_n) + 1):
+        degrees_of_freedom = n - 1
+        critical_t = stats.t.ppf(
+            1.0 - float(alpha) / 2.0, degrees_of_freedom
+        )
+        noncentrality = absolute_effect * np.sqrt(n)
+        power = (
+            stats.nct.cdf(
+                -critical_t, degrees_of_freedom, noncentrality
+            )
+            + stats.nct.sf(
+                critical_t, degrees_of_freedom, noncentrality
+            )
+        )
+        if power >= target_power:
+            return n
+    return float("inf")
+
+
 def _difference_statistics(values) -> dict[str, float | int]:
     """log10差分の記述統計と両側1標本t検定。"""
     from scipy import stats
@@ -68,6 +123,9 @@ def _difference_statistics(values) -> dict[str, float | int]:
         "degrees_of_freedom": n - 1 if n else float("nan"),
         "p_value_two_sided": float("nan"),
         "cohens_dz": float("nan"),
+        "t_test_power_alpha": float(ALPHA),
+        "t_test_target_power": T_TEST_TARGET_POWER,
+        "t_test_required_n_for_80pct_power": float("nan"),
     }
     if n < 2:
         return result
@@ -99,6 +157,9 @@ def _difference_statistics(values) -> dict[str, float | int]:
             "t_statistic": float(statistic),
             "p_value_two_sided": p_value,
             "cohens_dz": effect_size,
+            "t_test_required_n_for_80pct_power": (
+                _required_n_for_t_test(effect_size)
+            ),
         }
     )
     return result
