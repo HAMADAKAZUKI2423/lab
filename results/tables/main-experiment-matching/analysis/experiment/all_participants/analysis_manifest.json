@@ -1,6 +1,6 @@
 {
   "Manifest_Version": 1,
-  "Generated_At_UTC": "2026-08-30T12:47:48.859386+00:00",
+  "Generated_At_UTC": "2026-08-31T03:58:26.996816+00:00",
   "Run_Name": "all_participants",
   "Analysis_Mode": "full_analysis",
   "Input_Mode": "all_participants",
@@ -88,7 +88,10 @@
     "participant_summary_uncorrected": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\participant_summary_uncorrected.csv",
     "participant_summary_dpf_corrected": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\participant_summary_dpf_corrected.csv",
     "planned_hypothesis_tests": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\planned_hypothesis_tests.csv",
-    "analysis_exclusions": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\analysis_exclusions.csv"
+    "analysis_exclusions": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\analysis_exclusions.csv",
+    "defocus_participant_summary": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\defocus_participant_summary.csv",
+    "defocus_dp_ocularity_participant_pairs": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\defocus_dp_ocularity_participant_pairs.csv",
+    "defocus_dp_ocularity_correlation": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\defocus_dp_ocularity_correlation.csv"
   },
   "Figure_Files": {
     "uncorrected": [
@@ -102,6 +105,9 @@
     "h4_interaction": [
       "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\h4_interaction\\h4_interaction__experiment__ref_0p1__ori_0.png",
       "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\h4_interaction\\h4_interaction__experiment__ref_0p2__ori_0.png"
+    ],
+    "defocus_matching": [
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\defocus_matching\\defocus_matching_by_participant.png"
     ]
   }
 }

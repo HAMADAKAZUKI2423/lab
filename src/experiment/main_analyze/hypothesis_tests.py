@@ -453,9 +453,9 @@ def _set_primary(
     h3: list[dict[str, object]],
     h4: list[dict[str, object]],
 ) -> None:
-    for row in [*h1, *h2]:
+    for row in h1:
         row["Conclusion_Code"] = _dual_conclusion(row)
-    for row in h3:
+    for row in [*h2, *h3]:
         raw = float(row["p_value_two_sided"])
         adjusted = float(row["holm_adjusted_p_value"])
         row["Primary_P_Value"] = raw
@@ -564,15 +564,14 @@ def run_hypothesis_tests(
                         family="H2_corrected_conditions_vs_reference",
                         data_state="dpf_corrected",
                         comparison=f"{condition} vs Reference contrast",
-                        test_type="one_sample_t_and_tost",
-                        primary_test="dual_inference",
+                        test_type="one_sample_t",
+                        primary_test="t",
                         condition=condition,
                         baseline_condition="Reference contrast",
                         ocularity=ocularity,
                         condition_values=values,
                         baseline_values=baseline,
                         difference_values=values - reference_log10,
-                        equivalence_margin=LOG10_EQUIVALENCE_MARGIN,
                     )
                 )
 
@@ -663,6 +662,7 @@ def run_hypothesis_tests(
 
         for family_rows in (h1, h2, h4):
             _apply_holm(family_rows, "p_value_two_sided", "holm_adjusted_p_value", "significant_holm_alpha_0_05")
+        for family_rows in (h1, h4):
             _apply_holm(family_rows, "tost_p_value", "holm_adjusted_tost_p_value", "equivalent_holm_alpha_0_05")
         _apply_holm(h3, "p_value_two_sided", "holm_adjusted_p_value", "significant_holm_alpha_0_05")
         _set_primary(h1, h2, h3, h4)

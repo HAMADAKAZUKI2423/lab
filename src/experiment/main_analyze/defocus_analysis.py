@@ -12,12 +12,22 @@ from uuid import uuid4
 import numpy as np
 import pandas as pd
 
-from .config import SESSION_DIR_PATTERN
+from .config import (
+    ANALYSIS_GROUP_COLUMNS,
+    DP_CONDITION,
+    OCULARITY_ORDER,
+    PARTICIPANT_AGGREGATION,
+    SESSION_DIR_PATTERN,
+)
+from .dpf_correction import CORRECTED_AR_COLUMN, CORRECTED_LOG10_COLUMN
+from .hypothesis_tests import holm_adjust
 
 
 DEFOCUS_RESULT_FILENAME = "defocus_matching.csv"
 CONTRAST_RESULT_FILENAME = "contrast_matching.csv"
 DEFOCUS_SUMMARY_FILENAME = "defocus_participant_summary.csv"
+DEFOCUS_DP_PAIRS_FILENAME = "defocus_dp_ocularity_participant_pairs.csv"
+DEFOCUS_DP_CORRELATION_FILENAME = "defocus_dp_ocularity_correlation.csv"
 DEFOCUS_FIGURE_FILENAME = "defocus_matching_by_participant.png"
 
 _REQUIRED_DEFOCUS_COLUMNS = (
@@ -45,7 +55,11 @@ class DefocusAnalysisResult:
     """Defocus matchingの要約表と保存済みファイル。"""
 
     participant_summary: pd.DataFrame
+    participant_pairs: pd.DataFrame
+    correlation_summary: pd.DataFrame
     summary_file: Path
+    participant_pairs_file: Path
+    correlation_file: Path
     figure_file: Path | None
 
 
@@ -388,6 +402,219 @@ def build_defocus_participant_summary(
     return pd.DataFrame(rows).reset_index(drop=True)
 
 
+def _require_columns(
+    frame: pd.DataFrame,
+    columns: Sequence[str],
+    *,
+    label: str,
+) -> None:
+    missing = sorted(set(columns) - set(frame.columns))
+    if missing:
+        raise DefocusAnalysisError(f"{label}に必要な列が不足しています: {missing}")
+    if frame.empty:
+        raise DefocusAnalysisError(f"{label}が空です")
+
+
+def build_defocus_dp_participant_pairs(
+    defocus_summary: pd.DataFrame,
+    corrected_summary: pd.DataFrame,
+) -> pd.DataFrame:
+    """参加者ごとのdefocus眼差とDPのmonocular－binocular差を返す。"""
+    defocus_columns = [
+        "ID", "Dominance", "Spatial_Freq_cpd",
+        "Dominant_Eye", "Dominant_PD_Mean_mm", "Dominant_PD_SD_mm",
+        "Dominant_Trial_Count", "Non_Dominant_Eye",
+        "Non_Dominant_PD_Mean_mm", "Non_Dominant_PD_SD_mm",
+        "Non_Dominant_Trial_Count", "Session_Timestamp", "Session_Dir",
+        "Source_CSV",
+    ]
+    corrected_columns = [
+        "ID", *ANALYSIS_GROUP_COLUMNS, "Ocularity", "Condition",
+        "Participant_Aggregation", CORRECTED_LOG10_COLUMN,
+        CORRECTED_AR_COLUMN,
+    ]
+    _require_columns(defocus_summary, defocus_columns, label="defocus参加者要約")
+    _require_columns(corrected_summary, corrected_columns, label="DPF補正後参加者要約")
+
+    defocus = defocus_summary.loc[:, defocus_columns].copy()
+    defocus["ID"] = defocus["ID"].map(_normalize_identifier)
+    if defocus["ID"].eq("").any() or defocus["ID"].duplicated().any():
+        raise DefocusAnalysisError("defocus参加者要約のIDが空または重複しています")
+    for column in ("Dominant_PD_Mean_mm", "Non_Dominant_PD_Mean_mm"):
+        defocus[column] = pd.to_numeric(defocus[column], errors="coerce")
+    if not np.isfinite(
+        defocus[["Dominant_PD_Mean_mm", "Non_Dominant_PD_Mean_mm"]]
+        .to_numpy(dtype=float)
+    ).all():
+        raise DefocusAnalysisError("defocus参加者要約の平均瞳孔径が有限値ではありません")
+    defocus["Defocus_Dom_Minus_NonDom_mm"] = (
+        defocus["Dominant_PD_Mean_mm"]
+        - defocus["Non_Dominant_PD_Mean_mm"]
+    )
+
+    dp = corrected_summary.loc[
+        corrected_summary["Condition"].astype(str).str.strip().eq(DP_CONDITION),
+        corrected_columns,
+    ].copy()
+    if dp.empty:
+        raise DefocusAnalysisError("DPF補正後参加者要約にDual planeがありません")
+    dp["ID"] = dp["ID"].map(_normalize_identifier)
+    dp["Ocularity"] = dp["Ocularity"].astype("string").str.strip()
+    if set(dp["Ocularity"].dropna().astype(str)) != set(OCULARITY_ORDER):
+        raise DefocusAnalysisError("DPのmonocular・binocularがそろっていません")
+    if set(dp["Participant_Aggregation"].astype(str)) != {
+        PARTICIPANT_AGGREGATION
+    }:
+        raise DefocusAnalysisError("DPF補正後参加者要約の集約方法が不正です")
+    for column in (
+        "Ref_Contrast", "Orientation", CORRECTED_LOG10_COLUMN,
+        CORRECTED_AR_COLUMN,
+    ):
+        dp[column] = pd.to_numeric(dp[column], errors="coerce")
+    numeric_columns = [
+        "Ref_Contrast", "Orientation", CORRECTED_LOG10_COLUMN,
+        CORRECTED_AR_COLUMN,
+    ]
+    if not np.isfinite(dp[numeric_columns].to_numpy(dtype=float)).all():
+        raise DefocusAnalysisError("DPF補正後DPに有限でない数値があります")
+    if (dp[CORRECTED_AR_COLUMN] <= 0).any():
+        raise DefocusAnalysisError("DPF補正後DPのコントラストには正値が必要です")
+
+    keys = ["ID", *ANALYSIS_GROUP_COLUMNS]
+    if dp.duplicated([*keys, "Ocularity"]).any():
+        raise DefocusAnalysisError("DPF補正後DPに参加者×解析群×眼条件の重複があります")
+
+    def eye_values(ocularity: str, label: str) -> pd.DataFrame:
+        return dp.loc[
+            dp["Ocularity"].eq(ocularity),
+            [*keys, CORRECTED_LOG10_COLUMN, CORRECTED_AR_COLUMN],
+        ].rename(
+            columns={
+                CORRECTED_LOG10_COLUMN: f"DP_{label}_Corrected_Log10_AR",
+                CORRECTED_AR_COLUMN: f"DP_{label}_Corrected_AR_Contrast",
+            }
+        )
+
+    pairs = eye_values("monocular", "Monocular").merge(
+        eye_values("binocular", "Binocular"),
+        on=keys,
+        how="outer",
+        validate="one_to_one",
+        indicator=True,
+    )
+    if not pairs["_merge"].eq("both").all():
+        raise DefocusAnalysisError("DPのmonocular・binocular対応が不完全です")
+    pairs = pairs.drop(columns="_merge")
+
+    defocus_ids = set(defocus["ID"].astype(str))
+    dp_ids = set(pairs["ID"].astype(str))
+    if defocus_ids != dp_ids:
+        raise DefocusAnalysisError(
+            "defocus matchingとDPF補正後DPの参加者が一致しません: "
+            f"defocus_only={sorted(defocus_ids - dp_ids)}, "
+            f"dp_only={sorted(dp_ids - defocus_ids)}"
+        )
+    pairs = pairs.merge(defocus, on="ID", how="left", validate="many_to_one")
+    pairs["Defocus_Dom_Minus_NonDom_mm"] = (
+        pairs["Dominant_PD_Mean_mm"]
+        - pairs["Non_Dominant_PD_Mean_mm"]
+    )
+    pairs["DP_Monocular_Minus_Binocular_Log10"] = (
+        pairs["DP_Monocular_Corrected_Log10_AR"]
+        - pairs["DP_Binocular_Corrected_Log10_AR"]
+    )
+    pairs["DP_Monocular_to_Binocular_Ratio"] = np.power(
+        10.0, pairs["DP_Monocular_Minus_Binocular_Log10"]
+    )
+    pairs["DP_Monocular_Minus_Binocular_AR"] = (
+        pairs["DP_Monocular_Corrected_AR_Contrast"]
+        - pairs["DP_Binocular_Corrected_AR_Contrast"]
+    )
+    pairs["Participant_Aggregation"] = PARTICIPANT_AGGREGATION
+    pairs["_ID_Order"] = pairs["ID"].map(_participant_sort_key)
+    pairs = pairs.sort_values(
+        [*ANALYSIS_GROUP_COLUMNS, "_ID_Order"], kind="stable"
+    ).drop(columns="_ID_Order")
+    return pairs.reset_index(drop=True)
+
+
+def _fisher_r_ci(correlation: float, n: int) -> tuple[float, float]:
+    if n <= 3 or not np.isfinite(correlation):
+        return float("nan"), float("nan")
+    from scipy import stats
+
+    clipped = float(np.clip(correlation, -1.0 + 1e-15, 1.0 - 1e-15))
+    z_value = np.arctanh(clipped)
+    half_width = stats.norm.ppf(0.975) / np.sqrt(n - 3)
+    return (
+        float(np.tanh(z_value - half_width)),
+        float(np.tanh(z_value + half_width)),
+    )
+
+
+def build_defocus_dp_correlations(
+    participant_pairs: pd.DataFrame,
+) -> pd.DataFrame:
+    """解析群別にPearson相関を主解析、Spearman相関を補助解析として返す。"""
+    from scipy import stats
+
+    x_column = "Defocus_Dom_Minus_NonDom_mm"
+    y_column = "DP_Monocular_Minus_Binocular_Log10"
+    required = ["ID", *ANALYSIS_GROUP_COLUMNS, x_column, y_column]
+    _require_columns(participant_pairs, required, label="相関用参加者対応表")
+    rows: list[dict[str, object]] = []
+    for group_values, group in participant_pairs.groupby(
+        list(ANALYSIS_GROUP_COLUMNS), sort=True, dropna=False
+    ):
+        metadata = dict(zip(ANALYSIS_GROUP_COLUMNS, tuple(group_values)))
+        x = pd.to_numeric(group[x_column], errors="coerce").to_numpy(float)
+        y = pd.to_numeric(group[y_column], errors="coerce").to_numpy(float)
+        complete = np.isfinite(x) & np.isfinite(y)
+        x, y = x[complete], y[complete]
+        n_total, n_complete = len(group), int(complete.sum())
+        pearson_r = pearson_p = spearman_rho = spearman_p = float("nan")
+        ci_lower = ci_upper = float("nan")
+        if n_complete < 3:
+            status = "n_lt_3"
+        elif np.isclose(np.std(x, ddof=1), 0.0):
+            status = "zero_variance_x"
+        elif np.isclose(np.std(y, ddof=1), 0.0):
+            status = "zero_variance_y"
+        else:
+            pearson_r, pearson_p = map(float, stats.pearsonr(x, y))
+            spearman_rho, spearman_p = map(float, stats.spearmanr(x, y))
+            ci_lower, ci_upper = _fisher_r_ci(pearson_r, n_complete)
+            status = "ok"
+        rows.append(
+            {
+                **metadata,
+                "X_Variable": x_column,
+                "Y_Variable": y_column,
+                "n_total_participants": n_total,
+                "n_complete_participants": n_complete,
+                "n_excluded_participants": n_total - n_complete,
+                "pearson_r": pearson_r,
+                "pearson_p_value_two_sided": pearson_p,
+                "pearson_ci95_lower": ci_lower,
+                "pearson_ci95_upper": ci_upper,
+                "holm_adjusted_pearson_p_value": float("nan"),
+                "significant_holm_alpha_0_05": False,
+                "spearman_rho": spearman_rho,
+                "spearman_p_value_two_sided": spearman_p,
+                "Correlation_Status": status,
+            }
+        )
+    adjusted = holm_adjust(
+        [row["pearson_p_value_two_sided"] for row in rows]
+    )
+    for row, adjusted_p in zip(rows, adjusted):
+        row["holm_adjusted_pearson_p_value"] = float(adjusted_p)
+        row["significant_holm_alpha_0_05"] = bool(
+            np.isfinite(adjusted_p) and adjusted_p < 0.05
+        )
+    return pd.DataFrame(rows).reset_index(drop=True)
+
+
 def _atomic_replace(temp_path: Path, destination: Path) -> None:
     try:
         os.replace(temp_path, destination)
@@ -398,11 +625,11 @@ def _atomic_replace(temp_path: Path, destination: Path) -> None:
         ) from error
 
 
-def _save_summary_csv(summary: pd.DataFrame, destination: Path) -> Path:
+def _save_dataframe_csv(frame: pd.DataFrame, destination: Path) -> Path:
     destination.parent.mkdir(parents=True, exist_ok=True)
     temp_path = destination.with_name(f".{destination.name}.{uuid4().hex}.tmp")
     try:
-        summary.to_csv(temp_path, index=False, encoding="utf-8-sig")
+        frame.to_csv(temp_path, index=False, encoding="utf-8-sig")
         _atomic_replace(temp_path, destination)
     finally:
         temp_path.unlink(missing_ok=True)
@@ -505,41 +732,61 @@ def _save_figure(
 def save_defocus_matching_outputs(
     session_dirs: Sequence[str | Path],
     *,
+    corrected_summary: pd.DataFrame,
     table_output_dir: str | Path,
     figure_output_dir: str | Path,
     save_figure: bool = True,
 ) -> DefocusAnalysisResult:
-    """要約CSVを常に保存し、要求時のみ参加者別PNGも保存する。"""
+    """Defocus要約、DP眼条件差との参加者対応、相関を保存する。"""
     trials = load_defocus_trials(session_dirs)
     summary = build_defocus_participant_summary(trials)
-    summary_file = _save_summary_csv(
-        summary,
-        Path(table_output_dir) / DEFOCUS_SUMMARY_FILENAME,
+    participant_pairs = build_defocus_dp_participant_pairs(
+        summary, corrected_summary
+    )
+    correlation_summary = build_defocus_dp_correlations(participant_pairs)
+    table_directory = Path(table_output_dir)
+    summary_file = _save_dataframe_csv(
+        summary, table_directory / DEFOCUS_SUMMARY_FILENAME
+    )
+    participant_pairs_file = _save_dataframe_csv(
+        participant_pairs, table_directory / DEFOCUS_DP_PAIRS_FILENAME
+    )
+    correlation_file = _save_dataframe_csv(
+        correlation_summary, table_directory / DEFOCUS_DP_CORRELATION_FILENAME
     )
     figure_file = (
         _save_figure(
-            trials,
-            summary,
+            trials, summary,
             Path(figure_output_dir) / DEFOCUS_FIGURE_FILENAME,
         )
         if save_figure
         else None
     )
     print(f"Saved defocus participant summary: {summary_file}")
+    print(f"Saved defocus/DP participant pairs: {participant_pairs_file}")
+    print(f"Saved defocus/DP correlations: {correlation_file}")
     if figure_file is not None:
         print(f"Saved defocus matching figure: {figure_file}")
     return DefocusAnalysisResult(
         participant_summary=summary,
+        participant_pairs=participant_pairs,
+        correlation_summary=correlation_summary,
         summary_file=summary_file,
+        participant_pairs_file=participant_pairs_file,
+        correlation_file=correlation_file,
         figure_file=figure_file,
     )
 
 
 __all__ = [
+    "DEFOCUS_DP_CORRELATION_FILENAME",
+    "DEFOCUS_DP_PAIRS_FILENAME",
     "DEFOCUS_FIGURE_FILENAME",
     "DEFOCUS_SUMMARY_FILENAME",
     "DefocusAnalysisError",
     "DefocusAnalysisResult",
+    "build_defocus_dp_correlations",
+    "build_defocus_dp_participant_pairs",
     "build_defocus_participant_summary",
     "load_defocus_trials",
     "save_defocus_matching_outputs",

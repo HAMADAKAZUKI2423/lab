@@ -38,6 +38,7 @@ from .data_processing import (
     discover_session_dirs,
     load_trials,
 )
+from .defocus_analysis import save_defocus_matching_outputs
 from .dpf_correction import CORRECTION_METHOD, apply_dpf_correction
 from .figures import save_all_figures, save_legacy_contrast_figures
 from .hypothesis_tests import (
@@ -369,6 +370,28 @@ def run_analysis(
             "h4_interaction": tuple(),
         }
 
+    defocus_result = save_defocus_matching_outputs(
+        session_dirs,
+        corrected_summary=corrected_summary,
+        table_output_dir=output_paths.table_dir,
+        figure_output_dir=output_paths.figure_dir / "defocus_matching",
+        save_figure=save_figures,
+    )
+    table_files.update(
+        {
+            "defocus_participant_summary": defocus_result.summary_file,
+            "defocus_dp_ocularity_participant_pairs": (
+                defocus_result.participant_pairs_file
+            ),
+            "defocus_dp_ocularity_correlation": defocus_result.correlation_file,
+        }
+    )
+    figure_files["defocus_matching"] = (
+        (defocus_result.figure_file,)
+        if defocus_result.figure_file is not None
+        else tuple()
+    )
+
     result = AnalysisRunResult(
         output_paths=output_paths,
         session_dirs=tuple(session_dirs),
@@ -452,18 +475,6 @@ def main(argv: Sequence[str] | None = None) -> int:
             figure_output_dir=args.figure_output_dir,
             save_figures=not args.skip_figures,
         )
-        if result.analysis_mode == FULL_ANALYSIS_MODE:
-            # 既存解析の完了後に、all_participants専用の独立出力を追加する。
-            from .defocus_analysis import save_defocus_matching_outputs
-
-            save_defocus_matching_outputs(
-                result.session_dirs,
-                table_output_dir=result.output_paths.table_dir,
-                figure_output_dir=(
-                    result.output_paths.figure_dir / "defocus_matching"
-                ),
-                save_figure=not args.skip_figures,
-            )
     except (FileNotFoundError, ValueError, OSError, RuntimeError) as error:
         print(f"Analysis failed: {error}", file=sys.stderr)
         return 1
