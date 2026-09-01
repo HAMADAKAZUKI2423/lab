@@ -611,7 +611,7 @@ def run_hypothesis_tests(
                 _build_row(
                     metadata=metadata,
                     hypothesis="H4",
-                    component="H4-1" if monocular else "H4-2",
+                    component="H4-2" if monocular else "H4-3",
                     family="H4_SPD_DP_ocularity",
                     data_state="dpf_corrected",
                     comparison=f"{DP_CONDITION} vs {SPD_CONDITION}",
@@ -643,7 +643,7 @@ def run_hypothesis_tests(
             _build_row(
                 metadata=metadata,
                 hypothesis="H4",
-                component="H4-3",
+                component="H4-1",
                 family="H4_SPD_DP_ocularity",
                 data_state="dpf_corrected",
                 comparison="(DP/SPD)_binocular vs (DP/SPD)_monocular",
@@ -659,6 +659,9 @@ def run_hypothesis_tests(
                 effect_scale="log10_ratio_of_ratios",
             )
         )
+
+        # CSVと報告の順序を interaction → monocular → binocular に固定する。
+        h4.sort(key=lambda row: str(row["Component"]))
 
         for family_rows in (h1, h2, h4):
             _apply_holm(family_rows, "p_value_two_sided", "holm_adjusted_p_value", "significant_holm_alpha_0_05")
