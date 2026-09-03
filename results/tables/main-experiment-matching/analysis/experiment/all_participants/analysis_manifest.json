@@ -1,6 +1,6 @@
 {
   "Manifest_Version": 1,
-  "Generated_At_UTC": "2026-09-01T11:11:09.345362+00:00",
+  "Generated_At_UTC": "2026-09-03T07:55:48.455599+00:00",
   "Run_Name": "all_participants",
   "Analysis_Mode": "full_analysis",
   "Input_Mode": "all_participants",
@@ -108,6 +108,10 @@
     ],
     "defocus_matching": [
       "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\defocus_matching\\defocus_matching_by_participant.png"
+    ],
+    "defocus_dp_correlation": [
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\defocus_matching\\defocus_dp_ocularity_correlation__experiment__ref_0p1__ori_0.png",
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\defocus_matching\\defocus_dp_ocularity_correlation__experiment__ref_0p2__ori_0.png"
     ]
   }
 }

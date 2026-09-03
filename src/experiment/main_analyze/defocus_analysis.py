@@ -1,4 +1,4 @@
-"""全参加者のdefocus matching結果を要約し、参加者別グラフを保存する。"""
+"""全参加者のdefocus matchingとDP眼条件差を要約・可視化する。"""
 
 from __future__ import annotations
 
@@ -29,6 +29,13 @@ DEFOCUS_SUMMARY_FILENAME = "defocus_participant_summary.csv"
 DEFOCUS_DP_PAIRS_FILENAME = "defocus_dp_ocularity_participant_pairs.csv"
 DEFOCUS_DP_CORRELATION_FILENAME = "defocus_dp_ocularity_correlation.csv"
 DEFOCUS_FIGURE_FILENAME = "defocus_matching_by_participant.png"
+DEFOCUS_DP_CORRELATION_FIGURE_PREFIX = (
+    "defocus_dp_ocularity_correlation"
+)
+_DEFOCUS_CORRELATION_X_COLUMN = "Defocus_Dom_Minus_NonDom_mm"
+_DEFOCUS_CORRELATION_Y_COLUMN = (
+    "DP_Monocular_Minus_Binocular_Log10"
+)
 
 _REQUIRED_DEFOCUS_COLUMNS = (
     "ID",
@@ -61,6 +68,7 @@ class DefocusAnalysisResult:
     participant_pairs_file: Path
     correlation_file: Path
     figure_file: Path | None
+    correlation_figure_files: tuple[Path, ...]
 
 
 def _pyplot():
@@ -558,8 +566,8 @@ def build_defocus_dp_correlations(
     """解析群別にPearson相関を主解析、Spearman相関を補助解析として返す。"""
     from scipy import stats
 
-    x_column = "Defocus_Dom_Minus_NonDom_mm"
-    y_column = "DP_Monocular_Minus_Binocular_Log10"
+    x_column = _DEFOCUS_CORRELATION_X_COLUMN
+    y_column = _DEFOCUS_CORRELATION_Y_COLUMN
     required = ["ID", *ANALYSIS_GROUP_COLUMNS, x_column, y_column]
     _require_columns(participant_pairs, required, label="相関用参加者対応表")
     rows: list[dict[str, object]] = []
@@ -729,6 +737,219 @@ def _save_figure(
     return destination
 
 
+def _limits_including_zero(values: np.ndarray) -> tuple[float, float]:
+    finite = np.asarray(values, dtype=float)
+    finite = finite[np.isfinite(finite)]
+    if len(finite) == 0:
+        return -1.0, 1.0
+    lower = min(0.0, float(np.min(finite)))
+    upper = max(0.0, float(np.max(finite)))
+    span = upper - lower
+    scale = max(abs(lower), abs(upper), 0.01)
+    padding = max(0.12 * span, 0.05 * scale)
+    return lower - padding, upper + padding
+
+
+def _correlation_group_key(values) -> tuple[str, float, float]:
+    session_type, reference, orientation = tuple(values)
+    return str(session_type), float(reference), float(orientation)
+
+
+def _safe_filename_token(value: object) -> str:
+    token = re.sub(r"[^0-9A-Za-z_-]+", "_", str(value).strip()).strip("_")
+    return token or "unknown"
+
+
+def _number_filename_token(value: object) -> str:
+    return f"{float(value):g}".replace("-", "m").replace(".", "p")
+
+
+def _correlation_figure_filename(metadata: dict[str, object]) -> str:
+    return (
+        f"{DEFOCUS_DP_CORRELATION_FIGURE_PREFIX}__"
+        f"{_safe_filename_token(metadata['Session_Type'])}__"
+        f"ref_{_number_filename_token(metadata['Ref_Contrast'])}__"
+        f"ori_{_number_filename_token(metadata['Orientation'])}.png"
+    )
+
+
+def _defocus_dp_correlation_figure(
+    participant_group: pd.DataFrame,
+    correlation_row: pd.Series,
+):
+    """相関計算に使用した参加者ペアを同じ尺度で散布図にする。"""
+    required = [
+        "ID",
+        *ANALYSIS_GROUP_COLUMNS,
+        _DEFOCUS_CORRELATION_X_COLUMN,
+        _DEFOCUS_CORRELATION_Y_COLUMN,
+    ]
+    _require_columns(participant_group, required, label="相関図用参加者対応表")
+    if str(correlation_row["X_Variable"]) != _DEFOCUS_CORRELATION_X_COLUMN:
+        raise DefocusAnalysisError("相関表のX変数が相関図の定義と一致しません")
+    if str(correlation_row["Y_Variable"]) != _DEFOCUS_CORRELATION_Y_COLUMN:
+        raise DefocusAnalysisError("相関表のY変数が相関図の定義と一致しません")
+
+    points = participant_group.loc[:, required].copy()
+    points[_DEFOCUS_CORRELATION_X_COLUMN] = pd.to_numeric(
+        points[_DEFOCUS_CORRELATION_X_COLUMN], errors="coerce"
+    )
+    points[_DEFOCUS_CORRELATION_Y_COLUMN] = pd.to_numeric(
+        points[_DEFOCUS_CORRELATION_Y_COLUMN], errors="coerce"
+    )
+    complete = np.isfinite(
+        points[_DEFOCUS_CORRELATION_X_COLUMN].to_numpy(dtype=float)
+    ) & np.isfinite(
+        points[_DEFOCUS_CORRELATION_Y_COLUMN].to_numpy(dtype=float)
+    )
+    points = points.loc[complete].copy()
+    expected_n = int(correlation_row["n_complete_participants"])
+    if len(points) != expected_n:
+        raise DefocusAnalysisError(
+            "相関図の完全ケース数が相関表と一致しません: "
+            f"figure={len(points)}, table={expected_n}"
+        )
+    if points.empty:
+        raise DefocusAnalysisError("相関図に描画できる参加者ペアがありません")
+
+    x = points[_DEFOCUS_CORRELATION_X_COLUMN].to_numpy(dtype=float)
+    y = points[_DEFOCUS_CORRELATION_Y_COLUMN].to_numpy(dtype=float)
+    plt = _pyplot()
+    figure, axis = plt.subplots(figsize=(7.6, 6.2))
+    axis.axvline(
+        0.0, color="#666666", linestyle="--", linewidth=1.1, zorder=1
+    )
+    axis.axhline(
+        0.0, color="#666666", linestyle="--", linewidth=1.1, zorder=1
+    )
+    axis.scatter(
+        x,
+        y,
+        s=58,
+        facecolors="royalblue",
+        edgecolors="black",
+        linewidths=0.8,
+        alpha=0.9,
+        label="Participants",
+        zorder=3,
+    )
+    for participant_id, x_value, y_value in zip(points["ID"], x, y):
+        axis.annotate(
+            str(participant_id),
+            (x_value, y_value),
+            xytext=(4, 4),
+            textcoords="offset points",
+            fontsize=8,
+            color="#222222",
+            zorder=4,
+        )
+
+    status = str(correlation_row["Correlation_Status"])
+    if status == "ok":
+        if len(x) < 2 or np.isclose(np.std(x, ddof=1), 0.0):
+            raise DefocusAnalysisError(
+                "Correlation_Status=okですが回帰直線を計算できません"
+            )
+        slope, intercept = np.polyfit(x, y, 1)
+        line_x = np.linspace(float(np.min(x)), float(np.max(x)), 200)
+        axis.plot(
+            line_x,
+            slope * line_x + intercept,
+            color="darkorange",
+            linewidth=2.0,
+            label="OLS fit",
+            zorder=2,
+        )
+
+    metadata = {
+        column: correlation_row[column]
+        for column in ANALYSIS_GROUP_COLUMNS
+    }
+    axis.set_xlim(*_limits_including_zero(x))
+    axis.set_ylim(*_limits_including_zero(y))
+    axis.set_xlabel("Defocus matched PD: dominant − non-dominant (mm)")
+    axis.set_ylabel("DP corrected log10 AR: monocular − binocular")
+    axis.set_title(
+        "Defocus matching vs DP ocular difference\n"
+        f"Session={metadata['Session_Type']}, "
+        f"Ref={float(metadata['Ref_Contrast']):g}, "
+        f"Orientation={float(metadata['Orientation']):g}°"
+    )
+    axis.grid(True, linestyle=":", alpha=0.35)
+    axis.legend(frameon=False, loc="best")
+    figure.tight_layout()
+    return figure
+
+
+def _save_defocus_dp_correlation_figures(
+    participant_pairs: pd.DataFrame,
+    correlation_summary: pd.DataFrame,
+    output_dir: str | Path,
+) -> tuple[Path, ...]:
+    """解析群ごとに相関散布図を保存し、そのパスを返す。"""
+    required_statistics = [
+        *ANALYSIS_GROUP_COLUMNS,
+        "X_Variable",
+        "Y_Variable",
+        "n_complete_participants",
+        "Correlation_Status",
+    ]
+    _require_columns(correlation_summary, required_statistics, label="相関結果表")
+    if correlation_summary.duplicated(
+        list(ANALYSIS_GROUP_COLUMNS), keep=False
+    ).any():
+        raise DefocusAnalysisError("相関結果表に解析群の重複があります")
+
+    statistics_by_key = {
+        _correlation_group_key(
+            row[column] for column in ANALYSIS_GROUP_COLUMNS
+        ): row
+        for _, row in correlation_summary.iterrows()
+    }
+    groups = [
+        (_correlation_group_key(group_values), group)
+        for group_values, group in participant_pairs.groupby(
+            list(ANALYSIS_GROUP_COLUMNS), sort=True, dropna=False
+        )
+    ]
+    if {key for key, _ in groups} != set(statistics_by_key):
+        raise DefocusAnalysisError(
+            "相関用参加者表と相関結果表の解析群が一致しません"
+        )
+
+    plt = _pyplot()
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    for old_path in destination.glob(
+        f"{DEFOCUS_DP_CORRELATION_FIGURE_PREFIX}__*.png"
+    ):
+        old_path.unlink()
+
+    outputs: list[Path] = []
+    for key, group in groups:
+        statistics = statistics_by_key[key]
+        metadata = dict(zip(ANALYSIS_GROUP_COLUMNS, key))
+        output_path = destination / _correlation_figure_filename(metadata)
+        temp_path = output_path.with_name(
+            f".{output_path.name}.{uuid4().hex}.tmp"
+        )
+        figure = _defocus_dp_correlation_figure(group, statistics)
+        try:
+            figure.savefig(
+                temp_path,
+                format="png",
+                dpi=_DPI,
+                bbox_inches="tight",
+                facecolor="white",
+            )
+            _atomic_replace(temp_path, output_path)
+        finally:
+            plt.close(figure)
+            temp_path.unlink(missing_ok=True)
+        outputs.append(output_path)
+    return tuple(outputs)
+
+
 def save_defocus_matching_outputs(
     session_dirs: Sequence[str | Path],
     *,
@@ -754,19 +975,31 @@ def save_defocus_matching_outputs(
     correlation_file = _save_dataframe_csv(
         correlation_summary, table_directory / DEFOCUS_DP_CORRELATION_FILENAME
     )
-    figure_file = (
-        _save_figure(
-            trials, summary,
-            Path(figure_output_dir) / DEFOCUS_FIGURE_FILENAME,
+    figure_directory = Path(figure_output_dir)
+    if save_figure:
+        figure_file = _save_figure(
+            trials,
+            summary,
+            figure_directory / DEFOCUS_FIGURE_FILENAME,
         )
-        if save_figure
-        else None
-    )
+        correlation_figure_files = _save_defocus_dp_correlation_figures(
+            participant_pairs,
+            correlation_summary,
+            figure_directory,
+        )
+    else:
+        figure_file = None
+        correlation_figure_files = tuple()
+
     print(f"Saved defocus participant summary: {summary_file}")
     print(f"Saved defocus/DP participant pairs: {participant_pairs_file}")
     print(f"Saved defocus/DP correlations: {correlation_file}")
     if figure_file is not None:
         print(f"Saved defocus matching figure: {figure_file}")
+        print(
+            "Saved defocus/DP correlation figure(s): "
+            f"{len(correlation_figure_files)}"
+        )
     return DefocusAnalysisResult(
         participant_summary=summary,
         participant_pairs=participant_pairs,
@@ -775,6 +1008,7 @@ def save_defocus_matching_outputs(
         participant_pairs_file=participant_pairs_file,
         correlation_file=correlation_file,
         figure_file=figure_file,
+        correlation_figure_files=correlation_figure_files,
     )
 
 

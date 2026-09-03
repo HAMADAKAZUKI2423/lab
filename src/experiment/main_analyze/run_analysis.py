@@ -391,6 +391,9 @@ def run_analysis(
         if defocus_result.figure_file is not None
         else tuple()
     )
+    figure_files["defocus_dp_correlation"] = (
+        defocus_result.correlation_figure_files
+    )
 
     result = AnalysisRunResult(
         output_paths=output_paths,
