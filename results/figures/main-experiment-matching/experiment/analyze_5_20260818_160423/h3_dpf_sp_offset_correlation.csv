@@ -1,5 +1,0 @@
-﻿Hypothesis,Session_Type,Ref_Contrast,Orientation,Ocularity,n_participants,mean_sp_offset_from_reference,mean_dpf_offset_from_reference,pearson_r,p_value_two_sided,holm_adjusted_p_value,significant_holm_alpha_0_05
-H3,experiment,0.1,0,binocular,1,0.23307000000000003,0.03261,,,,False
-H3,experiment,0.1,0,monocular,1,0.17515,0.05251999999999998,,,,False
-H3,experiment,0.2,0,binocular,1,0.19135999999999997,0.018210000000000004,,,,False
-H3,experiment,0.2,0,monocular,1,0.10499999999999998,0.048339999999999994,,,,False
