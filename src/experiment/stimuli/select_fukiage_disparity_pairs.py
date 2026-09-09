@@ -29,7 +29,7 @@ SCRIPT_PATH = Path(__file__).resolve()
 LAB_ROOT = SCRIPT_PATH.parents[3]
 VISIBILITY_REPO = LAB_ROOT / "visibility_blend_2025-main"
 DEFAULT_OUTPUT_ROOT = LAB_ROOT / "results" / "fukiage-disparity-selection"
-RAW_IMAGE_DIR = LAB_ROOT / "data" / "raw" / "images"
+RAW_IMAGE_DIR = LAB_ROOT / "data" / "raw" / "images" / "McGill Calibrated Color Image Database" / "Textures"
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 LUMINANCE_CLASS_COUNT = 10
 FOREGROUND_LOWEST_CLASS_COUNT = 1
@@ -84,7 +84,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-size", type=int, default=512)
     parser.add_argument("--model", default="vismlp_norm")
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--top-k", type=int, default=20)
+    parser.add_argument("--top-k", type=int, default=10)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--image-dir", type=Path, default=RAW_IMAGE_DIR)
     parser.add_argument(
@@ -388,6 +388,76 @@ def write_csv(path: Path, rows: list[PairResult]) -> None:
         writer.writerows(asdict(row) for row in rows)
 
 
+def select_unique_image_pairs(
+    sorted_results: list[PairResult], top_k: int
+) -> list[PairResult]:
+    """画像重複なしで厳密にK組を選び、スコア合計を最大化する(MILP)。
+
+    同一性は従来通り正規化ファイルパスで判定する。
+    別名コピーの画像内容の重複は検出しない。
+    """
+    from scipy.optimize import Bounds, LinearConstraint, milp
+    from scipy.sparse import coo_matrix
+
+    if top_k < 1:
+        raise ValueError("--top-kは1以上にしてください")
+    key_cache: dict[str, str] = {}
+    def image_key(path: str) -> str:
+        if path not in key_cache:
+            key_cache[path] = str(Path(path).resolve()).casefold()
+        return key_cache[path]
+
+    # FG/BGを入れ替えた同じ2画像の候補は、スコアが高い向きだけ残す。
+    # 残す候補は評価済みの行なので、前景の輝度クラス制限は維持される。
+    best: dict[tuple[str, str], PairResult] = {}
+    for row in sorted_results:
+        a, b = image_key(row.foreground_path), image_key(row.background_path)
+        score = row.absolute_score_difference
+        if a == b:
+            continue
+        if not math.isfinite(score):
+            raise ValueError(f"スコアが有限値ではありません: {row.foreground_path}, {row.background_path}")
+        edge = tuple(sorted((a, b)))
+        if edge not in best or score > best[edge].absolute_score_difference:
+            best[edge] = row
+    edges = list(best)
+    candidates = list(best.values())
+    vertices = sorted({v for edge in edges for v in edge})
+    if len(vertices) < 2 * top_k or len(edges) < top_k:
+        raise ValueError(f"画像重複なしで{top_k}組を作る有効な候補が不足しています")
+    vertex_index = {v: i for i, v in enumerate(vertices)}
+    n, m = len(vertices), len(edges)
+    # 各列が候補ペア。画像ごとの使用回数<=1、最終行の採用数==K。
+    rr, cc = [], []
+    for j, (a, b) in enumerate(edges):
+        rr.extend((vertex_index[a], vertex_index[b], n))
+        cc.extend((j, j, j))
+    matrix = coo_matrix((np.ones(3 * m), (rr, cc)), shape=(n + 1, m)).tocsc()
+    lower = np.r_[np.zeros(n), float(top_k)]
+    upper = np.r_[np.ones(n), float(top_k)]
+    scores = np.array([row.absolute_score_difference for row in candidates], dtype=float)
+    # 目的関数の数値スケールを調整（最適解は変わらない）。
+    scale = max(float(np.abs(scores).max()), 1e-12)
+    solution = milp(
+        c=-scores / scale,
+        integrality=np.ones(m),
+        bounds=Bounds(0, 1),
+        constraints=LinearConstraint(matrix, lower, upper),
+        options={"mip_rel_gap": 0.0},
+    )
+    if solution.status == 2:
+        raise ValueError(
+            f"現在の候補では画像重複なしの{top_k}組は実現不可能です。"
+            "前景候補の下位クラス数、または入力画像数を増やしてください。"
+        )
+    if not solution.success or solution.x is None:
+        raise RuntimeError(f"最適な{top_k}組を確定できませんでした: {solution.message}")
+    selected = [row for row, x in zip(candidates, solution.x) if x > 0.5]
+    keys = [image_key(p) for row in selected for p in (row.foreground_path, row.background_path)]
+    if len(selected) != top_k or len(set(keys)) != 2 * top_k:
+        raise RuntimeError("最適化結果の組数・画像重複検証に失敗しました")
+    return sorted(selected, key=lambda row: row.absolute_score_difference, reverse=True)
+
 def write_luminance_classes_csv(path: Path, items: list[LuminanceItem]) -> None:
     with path.open("w", newline="", encoding="utf-8-sig") as file:
         writer = csv.DictWriter(
@@ -458,6 +528,21 @@ def main() -> None:
     )
     fg_paths = [item.path for item in luminance_items if item.foreground_candidate]
     bg_paths = list(image_paths)
+    if settings.top_k < 1:
+        raise ValueError("--top-kは1以上にしてください")
+    fg_keys = {str(p.resolve()).casefold() for p in fg_paths}
+    bg_keys = {str(p.resolve()).casefold() for p in bg_paths}
+    max_pair_count = min(len(fg_keys), len(bg_keys), len(fg_keys | bg_keys) // 2)
+    if settings.top_k > max_pair_count:
+        raise ValueError(
+            f"重複なしの{settings.top_k}組には候補不足です: "
+            f"FG={len(fg_keys)}, BG={len(bg_keys)}, 最大={max_pair_count}組。"
+            "--foreground-lowest-classesまたは入力画像数を増やしてください。"
+        )
+    try:
+        from scipy.optimize import milp  # noqa: F401
+    except ImportError as exc:
+        raise RuntimeError('python -m pip install "scipy>=1.9" を実行してください') from exc
 
     output_dir = args.output_dir or (
         DEFAULT_OUTPUT_ROOT / datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -512,9 +597,10 @@ def main() -> None:
         print(f"[{index}/{len(pairs)}] {fg_path.name} x {bg_path.name}: {result.absolute_score_difference:.6f}")
 
     results.sort(key=lambda row: row.absolute_score_difference, reverse=True)
-    for rank, result in enumerate(results, 1):
+    write_csv(output_dir / "all_pairs.csv", results)  # 最適化前にも評価結果を保存
+    top_results = select_unique_image_pairs(results, settings.top_k)
+    for rank, result in enumerate(top_results, 1):
         result.rank = rank
-    top_results = results[:min(settings.top_k, len(results))]
     write_csv(output_dir / "all_pairs.csv", results)
     write_csv(output_dir / "top20.csv", top_results)
 
