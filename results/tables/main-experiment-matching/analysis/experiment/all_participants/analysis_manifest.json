@@ -1,6 +1,6 @@
 {
   "Manifest_Version": 1,
-  "Generated_At_UTC": "2026-09-03T07:55:48.455599+00:00",
+  "Generated_At_UTC": "2026-09-09T05:26:58.575832+00:00",
   "Run_Name": "all_participants",
   "Analysis_Mode": "full_analysis",
   "Input_Mode": "all_participants",
@@ -8,8 +8,8 @@
   "DPF_Correction_Method": "z_corrected = z_condition - z_DPF + log10(Ref)",
   "Hypothesis_Rows_Per_Analysis_Group": 15,
   "Analysis_Group_Count": 2,
-  "Session_Count": 7,
-  "Participant_Count": 7,
+  "Session_Count": 10,
+  "Participant_Count": 10,
   "Participant_IDs": [
     "0",
     "1",
@@ -17,11 +17,14 @@
     "3",
     "4",
     "5",
-    "6"
+    "6",
+    "7",
+    "8",
+    "9"
   ],
-  "Trial_Row_Count": 560,
-  "Uncorrected_Summary_Row_Count": 112,
-  "Corrected_Summary_Row_Count": 84,
+  "Trial_Row_Count": 800,
+  "Uncorrected_Summary_Row_Count": 160,
+  "Corrected_Summary_Row_Count": 120,
   "Hypothesis_Test_Row_Count": 30,
   "Exclusion_Row_Count": 0,
   "Input_Sessions": [
@@ -79,6 +82,30 @@
       "Session_Timestamp": "20260821_162308",
       "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\6_20260821_162308",
       "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\6_20260821_162308\\contrast_matching.csv",
+      "Trial_Count": 80
+    },
+    {
+      "ID": "7",
+      "Session_Type": "experiment",
+      "Session_Timestamp": "20260907_133506",
+      "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\7_20260907_133506",
+      "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\7_20260907_133506\\contrast_matching.csv",
+      "Trial_Count": 80
+    },
+    {
+      "ID": "8",
+      "Session_Type": "experiment",
+      "Session_Timestamp": "20260908_142528",
+      "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\8_20260908_142528",
+      "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\8_20260908_142528\\contrast_matching.csv",
+      "Trial_Count": 80
+    },
+    {
+      "ID": "9",
+      "Session_Type": "experiment",
+      "Session_Timestamp": "20260909_132329",
+      "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\9_20260909_132329",
+      "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\9_20260909_132329\\contrast_matching.csv",
       "Trial_Count": 80
     }
   ],
