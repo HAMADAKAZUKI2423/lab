@@ -24,12 +24,15 @@ import torch
 from experiment import experiment_config
 from experiment.common.display_calibration import DisplayCalibration, load_display_calibration
 from experiment.pre_experiment.image.config import create_image_config
-from experiment.pre_experiment.image.stimuli import discover_images
 
 SCRIPT_PATH = Path(__file__).resolve()
 LAB_ROOT = SCRIPT_PATH.parents[3]
 VISIBILITY_REPO = LAB_ROOT / "visibility_blend_2025-main"
 DEFAULT_OUTPUT_ROOT = LAB_ROOT / "results" / "fukiage-disparity-selection"
+RAW_IMAGE_DIR = LAB_ROOT / "data" / "raw" / "images"
+SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
+LUMINANCE_CLASS_COUNT = 10
+FOREGROUND_LOWEST_CLASS_COUNT = 1
 
 
 @dataclass(frozen=True)
@@ -47,6 +50,8 @@ class RunSettings:
     model: str
     device: str
     top_k: int
+    luminance_class_count: int
+    foreground_lowest_class_count: int
     apply_defocus: bool = False
 
 
@@ -65,6 +70,14 @@ class PairResult:
     rank: int | None = None
 
 
+@dataclass(frozen=True)
+class LuminanceItem:
+    path: Path
+    mean_relative_luminance: float
+    luminance_class: int
+    foreground_candidate: bool
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--ipd-mm", type=float, default=60.0)
@@ -73,8 +86,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--top-k", type=int, default=20)
     parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--foreground-dir", type=Path)
-    parser.add_argument("--background-dir", type=Path)
+    parser.add_argument("--image-dir", type=Path, default=RAW_IMAGE_DIR)
+    parser.add_argument(
+        "--foreground-lowest-classes",
+        type=int,
+        default=FOREGROUND_LOWEST_CLASS_COUNT,
+        help="前景候補に使う暗い側のクラス数（既定: 1）",
+    )
     return parser.parse_args()
 
 
@@ -96,6 +114,10 @@ def load_settings(args: argparse.Namespace) -> RunSettings:
     l_bg = float(runtime["L_bg"])
     if fg_cm >= bg_cm:
         raise ValueError("DISTANCE_FGはDISTANCE_BGより小さくしてください")
+    if not 1 <= args.foreground_lowest_classes <= LUMINANCE_CLASS_COUNT:
+        raise ValueError(
+            f"--foreground-lowest-classesは1〜{LUMINANCE_CLASS_COUNT}にしてください"
+        )
     disparity_deg = right_aligned_disparity_deg(args.ipd_mm, fg_cm, bg_cm)
     disparity_px = round(args.image_size * disparity_deg / angle)
     return RunSettings(
@@ -112,6 +134,18 @@ def load_settings(args: argparse.Namespace) -> RunSettings:
         model=args.model,
         device=args.device,
         top_k=args.top_k,
+        luminance_class_count=LUMINANCE_CLASS_COUNT,
+        foreground_lowest_class_count=args.foreground_lowest_classes,
+    )
+
+
+def discover_images_recursive(directory: Path) -> list[Path]:
+    """data/raw/images以下の対応画像をサブフォルダも含めて列挙する。"""
+    if not directory.is_dir():
+        return []
+    return sorted(
+        path for path in directory.rglob("*")
+        if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
     )
 
 
@@ -120,6 +154,51 @@ def read_bgr(path: Path) -> np.ndarray:
     if image is None:
         raise FileNotFoundError(path)
     return image.astype(np.float32) / 255.0
+
+
+def mean_relative_luminance(path: Path) -> float:
+    """sRGBを線形化し、Rec.709係数による平均相対輝度Yを返す。"""
+    bgr = read_bgr(path)
+    rgb = bgr[..., ::-1].astype(np.float64)
+    linear = np.where(
+        rgb <= 0.04045,
+        rgb / 12.92,
+        ((rgb + 0.055) / 1.055) ** 2.4,
+    )
+    relative_y = (
+        0.2126 * linear[..., 0]
+        + 0.7152 * linear[..., 1]
+        + 0.0722 * linear[..., 2]
+    )
+    return float(np.mean(relative_y))
+
+
+def classify_images_by_luminance(
+    paths: list[Path], class_count: int, foreground_lowest_classes: int
+) -> list[LuminanceItem]:
+    """平均輝度順位を等数のクラスへ分割する。Class 1が最も暗い。"""
+    if len(paths) < class_count:
+        raise ValueError(
+            f"{class_count}クラス分類には少なくとも{class_count}枚必要です: {len(paths)}枚"
+        )
+    measured = sorted(
+        ((path, mean_relative_luminance(path)) for path in paths),
+        key=lambda item: (item[1], str(item[0]).lower()),
+    )
+    classified: list[LuminanceItem] = []
+    index_groups = np.array_split(np.arange(len(measured)), class_count)
+    for class_index, indices in enumerate(index_groups, start=1):
+        for index in indices.tolist():
+            path, luminance = measured[index]
+            classified.append(
+                LuminanceItem(
+                    path=path,
+                    mean_relative_luminance=luminance,
+                    luminance_class=class_index,
+                    foreground_candidate=class_index <= foreground_lowest_classes,
+                )
+            )
+    return classified
 
 
 def prepare_foreground(path: Path, size: int) -> np.ndarray:
@@ -309,6 +388,29 @@ def write_csv(path: Path, rows: list[PairResult]) -> None:
         writer.writerows(asdict(row) for row in rows)
 
 
+def write_luminance_classes_csv(path: Path, items: list[LuminanceItem]) -> None:
+    with path.open("w", newline="", encoding="utf-8-sig") as file:
+        writer = csv.DictWriter(
+            file,
+            fieldnames=(
+                "path",
+                "mean_relative_luminance",
+                "luminance_class",
+                "foreground_candidate",
+            ),
+        )
+        writer.writeheader()
+        writer.writerows(
+            {
+                "path": str(item.path),
+                "mean_relative_luminance": item.mean_relative_luminance,
+                "luminance_class": item.luminance_class,
+                "foreground_candidate": item.foreground_candidate,
+            }
+            for item in items
+        )
+
+
 def save_top_pair(
     output_dir: Path, result: PairResult, foreground: np.ndarray,
     panorama: np.ndarray, calibration: DisplayCalibration, model,
@@ -346,12 +448,16 @@ def main() -> None:
     args = parse_args()
     settings = load_settings(args)
     image_config = create_image_config()
-    fg_dir = args.foreground_dir or image_config.foreground_image_dir
-    bg_dir = args.background_dir or image_config.background_image_dir
-    fg_paths = discover_images(fg_dir)
-    bg_paths = discover_images(bg_dir)
-    if not fg_paths or not bg_paths:
-        raise FileNotFoundError(f"画像がありません: FG={fg_dir}, BG={bg_dir}")
+    image_paths = discover_images_recursive(args.image_dir)
+    if not image_paths:
+        raise FileNotFoundError(f"画像がありません: {args.image_dir}")
+    luminance_items = classify_images_by_luminance(
+        image_paths,
+        settings.luminance_class_count,
+        settings.foreground_lowest_class_count,
+    )
+    fg_paths = [item.path for item in luminance_items if item.foreground_candidate]
+    bg_paths = list(image_paths)
 
     output_dir = args.output_dir or (
         DEFAULT_OUTPUT_ROOT / datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -375,18 +481,26 @@ def main() -> None:
     with (output_dir / "config.json").open("w", encoding="utf-8") as file:
         json.dump({
             **asdict(settings),
-            "foreground_dir": str(fg_dir),
-            "background_dir": str(bg_dir),
+            "image_dir": str(args.image_dir),
+            "image_count": len(image_paths),
+            "foreground_candidate_count": len(fg_paths),
+            "background_candidate_count": len(bg_paths),
             "display_dir": str(image_config.display_dir),
             "visibility_repo": str(VISIBILITY_REPO),
         }, file, ensure_ascii=False, indent=2)
+    write_luminance_classes_csv(
+        output_dir / "image_luminance_classes.csv", luminance_items
+    )
 
     pairs = list(product(fg_paths, bg_paths))
     results: list[PairResult] = []
     print(
         f"FG={settings.distance_fg_cm:g}cm, BG={settings.distance_bg_cm:g}cm, "
         f"IPD={settings.ipd_mm:g}mm, disparity={settings.disparity_deg:.4f}deg "
-        f"({settings.disparity_px}px), pairs={len(pairs)}"
+        f"({settings.disparity_px}px), images={len(image_paths)}, "
+        f"foreground_classes=1-{settings.foreground_lowest_class_count}/"
+        f"{settings.luminance_class_count}, FG candidates={len(fg_paths)}, "
+        f"BG candidates={len(bg_paths)}, pairs={len(pairs)}"
     )
     for index, (fg_path, bg_path) in enumerate(pairs, 1):
         right_bg, left_bg = eye_bg_cache[bg_path]

@@ -1,0 +1,20 @@
+{
+  "ipd_mm": 60.0,
+  "distance_fg_cm": 50.0,
+  "distance_bg_cm": 125.0,
+  "visual_angle_deg": 7.9,
+  "nominal_l_fg": 15.0,
+  "nominal_l_bg": 15.0,
+  "image_size_px": 512,
+  "disparity_deg": 4.0946852325771905,
+  "disparity_px": 265,
+  "alpha": 0.5,
+  "model": "vismlp_norm",
+  "device": "cuda:0",
+  "top_k": 20,
+  "apply_defocus": false,
+  "foreground_dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\data\\processed\\images\\pre-experiment-image\\fg_imgs",
+  "background_dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\data\\processed\\images\\pre-experiment-image\\bg_imgs",
+  "display_dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\DisplayBrightness",
+  "visibility_repo": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\visibility_blend_2025-main"
+}
