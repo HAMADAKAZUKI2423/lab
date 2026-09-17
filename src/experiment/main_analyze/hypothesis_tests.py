@@ -1,4 +1,4 @@
-"""未補正・DPF補正後の参加者集約値からH1〜H4を検定する。"""
+"""未補正・DPF補正後の参加者集約値からH1〜H5を検定する。"""
 
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ from .config import (
 from .dpf_correction import CORRECTED_LOG10_COLUMN
 
 
-HYPOTHESIS_ROW_COUNTS = {"H1": 2, "H2": 6, "H3": 4, "H4": 3}
+HYPOTHESIS_ROW_COUNTS = {"H1": 2, "H2": 6, "H3": 4, "H4": 3, "H5": 1}
 EXPECTED_ROWS_PER_ANALYSIS_GROUP = sum(HYPOTHESIS_ROW_COUNTS.values())
 
 # 観測されたCohen's dzに基づく、両側t検定の参考必要人数。
@@ -347,6 +347,34 @@ def _paired(
     return merged.drop(columns="_merge").sort_values("ID", ignore_index=True)
 
 
+def _paired_ocularities(
+    group: pd.DataFrame,
+    condition: str,
+    value_column: str,
+) -> pd.DataFrame:
+    """同一条件のmonocularとbinocularをIDで対応付ける。"""
+    binocular = _cell(
+        group, condition, "binocular", value_column
+    ).rename(columns={"value": "binocular_value"})
+    monocular = _cell(
+        group, condition, "monocular", value_column
+    ).rename(columns={"value": "monocular_value"})
+    merged = binocular.merge(
+        monocular,
+        on="ID",
+        how="outer",
+        validate="one_to_one",
+        indicator=True,
+    )
+    if not merged["_merge"].eq("both").all():
+        raise HypothesisTestError(
+            f"{condition}のmonocularとbinocularの参加者対応が不完全です"
+        )
+    return merged.drop(columns="_merge").sort_values(
+        "ID", ignore_index=True
+    )
+
+
 def _build_row(
     *,
     metadata: dict[str, object],
@@ -452,6 +480,7 @@ def _set_primary(
     h2: list[dict[str, object]],
     h3: list[dict[str, object]],
     h4: list[dict[str, object]],
+    h5: list[dict[str, object]],
 ) -> None:
     for row in h1:
         row["Conclusion_Code"] = _dual_conclusion(row)
@@ -487,13 +516,30 @@ def _set_primary(
     for row in h4:
         row["H4_Conjunction_Evaluable"] = evaluable
         row["H4_Conjunction_All_Pass"] = all_pass
+    for row in h5:
+        raw = float(row["p_value_two_sided"])
+        adjusted = float(row["holm_adjusted_p_value"])
+        mean_difference = float(row["mean_log10_difference"])
+        significant = bool(np.isfinite(adjusted) and adjusted < ALPHA)
+        row["Primary_P_Value"] = raw
+        row["Primary_Adjusted_P_Value"] = adjusted
+        row["Primary_Pass_Alpha_0_05"] = significant
+        row["Conclusion_Code"] = (
+            "difference_detected_binocular_lower"
+            if significant and mean_difference < 0.0
+            else "difference_detected_binocular_higher"
+            if significant
+            else "no_detected_difference"
+            if np.isfinite(adjusted)
+            else "not_evaluable"
+        )
 
 
 def run_hypothesis_tests(
     uncorrected_df: pd.DataFrame,
     corrected_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """解析計画どおり、1解析群あたりH1〜H4の15行を返す。"""
+    """解析計画どおり、1解析群あたりH1〜H5の16行を返す。"""
     uncorrected = _validate_summary(
         uncorrected_df,
         label="未補正参加者表",
@@ -528,6 +574,7 @@ def run_hypothesis_tests(
         h2: list[dict[str, object]] = []
         h3: list[dict[str, object]] = []
         h4: list[dict[str, object]] = []
+        h5: list[dict[str, object]] = []
 
         for ocularity in OCULARITY_ORDER:
             values = _cell(raw_group, DPF_CONDITION, ocularity, MEAN_LOG10_COLUMN)["value"].to_numpy(float)
@@ -551,6 +598,36 @@ def run_hypothesis_tests(
                     equivalence_margin=LOG10_EQUIVALENCE_MARGIN,
                 )
             )
+
+        dpf_ocularity = _paired_ocularities(
+            raw_group,
+            DPF_CONDITION,
+            MEAN_LOG10_COLUMN,
+        )
+        dpf_binocular = dpf_ocularity["binocular_value"].to_numpy(float)
+        dpf_monocular = dpf_ocularity["monocular_value"].to_numpy(float)
+        h5.append(
+            _build_row(
+                metadata=metadata,
+                hypothesis="H5",
+                component="H5",
+                family="H5_DPF_ocularity",
+                data_state="uncorrected",
+                comparison=(
+                    f"{DPF_CONDITION} binocular vs "
+                    f"{DPF_CONDITION} monocular"
+                ),
+                test_type="paired_t",
+                primary_test="t",
+                condition=f"{DPF_CONDITION} binocular",
+                baseline_condition=f"{DPF_CONDITION} monocular",
+                ocularity="binocular_minus_monocular",
+                condition_values=dpf_binocular,
+                baseline_values=dpf_monocular,
+                difference_values=dpf_binocular - dpf_monocular,
+                effect_scale="log10_binocular_to_monocular_ratio",
+            )
+        )
 
         for ocularity in OCULARITY_ORDER:
             for condition in CORRECTED_CONDITIONS:
@@ -668,8 +745,9 @@ def run_hypothesis_tests(
         for family_rows in (h1, h4):
             _apply_holm(family_rows, "tost_p_value", "holm_adjusted_tost_p_value", "equivalent_holm_alpha_0_05")
         _apply_holm(h3, "p_value_two_sided", "holm_adjusted_p_value", "significant_holm_alpha_0_05")
-        _set_primary(h1, h2, h3, h4)
-        group_rows = [*h1, *h2, *h3, *h4]
+        _apply_holm(h5, "p_value_two_sided", "holm_adjusted_p_value", "significant_holm_alpha_0_05")
+        _set_primary(h1, h2, h3, h4, h5)
+        group_rows = [*h1, *h2, *h3, *h4, *h5]
         counts = pd.Series([row["Hypothesis"] for row in group_rows]).value_counts()
         actual = {name: int(counts.get(name, 0)) for name in HYPOTHESIS_ROW_COUNTS}
         if actual != HYPOTHESIS_ROW_COUNTS:

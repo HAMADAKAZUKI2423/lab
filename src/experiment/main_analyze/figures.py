@@ -670,6 +670,7 @@ def _legacy_metric_figure(
         lowers: list[float] = []
         uppers: list[float] = []
         standard_deviations: list[float] = []
+        trial_values: list[np.ndarray] = []
         for condition in conditions:
             values = group.loc[
                 (group["Condition"] == condition)
@@ -681,6 +682,7 @@ def _legacy_metric_figure(
                     "個別・training図の条件セルが欠けています: "
                     f"group={metadata}, eye={eye}, condition={condition}"
                 )
+            trial_values.append(values)
             mean, lower, upper = _bootstrap_linear_mean_ci(
                 values,
                 seed_parts=(
@@ -727,6 +729,22 @@ def _legacy_metric_figure(
             means,
             standard_deviations,
         )
+        # 各バー上へ、その条件・眼条件に含まれる全試行を表示する。
+        for position, values in zip(positions, trial_values):
+            jitter = np.linspace(
+                -width * 0.18,
+                width * 0.18,
+                len(values),
+            )
+            axis.scatter(
+                np.full(len(values), position) + jitter,
+                values,
+                s=24,
+                color="#202020",
+                alpha=0.5,
+                linewidths=0,
+                zorder=3,
+            )
 
     reference = float(metadata["Ref_Contrast"])
     axis.axhline(
