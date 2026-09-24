@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Fukiageモデルで左右視認性差が大きいFG/BG画像ペアを抽出する。
+"""事前K-means抽出後、Fukiageモデルで左右視認性差が大きい画像ペアを選ぶ。
+
+全画像をラプラシアンピラミッド特徴量と平均相対輝度で、それぞれ5クラスへ
+K-means分類する。各軸のtop/bottomが交差する4カテゴリだけを背景候補とし、
+そのうち低輝度側の2カテゴリだけを前景候補として視認性評価する。
 
 実行例（srcから）:
     python -m experiment.stimuli.select_fukiage_disparity_pairs --device cuda:0
@@ -29,10 +33,12 @@ SCRIPT_PATH = Path(__file__).resolve()
 LAB_ROOT = SCRIPT_PATH.parents[3]
 VISIBILITY_REPO = LAB_ROOT / "visibility_blend_2025-main"
 DEFAULT_OUTPUT_ROOT = LAB_ROOT / "results" / "fukiage-disparity-selection"
-RAW_IMAGE_DIR = LAB_ROOT / "data" / "raw" / "images" / "McGill Calibrated Color Image Database" / "Textures"
+RAW_IMAGE_DIR = LAB_ROOT / "data" / "raw" / "images" 
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
-LUMINANCE_CLASS_COUNT = 10
-FOREGROUND_LOWEST_CLASS_COUNT = 1
+TEXTURE_CLASS_COUNT = 5
+LUMINANCE_CLASS_COUNT = 5
+LAPLACIAN_LEVELS = 3
+KMEANS_RANDOM_STATE = 42
 
 
 @dataclass(frozen=True)
@@ -50,8 +56,10 @@ class RunSettings:
     model: str
     device: str
     top_k: int
+    texture_class_count: int
     luminance_class_count: int
-    foreground_lowest_class_count: int
+    laplacian_levels: int
+    kmeans_random_state: int
     apply_defocus: bool = False
 
 
@@ -59,6 +67,8 @@ class RunSettings:
 class PairResult:
     foreground_path: str
     background_path: str
+    foreground_category: str
+    background_category: str
     right_visibility_score: float
     left_visibility_score: float
     signed_score_difference: float
@@ -71,11 +81,19 @@ class PairResult:
 
 
 @dataclass(frozen=True)
-class LuminanceItem:
+class ImageClusterItem:
     path: Path
     mean_relative_luminance: float
-    luminance_class: int
+    laplacian_features: tuple[float, ...]
+    texture_cluster_label: int
+    texture_rank: int
+    texture_extreme: str
+    luminance_cluster_label: int
+    luminance_rank: int
+    luminance_extreme: str
+    corner_category: str
     foreground_candidate: bool
+    background_candidate: bool
 
 
 def parse_args() -> argparse.Namespace:
@@ -84,15 +102,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--image-size", type=int, default=512)
     parser.add_argument("--model", default="vismlp_norm")
     parser.add_argument("--device", default="cpu")
-    parser.add_argument("--top-k", type=int, default=10)
+    parser.add_argument("--top-k", type=int, default=20)
     parser.add_argument("--output-dir", type=Path)
     parser.add_argument("--image-dir", type=Path, default=RAW_IMAGE_DIR)
-    parser.add_argument(
-        "--foreground-lowest-classes",
-        type=int,
-        default=FOREGROUND_LOWEST_CLASS_COUNT,
-        help="前景候補に使う暗い側のクラス数（既定: 1）",
-    )
     return parser.parse_args()
 
 
@@ -114,10 +126,6 @@ def load_settings(args: argparse.Namespace) -> RunSettings:
     l_bg = float(runtime["L_bg"])
     if fg_cm >= bg_cm:
         raise ValueError("DISTANCE_FGはDISTANCE_BGより小さくしてください")
-    if not 1 <= args.foreground_lowest_classes <= LUMINANCE_CLASS_COUNT:
-        raise ValueError(
-            f"--foreground-lowest-classesは1〜{LUMINANCE_CLASS_COUNT}にしてください"
-        )
     disparity_deg = right_aligned_disparity_deg(args.ipd_mm, fg_cm, bg_cm)
     disparity_px = round(args.image_size * disparity_deg / angle)
     return RunSettings(
@@ -134,8 +142,10 @@ def load_settings(args: argparse.Namespace) -> RunSettings:
         model=args.model,
         device=args.device,
         top_k=args.top_k,
+        texture_class_count=TEXTURE_CLASS_COUNT,
         luminance_class_count=LUMINANCE_CLASS_COUNT,
-        foreground_lowest_class_count=args.foreground_lowest_classes,
+        laplacian_levels=LAPLACIAN_LEVELS,
+        kmeans_random_state=KMEANS_RANDOM_STATE,
     )
 
 
@@ -156,9 +166,8 @@ def read_bgr(path: Path) -> np.ndarray:
     return image.astype(np.float32) / 255.0
 
 
-def mean_relative_luminance(path: Path) -> float:
+def mean_relative_luminance_from_bgr(bgr: np.ndarray) -> float:
     """sRGBを線形化し、Rec.709係数による平均相対輝度Yを返す。"""
-    bgr = read_bgr(path)
     rgb = bgr[..., ::-1].astype(np.float64)
     linear = np.where(
         rgb <= 0.04045,
@@ -173,32 +182,119 @@ def mean_relative_luminance(path: Path) -> float:
     return float(np.mean(relative_y))
 
 
-def classify_images_by_luminance(
-    paths: list[Path], class_count: int, foreground_lowest_classes: int
-) -> list[LuminanceItem]:
-    """平均輝度順位を等数のクラスへ分割する。Class 1が最も暗い。"""
-    if len(paths) < class_count:
+def compute_laplacian_mad(bgr: np.ndarray, levels: int) -> np.ndarray:
+    """ラプラシアンピラミッド各段と最終低周波残差のMADを返す。"""
+    gray = cv2.cvtColor(
+        np.clip(bgr * 255.0, 0, 255).astype(np.uint8), cv2.COLOR_BGR2GRAY
+    ).astype(np.float32)
+    features: list[float] = []
+    current = gray
+    for _ in range(levels):
+        rows, cols = current.shape
+        if rows < 2 or cols < 2:
+            raise ValueError("画像が小さすぎて指定段数のラプラシアン特徴を計算できません")
+        down = cv2.pyrDown(current)
+        up = cv2.pyrUp(down, dstsize=(cols, rows))
+        features.append(float(np.mean(np.abs(current - up))))
+        current = down
+    features.append(float(np.mean(np.abs(current - np.mean(current)))))
+    return np.asarray(features, dtype=np.float64)
+
+
+def _rank_clusters(center_scores: np.ndarray) -> dict[int, int]:
+    """クラスタ中心を小さい順に1..Kへ順位付けする。"""
+    order = np.argsort(np.asarray(center_scores), kind="stable")
+    return {int(label): rank for rank, label in enumerate(order, start=1)}
+
+
+def _extreme_name(rank: int, class_count: int) -> str:
+    if rank == 1:
+        return "bottom"
+    if rank == class_count:
+        return "top"
+    return "middle"
+
+
+def classify_image_extremes(
+    paths: list[Path],
+    texture_class_count: int,
+    luminance_class_count: int,
+    laplacian_levels: int,
+    random_state: int,
+) -> list[ImageClusterItem]:
+    """テクスチャ・輝度を別々にK-means分類し、四隅カテゴリを抽出する。"""
+    required = max(texture_class_count, luminance_class_count)
+    if len(paths) < required:
         raise ValueError(
-            f"{class_count}クラス分類には少なくとも{class_count}枚必要です: {len(paths)}枚"
+            f"K-means分類には少なくとも{required}枚必要です: {len(paths)}枚"
         )
-    measured = sorted(
-        ((path, mean_relative_luminance(path)) for path in paths),
-        key=lambda item: (item[1], str(item[0]).lower()),
-    )
-    classified: list[LuminanceItem] = []
-    index_groups = np.array_split(np.arange(len(measured)), class_count)
-    for class_index, indices in enumerate(index_groups, start=1):
-        for index in indices.tolist():
-            path, luminance = measured[index]
-            classified.append(
-                LuminanceItem(
-                    path=path,
-                    mean_relative_luminance=luminance,
-                    luminance_class=class_index,
-                    foreground_candidate=class_index <= foreground_lowest_classes,
-                )
+    try:
+        from sklearn.cluster import KMeans
+    except ImportError as exc:
+        raise RuntimeError(
+            'scikit-learnが必要です。python -m pip install "scikit-learn" を実行してください'
+        ) from exc
+
+    measured: list[tuple[Path, float, np.ndarray]] = []
+    for path in paths:
+        bgr = read_bgr(path)
+        measured.append(
+            (
+                path,
+                mean_relative_luminance_from_bgr(bgr),
+                compute_laplacian_mad(bgr, laplacian_levels),
             )
-    return classified
+        )
+
+    texture_x = np.vstack([features for _, _, features in measured])
+    luminance_x = np.asarray(
+        [[luminance] for _, luminance, _ in measured], dtype=np.float64
+    )
+    texture_model = KMeans(
+        n_clusters=texture_class_count, random_state=random_state, n_init=10
+    )
+    luminance_model = KMeans(
+        n_clusters=luminance_class_count, random_state=random_state, n_init=10
+    )
+    texture_labels = texture_model.fit_predict(texture_x)
+    luminance_labels = luminance_model.fit_predict(luminance_x)
+    if len(np.unique(texture_labels)) != texture_class_count:
+        raise ValueError("ラプラシアンK-meansで5個の異なるクラスタを作れませんでした")
+    if len(np.unique(luminance_labels)) != luminance_class_count:
+        raise ValueError("輝度K-meansで5個の異なるクラスタを作れませんでした")
+
+    texture_rank_map = _rank_clusters(texture_model.cluster_centers_.sum(axis=1))
+    luminance_rank_map = _rank_clusters(luminance_model.cluster_centers_.ravel())
+    items: list[ImageClusterItem] = []
+    for index, (path, luminance, features) in enumerate(measured):
+        texture_label = int(texture_labels[index])
+        luminance_label = int(luminance_labels[index])
+        texture_rank = texture_rank_map[texture_label]
+        luminance_rank = luminance_rank_map[luminance_label]
+        texture_extreme = _extreme_name(texture_rank, texture_class_count)
+        luminance_extreme = _extreme_name(luminance_rank, luminance_class_count)
+        is_corner = texture_extreme != "middle" and luminance_extreme != "middle"
+        category = (
+            f"texture_{texture_extreme}__luminance_{luminance_extreme}"
+            if is_corner else ""
+        )
+        items.append(
+            ImageClusterItem(
+                path=path,
+                mean_relative_luminance=luminance,
+                laplacian_features=tuple(float(value) for value in features),
+                texture_cluster_label=texture_label,
+                texture_rank=texture_rank,
+                texture_extreme=texture_extreme,
+                luminance_cluster_label=luminance_label,
+                luminance_rank=luminance_rank,
+                luminance_extreme=luminance_extreme,
+                corner_category=category,
+                foreground_candidate=is_corner and luminance_extreme == "bottom",
+                background_candidate=is_corner,
+            )
+        )
+    return items
 
 
 def prepare_foreground(path: Path, size: int) -> np.ndarray:
@@ -341,6 +437,7 @@ def compute_visibility_map(
 def evaluate_pair(
     fg_path: Path, bg_path: Path, foreground: np.ndarray,
     right_bg: np.ndarray, left_bg: np.ndarray,
+    fg_category: str, bg_category: str,
     calibration: DisplayCalibration, model, settings: RunSettings,
     device: torch.device,
 ) -> PairResult:
@@ -362,8 +459,8 @@ def evaluate_pair(
     left_score = float(left_map.mean())
     signed = left_score - right_score
     return PairResult(
-        str(fg_path), str(bg_path), right_score, left_score,
-        signed, abs(signed), right_clip, left_clip,
+        str(fg_path), str(bg_path), fg_category, bg_category,
+        right_score, left_score, signed, abs(signed), right_clip, left_clip,
         settings.disparity_deg, settings.disparity_px,
     )
 
@@ -448,7 +545,7 @@ def select_unique_image_pairs(
     if solution.status == 2:
         raise ValueError(
             f"現在の候補では画像重複なしの{top_k}組は実現不可能です。"
-            "前景候補の下位クラス数、または入力画像数を増やしてください。"
+            "入力画像数または事前抽出条件を見直してください。"
         )
     if not solution.success or solution.x is None:
         raise RuntimeError(f"最適な{top_k}組を確定できませんでした: {solution.message}")
@@ -458,27 +555,43 @@ def select_unique_image_pairs(
         raise RuntimeError("最適化結果の組数・画像重複検証に失敗しました")
     return sorted(selected, key=lambda row: row.absolute_score_difference, reverse=True)
 
-def write_luminance_classes_csv(path: Path, items: list[LuminanceItem]) -> None:
+def write_prefilter_clusters_csv(
+    path: Path, items: list[ImageClusterItem]
+) -> None:
+    fieldnames = (
+        "path",
+        "mean_relative_luminance",
+        "laplacian_features",
+        "texture_cluster_label",
+        "texture_rank",
+        "texture_extreme",
+        "luminance_cluster_label",
+        "luminance_rank",
+        "luminance_extreme",
+        "corner_category",
+        "foreground_candidate",
+        "background_candidate",
+    )
     with path.open("w", newline="", encoding="utf-8-sig") as file:
-        writer = csv.DictWriter(
-            file,
-            fieldnames=(
-                "path",
-                "mean_relative_luminance",
-                "luminance_class",
-                "foreground_candidate",
-            ),
-        )
+        writer = csv.DictWriter(file, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(
-            {
-                "path": str(item.path),
-                "mean_relative_luminance": item.mean_relative_luminance,
-                "luminance_class": item.luminance_class,
-                "foreground_candidate": item.foreground_candidate,
-            }
-            for item in items
-        )
+        for item in items:
+            writer.writerow(
+                {
+                    "path": str(item.path),
+                    "mean_relative_luminance": item.mean_relative_luminance,
+                    "laplacian_features": json.dumps(item.laplacian_features),
+                    "texture_cluster_label": item.texture_cluster_label,
+                    "texture_rank": item.texture_rank,
+                    "texture_extreme": item.texture_extreme,
+                    "luminance_cluster_label": item.luminance_cluster_label,
+                    "luminance_rank": item.luminance_rank,
+                    "luminance_extreme": item.luminance_extreme,
+                    "corner_category": item.corner_category,
+                    "foreground_candidate": item.foreground_candidate,
+                    "background_candidate": item.background_candidate,
+                }
+            )
 
 
 def save_top_pair(
@@ -521,23 +634,28 @@ def main() -> None:
     image_paths = discover_images_recursive(args.image_dir)
     if not image_paths:
         raise FileNotFoundError(f"画像がありません: {args.image_dir}")
-    luminance_items = classify_images_by_luminance(
+
+    # 高コストな視認性評価より先に、2種類のK-meansで候補を四隅へ絞る。
+    cluster_items = classify_image_extremes(
         image_paths,
+        settings.texture_class_count,
         settings.luminance_class_count,
-        settings.foreground_lowest_class_count,
+        settings.laplacian_levels,
+        settings.kmeans_random_state,
     )
-    fg_paths = [item.path for item in luminance_items if item.foreground_candidate]
-    bg_paths = list(image_paths)
+    item_by_path = {item.path: item for item in cluster_items}
+    fg_paths = [item.path for item in cluster_items if item.foreground_candidate]
+    bg_paths = [item.path for item in cluster_items if item.background_candidate]
     if settings.top_k < 1:
         raise ValueError("--top-kは1以上にしてください")
-    fg_keys = {str(p.resolve()).casefold() for p in fg_paths}
-    bg_keys = {str(p.resolve()).casefold() for p in bg_paths}
+    fg_keys = {str(path.resolve()).casefold() for path in fg_paths}
+    bg_keys = {str(path.resolve()).casefold() for path in bg_paths}
     max_pair_count = min(len(fg_keys), len(bg_keys), len(fg_keys | bg_keys) // 2)
     if settings.top_k > max_pair_count:
         raise ValueError(
-            f"重複なしの{settings.top_k}組には候補不足です: "
+            f"重複なしの{settings.top_k}組には事前抽出後の候補が不足しています: "
             f"FG={len(fg_keys)}, BG={len(bg_keys)}, 最大={max_pair_count}組。"
-            "--foreground-lowest-classesまたは入力画像数を増やしてください。"
+            "入力画像数または事前抽出条件を見直してください。"
         )
     try:
         from scipy.optimize import milp  # noqa: F401
@@ -562,39 +680,60 @@ def main() -> None:
             panorama_cache[path], settings.image_size_px, settings.disparity_px
         ) for path in bg_paths
     }
+    category_names = (
+        "texture_top__luminance_top",
+        "texture_top__luminance_bottom",
+        "texture_bottom__luminance_top",
+        "texture_bottom__luminance_bottom",
+    )
+    category_counts = {
+        category: sum(item.corner_category == category for item in cluster_items)
+        for category in category_names
+    }
 
     with (output_dir / "config.json").open("w", encoding="utf-8") as file:
         json.dump({
             **asdict(settings),
             "image_dir": str(args.image_dir),
             "image_count": len(image_paths),
+            "corner_category_counts": category_counts,
             "foreground_candidate_count": len(fg_paths),
             "background_candidate_count": len(bg_paths),
             "display_dir": str(image_config.display_dir),
             "visibility_repo": str(VISIBILITY_REPO),
         }, file, ensure_ascii=False, indent=2)
-    write_luminance_classes_csv(
-        output_dir / "image_luminance_classes.csv", luminance_items
+    write_prefilter_clusters_csv(
+        output_dir / "image_prefilter_clusters.csv", cluster_items
     )
 
-    pairs = list(product(fg_paths, bg_paths))
+    pairs = [
+        (fg_path, bg_path)
+        for fg_path, bg_path in product(fg_paths, bg_paths)
+        if str(fg_path.resolve()).casefold() != str(bg_path.resolve()).casefold()
+    ]
+    if not pairs:
+        raise ValueError("事前抽出後に評価可能な前景・背景ペアがありません")
     results: list[PairResult] = []
     print(
         f"FG={settings.distance_fg_cm:g}cm, BG={settings.distance_bg_cm:g}cm, "
         f"IPD={settings.ipd_mm:g}mm, disparity={settings.disparity_deg:.4f}deg "
         f"({settings.disparity_px}px), images={len(image_paths)}, "
-        f"foreground_classes=1-{settings.foreground_lowest_class_count}/"
-        f"{settings.luminance_class_count}, FG candidates={len(fg_paths)}, "
+        f"categories={category_counts}, FG candidates={len(fg_paths)}, "
         f"BG candidates={len(bg_paths)}, pairs={len(pairs)}"
     )
     for index, (fg_path, bg_path) in enumerate(pairs, 1):
         right_bg, left_bg = eye_bg_cache[bg_path]
         result = evaluate_pair(
             fg_path, bg_path, fg_cache[fg_path], right_bg, left_bg,
+            item_by_path[fg_path].corner_category,
+            item_by_path[bg_path].corner_category,
             calibration, model, settings, device,
         )
         results.append(result)
-        print(f"[{index}/{len(pairs)}] {fg_path.name} x {bg_path.name}: {result.absolute_score_difference:.6f}")
+        print(
+            f"[{index}/{len(pairs)}] {fg_path.name} x {bg_path.name}: "
+            f"{result.absolute_score_difference:.6f}"
+        )
 
     results.sort(key=lambda row: row.absolute_score_difference, reverse=True)
     write_csv(output_dir / "all_pairs.csv", results)  # 最適化前にも評価結果を保存
