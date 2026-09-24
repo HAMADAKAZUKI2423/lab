@@ -1,6 +1,6 @@
 {
   "Manifest_Version": 1,
-  "Generated_At_UTC": "2026-09-17T07:37:16.992238+00:00",
+  "Generated_At_UTC": "2026-09-24T06:02:55.916295+00:00",
   "Run_Name": "all_participants_mean_based",
   "Analysis_Mode": "full_analysis",
   "Input_Mode": "all_participants",
@@ -28,9 +28,9 @@
     "8",
     "9"
   ],
-  "Trial_Row_Count": 1040,
-  "Uncorrected_Summary_Row_Count": 208,
-  "Corrected_Summary_Row_Count": 156,
+  "Trial_Row_Count": 1120,
+  "Uncorrected_Summary_Row_Count": 224,
+  "Corrected_Summary_Row_Count": 168,
   "Hypothesis_Test_Row_Count": 32,
   "Exclusion_Row_Count": 0,
   "Input_Sessions": [
