@@ -17,9 +17,11 @@ from .config import (
     EXPERIMENT_RESULT_ROOT,
     GEOMETRIC_MEAN_COLUMN,
     MEAN_LOG10_COLUMN,
+    MEAN_PARTICIPANT_AGGREGATION,
+    MEDIAN_PARTICIPANT_AGGREGATION,
     OCULARITY_ORDER,
     OPTIONAL_METADATA_COLUMNS,
-    PARTICIPANT_AGGREGATION,
+    PARTICIPANT_AGGREGATIONS,
     PARTICIPANT_SUMMARY_KEY_COLUMNS,
     REQUIRED_COLUMNS,
     SESSION_DIR_PATTERN,
@@ -468,8 +470,21 @@ def _validate_complete_design(summary: pd.DataFrame) -> None:
         )
 
 
-def build_participant_summary(trials: pd.DataFrame) -> pd.DataFrame:
-    """試行のlog10 ARを参加者×条件内で算術平均する。"""
+def build_participant_summary(
+    trials: pd.DataFrame,
+    *,
+    aggregation: str = MEAN_PARTICIPANT_AGGREGATION,
+) -> pd.DataFrame:
+    """試行のlog10 ARを参加者×条件内で平均または中央値へ集約する。"""
+    if aggregation not in PARTICIPANT_AGGREGATIONS:
+        raise DataValidationError(
+            f"未定義の参加者集約方法です: {aggregation}"
+        )
+    reducer = (
+        "mean"
+        if aggregation == MEAN_PARTICIPANT_AGGREGATION
+        else "median"
+    )
     required = [
         *PARTICIPANT_SUMMARY_KEY_COLUMNS,
         AR_VALUE_COLUMN,
@@ -503,7 +518,7 @@ def build_participant_summary(trials: pd.DataFrame) -> pd.DataFrame:
         .agg(
             **{
                 TRIAL_COUNT_COLUMN: (TRIAL_LOG10_COLUMN, "size"),
-                MEAN_LOG10_COLUMN: (TRIAL_LOG10_COLUMN, "mean"),
+                MEAN_LOG10_COLUMN: (TRIAL_LOG10_COLUMN, reducer),
                 "Session_Timestamp": ("Session_Timestamp", "first"),
                 "Session_Dir": ("Session_Dir", "first"),
                 "Source_CSV": ("Source_CSV", "first"),
@@ -514,7 +529,7 @@ def build_participant_summary(trials: pd.DataFrame) -> pd.DataFrame:
         10.0,
         summary[MEAN_LOG10_COLUMN].to_numpy(dtype=float),
     )
-    summary["Participant_Aggregation"] = PARTICIPANT_AGGREGATION
+    summary["Participant_Aggregation"] = aggregation
 
     _validate_complete_design(summary)
 

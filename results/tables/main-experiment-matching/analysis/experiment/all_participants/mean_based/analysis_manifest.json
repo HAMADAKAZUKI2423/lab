@@ -1,12 +1,14 @@
 {
   "Manifest_Version": 1,
-  "Generated_At_UTC": "2026-09-24T05:06:59.566584+00:00",
-  "Run_Name": "all_participants",
+  "Generated_At_UTC": "2026-09-17T07:37:16.992238+00:00",
+  "Run_Name": "all_participants_mean_based",
   "Analysis_Mode": "full_analysis",
   "Input_Mode": "all_participants",
   "Participant_Aggregation": "mean_of_log10_trials",
+  "Between_Participant_Summary": "mean_of_participant_log10_values",
+  "Confidence_Interval": "participant_bootstrap_mean_95_percentile",
   "DPF_Correction_Method": "z_corrected = z_condition - z_DPF + log10(Ref)",
-  "Hypothesis_Rows_Per_Analysis_Group": 15,
+  "Hypothesis_Rows_Per_Analysis_Group": 16,
   "Analysis_Group_Count": 2,
   "Session_Count": 14,
   "Participant_Count": 14,
@@ -26,10 +28,10 @@
     "8",
     "9"
   ],
-  "Trial_Row_Count": 1120,
-  "Uncorrected_Summary_Row_Count": 224,
-  "Corrected_Summary_Row_Count": 168,
-  "Hypothesis_Test_Row_Count": 30,
+  "Trial_Row_Count": 1040,
+  "Uncorrected_Summary_Row_Count": 208,
+  "Corrected_Summary_Row_Count": 156,
+  "Hypothesis_Test_Row_Count": 32,
   "Exclusion_Row_Count": 0,
   "Input_Sessions": [
     {
@@ -145,36 +147,36 @@
       "Trial_Count": 80
     }
   ],
-  "Output_Table_Directory": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants",
-  "Output_Figure_Directory": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants",
+  "Output_Table_Directory": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\mean_based",
+  "Output_Figure_Directory": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based",
   "Table_Files": {
-    "participant_summary_uncorrected": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\participant_summary_uncorrected.csv",
-    "participant_summary_dpf_corrected": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\participant_summary_dpf_corrected.csv",
-    "planned_hypothesis_tests": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\planned_hypothesis_tests.csv",
-    "analysis_exclusions": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\analysis_exclusions.csv",
-    "defocus_participant_summary": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\defocus_participant_summary.csv",
-    "defocus_dp_ocularity_participant_pairs": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\defocus_dp_ocularity_participant_pairs.csv",
-    "defocus_dp_ocularity_correlation": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\defocus_dp_ocularity_correlation.csv"
+    "participant_summary_uncorrected": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\mean_based\\participant_summary_uncorrected.csv",
+    "participant_summary_dpf_corrected": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\mean_based\\participant_summary_dpf_corrected.csv",
+    "planned_hypothesis_tests": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\mean_based\\planned_hypothesis_tests.csv",
+    "analysis_exclusions": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\mean_based\\analysis_exclusions.csv",
+    "defocus_participant_summary": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\mean_based\\defocus_participant_summary.csv",
+    "defocus_dp_ocularity_participant_pairs": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\mean_based\\defocus_dp_ocularity_participant_pairs.csv",
+    "defocus_dp_ocularity_correlation": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\analysis\\experiment\\all_participants\\mean_based\\defocus_dp_ocularity_correlation.csv"
   },
   "Figure_Files": {
     "uncorrected": [
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\uncorrected\\uncorrected__experiment__ref_0p1__ori_0.png",
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\uncorrected\\uncorrected__experiment__ref_0p2__ori_0.png"
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\uncorrected\\uncorrected__experiment__ref_0p1__ori_0.png",
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\uncorrected\\uncorrected__experiment__ref_0p2__ori_0.png"
     ],
     "dpf_corrected": [
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\dpf_corrected\\dpf_corrected__experiment__ref_0p1__ori_0.png",
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\dpf_corrected\\dpf_corrected__experiment__ref_0p2__ori_0.png"
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\dpf_corrected\\dpf_corrected__experiment__ref_0p1__ori_0.png",
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\dpf_corrected\\dpf_corrected__experiment__ref_0p2__ori_0.png"
     ],
     "h4_interaction": [
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\h4_interaction\\h4_interaction__experiment__ref_0p1__ori_0.png",
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\h4_interaction\\h4_interaction__experiment__ref_0p2__ori_0.png"
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\h4_interaction\\h4_interaction__experiment__ref_0p1__ori_0.png",
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\h4_interaction\\h4_interaction__experiment__ref_0p2__ori_0.png"
     ],
     "defocus_matching": [
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\defocus_matching\\defocus_matching_by_participant.png"
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\defocus_matching\\defocus_matching_by_participant.png"
     ],
     "defocus_dp_correlation": [
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\defocus_matching\\defocus_dp_ocularity_correlation__experiment__ref_0p1__ori_0.png",
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\defocus_matching\\defocus_dp_ocularity_correlation__experiment__ref_0p2__ori_0.png"
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\defocus_matching\\defocus_dp_ocularity_correlation__experiment__ref_0p1__ori_0.png",
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\defocus_matching\\defocus_dp_ocularity_correlation__experiment__ref_0p2__ori_0.png"
     ]
   }
 }

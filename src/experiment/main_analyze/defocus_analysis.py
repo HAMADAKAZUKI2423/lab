@@ -16,7 +16,7 @@ from .config import (
     ANALYSIS_GROUP_COLUMNS,
     DP_CONDITION,
     OCULARITY_ORDER,
-    PARTICIPANT_AGGREGATION,
+    PARTICIPANT_AGGREGATIONS,
     SESSION_DIR_PATTERN,
 )
 from .dpf_correction import CORRECTED_AR_COLUMN, CORRECTED_LOG10_COLUMN
@@ -470,10 +470,16 @@ def build_defocus_dp_participant_pairs(
     dp["Ocularity"] = dp["Ocularity"].astype("string").str.strip()
     if set(dp["Ocularity"].dropna().astype(str)) != set(OCULARITY_ORDER):
         raise DefocusAnalysisError("DPのmonocular・binocularがそろっていません")
-    if set(dp["Participant_Aggregation"].astype(str)) != {
-        PARTICIPANT_AGGREGATION
-    }:
-        raise DefocusAnalysisError("DPF補正後参加者要約の集約方法が不正です")
+    aggregation_values = set(
+        dp["Participant_Aggregation"].astype(str)
+    )
+    if len(aggregation_values) != 1 or not aggregation_values.issubset(
+        set(PARTICIPANT_AGGREGATIONS)
+    ):
+        raise DefocusAnalysisError(
+            "DPF補正後参加者要約の集約方法が不正です"
+        )
+    participant_aggregation = next(iter(aggregation_values))
     for column in (
         "Ref_Contrast", "Orientation", CORRECTED_LOG10_COLUMN,
         CORRECTED_AR_COLUMN,
@@ -538,7 +544,7 @@ def build_defocus_dp_participant_pairs(
         pairs["DP_Monocular_Corrected_AR_Contrast"]
         - pairs["DP_Binocular_Corrected_AR_Contrast"]
     )
-    pairs["Participant_Aggregation"] = PARTICIPANT_AGGREGATION
+    pairs["Participant_Aggregation"] = participant_aggregation
     pairs["_ID_Order"] = pairs["ID"].map(_participant_sort_key)
     pairs = pairs.sort_values(
         [*ANALYSIS_GROUP_COLUMNS, "_ID_Order"], kind="stable"
