@@ -71,7 +71,11 @@ def _validate_required_columns(frame: pd.DataFrame) -> None:
         )
 
 
-def _normalize_and_validate_values(frame: pd.DataFrame) -> pd.DataFrame:
+def _normalize_and_validate_values(
+    frame: pd.DataFrame,
+    *,
+    expected_aggregation: str,
+) -> pd.DataFrame:
     validated = frame.copy(deep=True)
     _validate_required_columns(validated)
     if validated.empty:
@@ -125,10 +129,10 @@ def _normalize_and_validate_values(frame: pd.DataFrame) -> pd.DataFrame:
     aggregation_values = set(
         validated["Participant_Aggregation"].dropna().astype(str)
     )
-    if aggregation_values != {PARTICIPANT_AGGREGATION}:
+    if aggregation_values != {expected_aggregation}:
         raise DPFCorrectionError(
-            "参加者集約方法が現行計画と一致しません: "
-            f"expected={PARTICIPANT_AGGREGATION}, "
+            "参加者集約方法が指定と一致しません: "
+            f"expected={expected_aggregation}, "
             f"found={sorted(aggregation_values)}"
         )
 
@@ -251,7 +255,11 @@ def _validate_pair_coverage(
         )
 
 
-def apply_dpf_correction(uncorrected_df: pd.DataFrame) -> pd.DataFrame:
+def apply_dpf_correction(
+    uncorrected_df: pd.DataFrame,
+    *,
+    expected_aggregation: str = PARTICIPANT_AGGREGATION,
+) -> pd.DataFrame:
     """DPFバイアスをSP・SPD・DPから差し引いた参加者表を返す。
 
     補正式は次のとおり。DPFは参加者・解析群・眼ごとに対応付ける。
@@ -260,7 +268,10 @@ def apply_dpf_correction(uncorrected_df: pd.DataFrame) -> pd.DataFrame:
 
     入力DataFrameは変更せず、DPF行を除いた3条件の新しい表を返す。
     """
-    validated = _normalize_and_validate_values(uncorrected_df)
+    validated = _normalize_and_validate_values(
+        uncorrected_df,
+        expected_aggregation=expected_aggregation,
+    )
     _validate_condition_grid(validated)
 
     target = validated.loc[

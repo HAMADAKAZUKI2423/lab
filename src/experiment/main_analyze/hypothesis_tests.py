@@ -16,7 +16,7 @@ from .config import (
     LOG10_INTERACTION_EQUIVALENCE_MARGIN,
     MEAN_LOG10_COLUMN,
     OCULARITY_ORDER,
-    PARTICIPANT_AGGREGATION,
+    PARTICIPANT_AGGREGATIONS,
     SP_CONDITION,
     SPD_CONDITION,
 )
@@ -263,8 +263,12 @@ def _validate_summary(
     if (validated["Ref_Contrast"] <= 0).any():
         raise HypothesisTestError(f"{label}にはRef_Contrast > 0が必要です")
     aggregations = set(validated["Participant_Aggregation"].astype(str))
-    if aggregations != {PARTICIPANT_AGGREGATION}:
-        raise HypothesisTestError(f"{label}の参加者集約方法が不正です: {aggregations}")
+    if len(aggregations) != 1 or not aggregations.issubset(
+        set(PARTICIPANT_AGGREGATIONS)
+    ):
+        raise HypothesisTestError(
+            f"{label}の参加者集約方法が不正です: {aggregations}"
+        )
     if set(validated["Condition"].astype(str)) != set(conditions):
         raise HypothesisTestError(
             f"{label}の条件が不正です: expected={list(conditions)}, "
@@ -423,7 +427,7 @@ def _build_row(
         "Baseline_Condition": baseline_condition,
         "Effect_Scale": effect_scale,
         "Analysis_Scale": ANALYSIS_SCALE,
-        "Participant_Aggregation": PARTICIPANT_AGGREGATION,
+        "Participant_Aggregation": str(metadata["Participant_Aggregation"]),
         "mean_log10_condition": mean_condition,
         "mean_log10_baseline": mean_baseline,
         "geometric_mean_condition": _pow10(mean_condition),
@@ -552,6 +556,16 @@ def run_hypothesis_tests(
         conditions=CORRECTED_CONDITIONS,
         value_column=CORRECTED_LOG10_COLUMN,
     )
+    uncorrected_aggregation = str(
+        uncorrected["Participant_Aggregation"].iloc[0]
+    )
+    corrected_aggregation = str(
+        corrected["Participant_Aggregation"].iloc[0]
+    )
+    if uncorrected_aggregation != corrected_aggregation:
+        raise HypothesisTestError(
+            "未補正表と補正後表の参加者集約方法が一致しません"
+        )
     if _group_keys(uncorrected) != _group_keys(corrected):
         raise HypothesisTestError("未補正表と補正後表の解析群が一致しません")
     corrected_groups = {
@@ -569,6 +583,7 @@ def run_hypothesis_tests(
         if set(raw_group["ID"].astype(str)) != set(fixed_group["ID"].astype(str)):
             raise HypothesisTestError(f"未補正表と補正後表の参加者が一致しません: {group_key}")
         metadata = dict(zip(ANALYSIS_GROUP_COLUMNS, group_key))
+        metadata["Participant_Aggregation"] = uncorrected_aggregation
         reference_log10 = float(np.log10(float(metadata["Ref_Contrast"])))
         h1: list[dict[str, object]] = []
         h2: list[dict[str, object]] = []
@@ -755,6 +770,7 @@ def run_hypothesis_tests(
         all_rows.extend(group_rows)
 
     result = pd.DataFrame(all_rows).reset_index(drop=True)
+    result["Participant_Aggregation"] = uncorrected_aggregation
     expected = len(_group_keys(uncorrected)) * EXPECTED_ROWS_PER_ANALYSIS_GROUP
     if len(result) != expected:
         raise RuntimeError(f"検定表の総行数が不正です: expected={expected}, actual={len(result)}")

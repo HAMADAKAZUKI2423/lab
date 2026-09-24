@@ -119,6 +119,41 @@ def _annotate_mean_and_sd(
         )
 
 
+def _annotate_median_and_iqr(
+    axis,
+    bars,
+    medians,
+    interquartile_ranges,
+) -> None:
+    """各バーの足元へ中央値medと四分位範囲IQRを表示する。"""
+    for bar, median, interquartile_range in zip(
+        bars,
+        medians,
+        interquartile_ranges,
+    ):
+        iqr_text = (
+            "nan"
+            if not np.isfinite(interquartile_range)
+            else f"{float(interquartile_range):.2f}"
+        )
+        axis.text(
+            bar.get_x() + bar.get_width() / 2.0,
+            _CONTRAST_ANNOTATION_Y,
+            f"med={float(median):.2f}\nIQR={iqr_text}",
+            ha="center",
+            va="bottom",
+            color="black",
+            fontsize=9,
+            bbox={
+                "facecolor": "white",
+                "alpha": 0.75,
+                "edgecolor": "none",
+                "pad": 1,
+            },
+            zorder=5,
+        )
+
+
 def _stable_seed(parts: tuple[object, ...]) -> int:
     token = "|".join(str(part) for part in parts).encode("utf-8")
     return int.from_bytes(sha256(token).digest()[:8], "big", signed=False)
@@ -622,6 +657,28 @@ def _bootstrap_linear_mean_ci(
     return mean, float(lower), float(upper)
 
 
+def _bootstrap_linear_median_ci(
+    values,
+    *,
+    seed_parts: tuple[object, ...],
+) -> tuple[float, float, float]:
+    """試行を再標本化し、中央値と95% percentile CIを返す。"""
+    array = np.asarray(values, dtype=float)
+    if array.ndim != 1 or len(array) == 0 or not np.isfinite(array).all():
+        raise FigureInputError("中央値CIには1件以上の有限な試行値が必要です")
+    median = float(np.median(array))
+    if len(array) == 1 or np.allclose(array, array[0]):
+        return median, median, median
+    random = np.random.default_rng(_stable_seed(seed_parts))
+    samples = random.choice(
+        array,
+        size=(_BOOTSTRAP_SAMPLES, len(array)),
+        replace=True,
+    )
+    lower, upper = np.quantile(np.median(samples, axis=1), [0.025, 0.975])
+    return median, float(lower), float(upper)
+
+
 def _legacy_number_token(value: float) -> str:
     return f"{float(value):g}"
 
@@ -629,12 +686,15 @@ def _legacy_number_token(value: float) -> str:
 def _legacy_file_name(
     metric_name: str,
     metadata: dict[str, object],
+    *,
+    center_method: str,
 ) -> str:
     session_type = sanitize_run_component(str(metadata["Session_Type"]))
     reference = _legacy_number_token(float(metadata["Ref_Contrast"]))
     orientation = _legacy_number_token(float(metadata["Orientation"]))
+    center_token = "" if center_method == "mean" else "median_"
     return (
-        f"{session_type}_matched_{metric_name}_"
+        f"{session_type}_matched_{metric_name}_{center_token}"
         f"ref_{reference}_ori_{orientation}.png"
     )
 
@@ -646,8 +706,13 @@ def _legacy_metric_figure(
     ylabel: str,
     metric_name: str,
     metadata: dict[str, object],
+    center_method: str,
 ):
     plt = _pyplot()
+    if center_method not in {"mean", "median"}:
+        raise FigureInputError(
+            f"未定義の中心統計量です: {center_method}"
+        )
 
     available_conditions = set(group["Condition"].astype(str))
     conditions = tuple(
@@ -683,22 +748,38 @@ def _legacy_metric_figure(
                     f"group={metadata}, eye={eye}, condition={condition}"
                 )
             trial_values.append(values)
-            mean, lower, upper = _bootstrap_linear_mean_ci(
-                values,
-                seed_parts=(
-                    "legacy",
-                    metric_name,
-                    *metadata.values(),
-                    eye,
-                    condition,
-                ),
+            seed_parts = (
+                "legacy",
+                center_method,
+                metric_name,
+                *metadata.values(),
+                eye,
+                condition,
             )
-            means.append(mean)
+            if center_method == "mean":
+                center, lower, upper = _bootstrap_linear_mean_ci(
+                    values,
+                    seed_parts=seed_parts,
+                )
+                spread = (
+                    float(np.std(values, ddof=1))
+                    if len(values) > 1
+                    else float("nan")
+                )
+            else:
+                center, lower, upper = _bootstrap_linear_median_ci(
+                    values,
+                    seed_parts=seed_parts,
+                )
+                spread = (
+                    float(np.quantile(values, 0.75) - np.quantile(values, 0.25))
+                    if len(values) > 1
+                    else float("nan")
+                )
+            means.append(center)
             lowers.append(lower)
             uppers.append(upper)
-            standard_deviations.append(
-                float(np.std(values, ddof=1)) if len(values) > 1 else float("nan")
-            )
+            standard_deviations.append(spread)
         mean_array = np.asarray(means)
         lower_array = np.asarray(lowers)
         upper_array = np.asarray(uppers)
@@ -723,12 +804,20 @@ def _legacy_metric_figure(
             capsize=4,
             zorder=4,
         )
-        _annotate_mean_and_sd(
-            axis,
-            bars,
-            means,
-            standard_deviations,
-        )
+        if center_method == "mean":
+            _annotate_mean_and_sd(
+                axis,
+                bars,
+                means,
+                standard_deviations,
+            )
+        else:
+            _annotate_median_and_iqr(
+                axis,
+                bars,
+                means,
+                standard_deviations,
+            )
         # 各バー上へ、その条件・眼条件に含まれる全試行を表示する。
         for position, values in zip(positions, trial_values):
             jitter = np.linspace(
@@ -755,8 +844,9 @@ def _legacy_metric_figure(
         label=f"Ref Contrast ({reference:g})",
         zorder=1,
     )
+    center_label = "Mean" if center_method == "mean" else "Median"
     axis.set_title(
-        f"{metadata['Session_Type']}: {ylabel} "
+        f"{metadata['Session_Type']}: {ylabel} [{center_label}] "
         f"(Ref={reference:g}, "
         f"Ori={float(metadata['Orientation']):g}°)"
     )
@@ -793,8 +883,11 @@ def save_legacy_contrast_figures(
         for old_path in destination.glob(pattern):
             old_path.unlink()
 
+    center_methods = ("mean", "median")
     outputs: dict[str, list[Path]] = {
-        metric_name: [] for metric_name, _, _ in _LEGACY_METRIC_SPECS
+        (metric_name if method == "mean" else f"{metric_name}_median"): []
+        for metric_name, _, _ in _LEGACY_METRIC_SPECS
+        for method in center_methods
     }
     for group_values, group in validated.groupby(
         list(ANALYSIS_GROUP_COLUMNS),
@@ -803,27 +896,35 @@ def save_legacy_contrast_figures(
     ):
         metadata = dict(zip(ANALYSIS_GROUP_COLUMNS, group_values))
         for metric_name, value_column, ylabel in _LEGACY_METRIC_SPECS:
-            figure = _legacy_metric_figure(
-                group,
-                value_column=value_column,
-                ylabel=ylabel,
-                metric_name=metric_name,
-                metadata=metadata,
-            )
-            output_path = destination / _legacy_file_name(
-                metric_name,
-                metadata,
-            )
-            try:
-                figure.savefig(
-                    output_path,
-                    dpi=_LEGACY_DPI,
-                    bbox_inches="tight",
-                    facecolor="white",
+            for center_method in center_methods:
+                output_key = (
+                    metric_name
+                    if center_method == "mean"
+                    else f"{metric_name}_median"
                 )
-            finally:
-                plt.close(figure)
-            outputs[metric_name].append(output_path)
+                figure = _legacy_metric_figure(
+                    group,
+                    value_column=value_column,
+                    ylabel=ylabel,
+                    metric_name=metric_name,
+                    metadata=metadata,
+                    center_method=center_method,
+                )
+                output_path = destination / _legacy_file_name(
+                    metric_name,
+                    metadata,
+                    center_method=center_method,
+                )
+                try:
+                    figure.savefig(
+                        output_path,
+                        dpi=_LEGACY_DPI,
+                        bbox_inches="tight",
+                        facecolor="white",
+                    )
+                finally:
+                    plt.close(figure)
+                outputs[output_key].append(output_path)
     return outputs
 
 

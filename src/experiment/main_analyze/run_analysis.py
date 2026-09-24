@@ -24,7 +24,8 @@ from .config import (
     EXPERIMENT_RESULT_ROOT,
     HYPOTHESIS_TESTS_FILENAME,
     MANIFEST_FILENAME,
-    PARTICIPANT_AGGREGATION,
+    MEAN_PARTICIPANT_AGGREGATION,
+    MEDIAN_PARTICIPANT_AGGREGATION,
     TRAINING_FIGURE_ROOT,
     UNCORRECTED_SUMMARY_FILENAME,
     AnalysisOutputPaths,
@@ -236,7 +237,11 @@ def _manifest_payload(
         "Run_Name": result.output_paths.run_name,
         "Analysis_Mode": result.analysis_mode,
         "Input_Mode": "all_participants" if all_participants else "explicit_selection",
-        "Participant_Aggregation": PARTICIPANT_AGGREGATION,
+        "Participant_Aggregation": str(
+            result.uncorrected_summary["Participant_Aggregation"].iloc[0]
+        ),
+        "Between_Participant_Summary": "mean_of_participant_log10_values",
+        "Confidence_Interval": "participant_bootstrap_mean_95_percentile",
         "DPF_Correction_Method": CORRECTION_METHOD,
         "Hypothesis_Rows_Per_Analysis_Group": EXPECTED_ROWS_PER_ANALYSIS_GROUP,
         "Analysis_Group_Count": group_count,
@@ -254,6 +259,110 @@ def _manifest_payload(
         "Table_Files": {name: str(path) for name, path in table_files.items()},
         "Figure_Files": figure_files,
     }
+
+
+def _variant_output_paths(
+    base_paths: AnalysisOutputPaths,
+    variant_name: str,
+) -> AnalysisOutputPaths:
+    """平均版と中央値版を衝突しないサブフォルダへ分ける。"""
+    return AnalysisOutputPaths(
+        run_name=f"{base_paths.run_name}_{variant_name}",
+        table_dir=base_paths.table_dir / variant_name,
+        figure_dir=base_paths.figure_dir / variant_name,
+    )
+
+
+def _run_full_analysis_variant(
+    *,
+    loaded: LoadedTrialData,
+    session_dirs: Sequence[Path],
+    output_paths: AnalysisOutputPaths,
+    aggregation: str,
+    save_figures: bool,
+) -> AnalysisRunResult:
+    """指定した参加者内集約方法で全参加者解析を1系列実行する。"""
+    uncorrected_summary = build_participant_summary(
+        loaded.trials,
+        aggregation=aggregation,
+    )
+    corrected_summary = apply_dpf_correction(
+        uncorrected_summary,
+        expected_aggregation=aggregation,
+    )
+    hypothesis_tests = run_hypothesis_tests(
+        uncorrected_summary,
+        corrected_summary,
+    )
+
+    output_paths.table_dir.mkdir(parents=True, exist_ok=True)
+    output_paths.figure_dir.mkdir(parents=True, exist_ok=True)
+    table_files = _save_tables(
+        output_paths=output_paths,
+        uncorrected_summary=uncorrected_summary,
+        corrected_summary=corrected_summary,
+        hypothesis_tests=hypothesis_tests,
+        exclusions=loaded.exclusions,
+    )
+    if save_figures:
+        saved_figures = save_all_figures(
+            uncorrected_summary,
+            corrected_summary,
+            output_paths,
+        )
+        figure_files = {
+            family: tuple(paths) for family, paths in saved_figures.items()
+        }
+    else:
+        figure_files = {
+            "uncorrected": tuple(),
+            "dpf_corrected": tuple(),
+            "h4_interaction": tuple(),
+        }
+
+    defocus_result = save_defocus_matching_outputs(
+        session_dirs,
+        corrected_summary=corrected_summary,
+        table_output_dir=output_paths.table_dir,
+        figure_output_dir=output_paths.figure_dir / "defocus_matching",
+        save_figure=save_figures,
+    )
+    table_files.update(
+        {
+            "defocus_participant_summary": defocus_result.summary_file,
+            "defocus_dp_ocularity_participant_pairs": (
+                defocus_result.participant_pairs_file
+            ),
+            "defocus_dp_ocularity_correlation": defocus_result.correlation_file,
+        }
+    )
+    figure_files["defocus_matching"] = (
+        (defocus_result.figure_file,)
+        if defocus_result.figure_file is not None
+        else tuple()
+    )
+    figure_files["defocus_dp_correlation"] = (
+        defocus_result.correlation_figure_files
+    )
+
+    result = AnalysisRunResult(
+        output_paths=output_paths,
+        session_dirs=tuple(session_dirs),
+        uncorrected_summary=uncorrected_summary,
+        corrected_summary=corrected_summary,
+        hypothesis_tests=hypothesis_tests,
+        exclusions=loaded.exclusions,
+        figure_files=figure_files,
+        analysis_mode=FULL_ANALYSIS_MODE,
+    )
+    manifest = _manifest_payload(
+        result=result,
+        loaded=loaded,
+        all_participants=True,
+        table_files=table_files,
+    )
+    _atomic_json(manifest, output_paths.table_dir / MANIFEST_FILENAME)
+    return result
 
 
 def run_analysis(
@@ -338,95 +447,40 @@ def run_analysis(
             print("Figure output skipped by request; no files were generated.")
         return result
 
-    uncorrected_summary = build_participant_summary(loaded.trials)
-    corrected_summary = apply_dpf_correction(uncorrected_summary)
-    hypothesis_tests = run_hypothesis_tests(
-        uncorrected_summary,
-        corrected_summary,
+    variants = (
+        ("mean_based", MEAN_PARTICIPANT_AGGREGATION),
+        ("median_based", MEDIAN_PARTICIPANT_AGGREGATION),
     )
-
-    output_paths.table_dir.mkdir(parents=True, exist_ok=True)
-    output_paths.figure_dir.mkdir(parents=True, exist_ok=True)
-    table_files = _save_tables(
-        output_paths=output_paths,
-        uncorrected_summary=uncorrected_summary,
-        corrected_summary=corrected_summary,
-        hypothesis_tests=hypothesis_tests,
-        exclusions=loaded.exclusions,
-    )
-    if save_figures:
-        saved_figures = save_all_figures(
-            uncorrected_summary,
-            corrected_summary,
-            output_paths,
+    results: dict[str, AnalysisRunResult] = {}
+    for variant_name, aggregation in variants:
+        variant_paths = _variant_output_paths(output_paths, variant_name)
+        results[variant_name] = _run_full_analysis_variant(
+            loaded=loaded,
+            session_dirs=session_dirs,
+            output_paths=variant_paths,
+            aggregation=aggregation,
+            save_figures=save_figures,
         )
-        figure_files = {
-            family: tuple(paths) for family, paths in saved_figures.items()
-        }
-    else:
-        figure_files = {
-            "uncorrected": tuple(),
-            "dpf_corrected": tuple(),
-            "h4_interaction": tuple(),
-        }
-
-    defocus_result = save_defocus_matching_outputs(
-        session_dirs,
-        corrected_summary=corrected_summary,
-        table_output_dir=output_paths.table_dir,
-        figure_output_dir=output_paths.figure_dir / "defocus_matching",
-        save_figure=save_figures,
-    )
-    table_files.update(
-        {
-            "defocus_participant_summary": defocus_result.summary_file,
-            "defocus_dp_ocularity_participant_pairs": (
-                defocus_result.participant_pairs_file
-            ),
-            "defocus_dp_ocularity_correlation": defocus_result.correlation_file,
-        }
-    )
-    figure_files["defocus_matching"] = (
-        (defocus_result.figure_file,)
-        if defocus_result.figure_file is not None
-        else tuple()
-    )
-    figure_files["defocus_dp_correlation"] = (
-        defocus_result.correlation_figure_files
-    )
-
-    result = AnalysisRunResult(
-        output_paths=output_paths,
-        session_dirs=tuple(session_dirs),
-        uncorrected_summary=uncorrected_summary,
-        corrected_summary=corrected_summary,
-        hypothesis_tests=hypothesis_tests,
-        exclusions=loaded.exclusions,
-        figure_files=figure_files,
-        analysis_mode=analysis_mode,
-    )
-    manifest = _manifest_payload(
-        result=result,
-        loaded=loaded,
-        all_participants=all_participants,
-        table_files=table_files,
-    )
-    _atomic_json(manifest, output_paths.table_dir / MANIFEST_FILENAME)
 
     print(
         f"Loaded {len(loaded.sessions)} session(s), "
         f"{loaded.sessions['ID'].nunique()} participant(s)."
     )
-    print(f"Saved analysis tables: {output_paths.table_dir}")
-    if save_figures:
-        figure_count = sum(len(paths) for paths in figure_files.values())
+    for variant_name, result in results.items():
         print(
-            f"Saved {figure_count} figure(s): "
-            f"{output_paths.figure_dir}"
+            f"Saved {variant_name} analysis tables: "
+            f"{result.output_paths.table_dir}"
         )
-    else:
-        print("Figure output skipped by request.")
-    return result
+        if save_figures:
+            figure_count = sum(
+                len(paths) for paths in result.figure_files.values()
+            )
+            print(
+                f"Saved {figure_count} {variant_name} figure(s): "
+                f"{result.output_paths.figure_dir}"
+            )
+    # 公開APIの戻り値は後方互換性のため平均版を返す。
+    return results["mean_based"]
 
 def build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
