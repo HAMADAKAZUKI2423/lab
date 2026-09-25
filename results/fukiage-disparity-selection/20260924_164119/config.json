@@ -1,0 +1,41 @@
+{
+  "ipd_mm": 60.0,
+  "distance_fg_cm": 50.0,
+  "distance_bg_cm": 125.0,
+  "visual_angle_deg": 7.9,
+  "nominal_l_fg": 15.0,
+  "nominal_l_bg": 15.0,
+  "image_size_px": 512,
+  "disparity_deg": 4.0946852325771905,
+  "disparity_px": 265,
+  "alpha": 0.5,
+  "model": "vismlp_norm",
+  "device": "cuda:0",
+  "top_k": 20,
+  "texture_class_count": 3,
+  "luminance_class_count": 3,
+  "laplacian_levels": 3,
+  "kmeans_random_state": 42,
+  "samples_per_category": 50,
+  "sampling_random_seed": 42,
+  "apply_defocus": false,
+  "image_dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\data\\raw\\images",
+  "image_count": 5766,
+  "corner_category_counts_before_sampling": {
+    "texture_top__luminance_top": 368,
+    "texture_top__luminance_bottom": 311,
+    "texture_bottom__luminance_top": 959,
+    "texture_bottom__luminance_bottom": 1170
+  },
+  "corner_category_counts_after_sampling": {
+    "texture_top__luminance_top": 50,
+    "texture_top__luminance_bottom": 50,
+    "texture_bottom__luminance_top": 50,
+    "texture_bottom__luminance_bottom": 50
+  },
+  "sampled_image_count": 200,
+  "foreground_candidate_count": 100,
+  "background_candidate_count": 200,
+  "display_dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\DisplayBrightness",
+  "visibility_repo": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\visibility_blend_2025-main"
+}
