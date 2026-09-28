@@ -29,24 +29,43 @@ PREVIEW_ROOT = LAB_ROOT / "results" / "tables" / "preview-selected-pairs"
 
 
 def load_selected_pairs(directory: Path):
-    with (directory / "top20.csv").open(encoding="utf-8-sig", newline="") as f:
-        reader = csv.DictReader(f)
-        required = {"rank", "foreground_path", "background_path"}
-        if not required.issubset(reader.fieldnames or []):
-            raise ValueError(f"CSV必須列: {sorted(required)}")
-        rows = list(reader)
-    if not rows:
-        raise ValueError("top20.csvにペアがありません")
-    rows.sort(key=lambda r: int(r["rank"]))
-    ranks = [int(r["rank"]) for r in rows]
-    if min(ranks) < 1 or len(set(ranks)) != len(ranks):
-        raise ValueError("rankは重複のない正整数にしてください")
+    required = {
+        "rank", "group_rank", "difference_group",
+        "foreground_path", "background_path",
+    }
+    rows = []
+    for expected_group in ("high", "low"):
+        csv_path = directory / f"{expected_group}10.csv"
+        with csv_path.open(encoding="utf-8-sig", newline="") as f:
+            reader = csv.DictReader(f)
+            if not required.issubset(reader.fieldnames or []):
+                raise ValueError(
+                    f"{csv_path.name}のCSV必須列: {sorted(required)}"
+                )
+            group_rows = list(reader)
+        if not group_rows:
+            raise ValueError(f"{csv_path.name}にペアがありません")
+        if any(row["difference_group"] != expected_group for row in group_rows):
+            raise ValueError(
+                f"{csv_path.name}のdifference_groupは{expected_group}にしてください"
+            )
+        group_rows.sort(key=lambda row: int(row["group_rank"]))
+        group_ranks = [int(row["group_rank"]) for row in group_rows]
+        if min(group_ranks) < 1 or len(set(group_ranks)) != len(group_ranks):
+            raise ValueError(
+                f"{csv_path.name}のgroup_rankは重複のない正整数にしてください"
+            )
+        rows.extend(group_rows)
+
     trials = []
     for row in rows:
+        group = row["difference_group"]
+        group_rank = int(row["group_rank"])
+        pair_dir = directory / f"{group}10" / f"rank_{group_rank:02d}"
         paths = {}
         for role in ("foreground", "background"):
-            # 保存された元画像を優先。加工済み・合成済み画像は読み込まない。
-            saved = sorted((directory / "top20" / f"rank_{int(row['rank']):02d}").glob(f"{role}_original.*"))
+            # high10/low10に保存された元画像を優先する。
+            saved = sorted(pair_dir.glob(f"{role}_original.*"))
             if len(saved) > 1:
                 raise ValueError(f"元画像が複数あります: {saved}")
             path = saved[0] if saved else Path(row[f"{role}_path"])
@@ -174,9 +193,11 @@ class SelectedPairPreview(ImageExperimentApp):
         self.clear_preview()
         self.preview_state = "review"
         show_evaluation_ui(self, self.save_and_next)
-        rank = self.selected_rows[self.current_trial_index]["rank"]
+        row = self.selected_rows[self.current_trial_index]
+        group = row["difference_group"]
+        group_rank = row["group_rank"]
         tk.Label(self.eval_frame, bg="white", text=
-                 f"選定rank {rank} / {self.current_trial_index+1} of {len(self.trial_list)}\n"
+                 f"{group} rank {group_rank} / {self.current_trial_index+1} of {len(self.trial_list)}\n"
                  "R / Space: 再提示、P: 前へ、N: 評価せず次へ、C: 位置合わせ").pack(pady=8)
         bar = tk.Frame(self.eval_frame, bg="white")
         bar.pack()
@@ -198,7 +219,10 @@ class SelectedPairPreview(ImageExperimentApp):
             return
         row = self.selected_rows[self.current_trial_index]
         record = {
-            "timestamp": datetime.now().isoformat(), "rank": row["rank"],
+            "timestamp": datetime.now().isoformat(),
+            "rank": row["rank"],
+            "difference_group": row["difference_group"],
+            "group_rank": row["group_rank"],
             "foreground_path": str(self.current_trial.foreground_path),
             "background_path": str(self.current_trial.background_path),
             "score": int(self.evaluation_val.get()),
@@ -230,14 +254,21 @@ class SelectedPairPreview(ImageExperimentApp):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("result_dir", nargs="?", type=Path, help="top20.csvのある結果フォルダ")
+    parser.add_argument(
+        "result_dir", nargs="?", type=Path,
+        help="high10.csvとlow10.csvのある結果フォルダ",
+    )
     args = parser.parse_args()
     root = tk.Tk()
     root.withdraw()
     try:
         directory = args.result_dir
         if directory is None:
-            chosen = filedialog.askdirectory(parent=root, title="top20.csvのある結果フォルダ", initialdir=str(RESULT_ROOT))
+            chosen = filedialog.askdirectory(
+                parent=root,
+                title="high10.csvとlow10.csvのある結果フォルダ",
+                initialdir=str(RESULT_ROOT),
+            )
             if not chosen:
                 return
             directory = Path(chosen)

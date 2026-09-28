@@ -642,8 +642,15 @@ def save_selected_pair(
     calibration: DisplayCalibration, model,
     settings: RunSettings, device: torch.device,
 ) -> None:
-    assert result.rank is not None
-    pair_dir = output_dir / "top20" / f"rank_{result.rank:02d}"
+    if result.difference_group not in {"high", "low"}:
+        raise ValueError(
+            f"difference_groupはhighまたはlowにしてください: "
+            f"{result.difference_group!r}"
+        )
+    if result.group_rank is None:
+        raise ValueError("group_rankが設定されていません")
+    group_dir = output_dir / f"{result.difference_group}10"
+    pair_dir = group_dir / f"rank_{result.group_rank:02d}"
     pair_dir.mkdir(parents=True, exist_ok=False)
     right_bg, left_bg = make_eye_backgrounds(
         panorama, settings.image_size_px, settings.disparity_px
@@ -823,6 +830,27 @@ def main() -> None:
         results, args.selection_pool_size, args.max_clip_ratio
     )
     write_csv(output_dir / "top20.csv", selected)
+
+    high_results = sorted(
+        (row for row in selected if row.difference_group == "high"),
+        key=lambda row: row.group_rank if row.group_rank is not None else math.inf,
+    )
+    low_results = sorted(
+        (row for row in selected if row.difference_group == "low"),
+        key=lambda row: row.group_rank if row.group_rank is not None else math.inf,
+    )
+    if len(high_results) != TEXTURE_CLASS_COUNT:
+        raise RuntimeError(
+            f"highの選定数が{TEXTURE_CLASS_COUNT}ではありません: "
+            f"{len(high_results)}"
+        )
+    if len(low_results) != TEXTURE_CLASS_COUNT:
+        raise RuntimeError(
+            f"lowの選定数が{TEXTURE_CLASS_COUNT}ではありません: "
+            f"{len(low_results)}"
+        )
+    write_csv(output_dir / "high10.csv", high_results)
+    write_csv(output_dir / "low10.csv", low_results)
 
     for result in selected:
         fg_path = Path(result.foreground_path)
