@@ -41,11 +41,11 @@ DTD_IMAGE_DIR = (
     / "Describable Textures Dataset" / "images"
 )
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
-LUMINANCE_CLASS_COUNT = 3
+LUMINANCE_CLASS_COUNT = 5
 TEXTURE_CLASS_COUNT = 10
 LAPLACIAN_LEVELS = 3
 KMEANS_RANDOM_STATE = 42
-DTD_SAMPLES_PER_CATEGORY = 10
+DTD_SAMPLES_PER_CATEGORY = 20
 DTD_SAMPLING_RANDOM_SEED = 42
 
 
@@ -245,7 +245,7 @@ def compute_laplacian_mad(bgr: np.ndarray, levels: int) -> np.ndarray:
 
 
 def classify_images(paths: list[Path], settings: RunSettings) -> list[ImageItem]:
-    """輝度を等数3分割し、低輝度前景候補だけをテクスチャ10クラス化する。"""
+    """輝度を等数5分割し、最下位前景候補だけをテクスチャ10クラス化する。"""
     if len(paths) < settings.luminance_class_count * settings.texture_class_count:
         raise ValueError("画像数が少なすぎます")
     try:
@@ -315,7 +315,7 @@ def classify_images(paths: list[Path], settings: RunSettings) -> list[ImageItem]
             foreground_texture_class=None if texture is None else texture[1],
             distance_to_texture_center=None if texture is None else texture[2],
             foreground_candidate=lum_class == 1,
-            background_candidate=lum_class in (2, 3),
+            background_candidate=lum_class in (4, 5),
         ))
     return items
 
