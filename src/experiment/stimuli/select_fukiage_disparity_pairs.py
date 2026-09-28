@@ -32,14 +32,21 @@ SCRIPT_PATH = Path(__file__).resolve()
 LAB_ROOT = SCRIPT_PATH.parents[3]
 VISIBILITY_REPO = LAB_ROOT / "visibility_blend_2025-main"
 DEFAULT_OUTPUT_ROOT = LAB_ROOT / "results" / "fukiage-disparity-selection"
-RAW_IMAGE_DIR = (
+MCGILL_IMAGE_DIR = (
     LAB_ROOT / "data" / "raw" / "images"
+    / "McGill Calibrated Color Image Database" / "Textures"
+)
+DTD_IMAGE_DIR = (
+    LAB_ROOT / "data" / "raw" / "images"
+    / "Describable Textures Dataset" / "images"
 )
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 LUMINANCE_CLASS_COUNT = 3
 TEXTURE_CLASS_COUNT = 10
 LAPLACIAN_LEVELS = 3
 KMEANS_RANDOM_STATE = 42
+DTD_SAMPLES_PER_CATEGORY = 10
+DTD_SAMPLING_RANDOM_SEED = 42
 
 
 @dataclass(frozen=True)
@@ -103,7 +110,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", default="vismlp_norm")
     parser.add_argument("--device", default="cpu")
     parser.add_argument("--output-dir", type=Path)
-    parser.add_argument("--image-dir", type=Path, default=RAW_IMAGE_DIR)
+    parser.add_argument(
+        "--image-dir", type=Path, action="append", dest="image_dirs",
+        help=("任意の入力画像ルート。複数回指定できます。指定した場合は、その"
+              "ディレクトリ群を全件使用し、既定のDTDカテゴリ抽出は行いません"),
+    )
+    parser.add_argument(
+        "--dtd-samples-per-category", type=int,
+        default=DTD_SAMPLES_PER_CATEGORY,
+        help="DTDの各カテゴリフォルダから抽出する画像数（既定: 10）",
+    )
+    parser.add_argument(
+        "--dtd-sampling-seed", type=int,
+        default=DTD_SAMPLING_RANDOM_SEED,
+        help="DTDカテゴリ内ランダム抽出の乱数シード（既定: 42）",
+    )
     parser.add_argument(
         "--selection-pool-size", type=int, default=200,
         help=("各テクスチャクラスについて、最適化へ渡す上位/下位候補数。"
@@ -159,6 +180,36 @@ def discover_images_recursive(directory: Path) -> list[Path]:
         path for path in directory.rglob("*")
         if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
     )
+
+
+def sample_dtd_images_by_category(
+    directory: Path, samples_per_category: int, random_seed: int,
+) -> tuple[list[Path], dict[str, int]]:
+    """DTDの各直下カテゴリから、再現可能な乱数で同数を非復元抽出する。"""
+    if samples_per_category < 1:
+        raise ValueError("--dtd-samples-per-categoryは1以上にしてください")
+    categories = sorted(
+        (path for path in directory.iterdir() if path.is_dir()),
+        key=lambda path: str(path).casefold(),
+    )
+    if not categories:
+        raise ValueError(f"DTDカテゴリフォルダがありません: {directory}")
+    rng = np.random.default_rng(random_seed)
+    selected: list[Path] = []
+    category_counts: dict[str, int] = {}
+    for category in categories:
+        candidates = discover_images_recursive(category)
+        category_counts[category.name] = len(candidates)
+        if len(candidates) < samples_per_category:
+            raise ValueError(
+                f"DTDカテゴリ {category.name} は{len(candidates)}枚しかありません。"
+                f"{samples_per_category}枚を非復元抽出できません"
+            )
+        indices = rng.choice(
+            len(candidates), size=samples_per_category, replace=False
+        )
+        selected.extend(candidates[int(index)] for index in sorted(indices.tolist()))
+    return selected, category_counts
 
 
 def read_bgr(path: Path) -> np.ndarray:
@@ -622,9 +673,48 @@ def save_selected_pair(
 def main() -> None:
     args = parse_args()
     settings = load_settings(args)
-    paths = discover_images_recursive(args.image_dir)
+    use_default_datasets = not args.image_dirs
+    image_dirs = [
+        path.expanduser().resolve()
+        for path in (
+            args.image_dirs
+            or (MCGILL_IMAGE_DIR, DTD_IMAGE_DIR)
+        )
+    ]
+    missing_image_dirs = [path for path in image_dirs if not path.is_dir()]
+    if missing_image_dirs:
+        raise FileNotFoundError(
+            "入力画像ディレクトリがありません: "
+            + ", ".join(str(path) for path in missing_image_dirs)
+        )
+
+    dtd_category_counts: dict[str, int] = {}
+    if use_default_datasets:
+        mcgill_paths = discover_images_recursive(image_dirs[0])
+        dtd_paths, dtd_category_counts = sample_dtd_images_by_category(
+            image_dirs[1],
+            args.dtd_samples_per_category,
+            args.dtd_sampling_seed,
+        )
+        paths = sorted(
+            {path.resolve() for path in mcgill_paths + dtd_paths},
+            key=lambda path: str(path).casefold(),
+        )
+    else:
+        mcgill_paths = []
+        dtd_paths = []
+        paths = sorted(
+            {
+                path.resolve()
+                for directory in image_dirs
+                for path in discover_images_recursive(directory)
+            },
+            key=lambda path: str(path).casefold(),
+        )
     if not paths:
-        raise FileNotFoundError(f"画像がありません: {args.image_dir}")
+        raise FileNotFoundError(
+            "画像がありません: " + ", ".join(str(path) for path in image_dirs)
+        )
     try:
         from scipy.optimize import milp  # noqa: F401
     except ImportError as exc:
@@ -665,8 +755,24 @@ def main() -> None:
     with (output_dir / "config.json").open("w", encoding="utf-8") as file:
         json.dump({
             **asdict(settings),
-            "image_dir": str(args.image_dir),
+            "image_dirs": [str(path) for path in image_dirs],
             "image_count": len(paths),
+            "dataset_image_counts": (
+                {
+                    "mcgill_all": len(mcgill_paths),
+                    "dtd_selected": len(dtd_paths),
+                }
+                if use_default_datasets
+                else {"custom_all": len(paths)}
+            ),
+            "dtd_sampling_applied": use_default_datasets,
+            "dtd_samples_per_category": (
+                args.dtd_samples_per_category if use_default_datasets else None
+            ),
+            "dtd_sampling_seed": (
+                args.dtd_sampling_seed if use_default_datasets else None
+            ),
+            "dtd_category_counts_before_sampling": dtd_category_counts,
             "foreground_candidate_count": len(fg_items),
             "background_candidate_count": len(bg_items),
             "evaluated_pair_count": len(fg_items) * len(bg_items),
@@ -699,9 +805,14 @@ def main() -> None:
             )
             results.append(result)
             print(
-                f"[{index}/{total}] {result.foreground_texture_class}: "
-                f"{fg_item.path.name} x {bg_item.path.name} = "
-                f"{result.absolute_score_difference:.6f}"
+                "[{}/{}] Tex{}: {} x {} = {:.6f}".format(
+                    index,
+                    total,
+                    result.foreground_texture_class,
+                    fg_item.path.name,
+                    bg_item.path.name,
+                    result.absolute_score_difference,
+                )
             )
 
     results.sort(key=lambda row: (
