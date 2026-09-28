@@ -1,0 +1,47 @@
+{
+  "result_root": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\pre-experiment-image",
+  "participant_data_dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\data\\processed\\tables\\pre-experiment-image",
+  "selected_pairs_root": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\fukiage-disparity-selection",
+  "selected_pairs_dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\fukiage-disparity-selection\\20260927_232818",
+  "display_dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\DisplayBrightness",
+  "conditions": [
+    "DP_BINOCULAR",
+    "DP_MONO_DOM",
+    "DP_MONO_NONDOM",
+    "SP_NO_DEFOCUS",
+    "SP_DEFOCUS_SIMPLE"
+  ],
+  "random_seed": 20260928,
+  "visual_angle_deg": 7.9,
+  "background_width_factor": 2.0,
+  "trials_per_condition": 20,
+  "trials_before_break": 10,
+  "time_foreground_only_ms": 500,
+  "time_isi_ms": 1000,
+  "time_both_ms": 500,
+  "distance_fg_cm": 50.0,
+  "distance_bg_cm": 125.0,
+  "background_color": "black",
+  "initial_pupil_diameter_mm": 4.0,
+  "defocus_cpd": 4.0,
+  "defocus_repetitions": 5,
+  "binocular_fusion_dominant_weight": 0.5,
+  "runtime_config": {
+    "L_fg": 15.0,
+    "L_bg": 15.0,
+    "L_ref": 30.0,
+    "VISUAL_ANGLE_DEG": 7.9,
+    "DISTANCE_FG": 50,
+    "DISTANCE_BG": 125,
+    "BG_COLOR": "black"
+  },
+  "participant_seed": 215684269,
+  "condition_order": [
+    "DP_MONO_NONDOM",
+    "DP_MONO_DOM",
+    "SP_NO_DEFOCUS",
+    "DP_BINOCULAR",
+    "SP_DEFOCUS_SIMPLE"
+  ],
+  "actual_trial_count": 88
+}

@@ -1,171 +1,231 @@
-"""Image実験の試行生成と画像前処理。"""
+"""20画像ペア×5条件の試行生成と、条件別の表示画像生成。"""
 
 from dataclasses import dataclass
-from itertools import product
 from pathlib import Path
+import hashlib
 import random
 
 import numpy as np
 from PIL import Image
+
 from experiment.common import geometry, optics, photometry
 
+from .calibration import DisplayCalibration
+from .conditions import get_condition, resolve_reference_eye
 from .config import ImageSessionConfig
-
-
-SUPPORTED_EXTENSIONS = {
-    ".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"
-}
-DUAL_PLANE = "Dual plane"
-SINGLE_PLANE = "Single plane"
-SINGLE_DEFOCUS = "Single plane + defocus simulation"
-SINGLE_DEFOCUS_BINOCULAR = (
-    "Single plane + defocus + binocular overlay"
+from .disparity import (
+    fuse_eye_views,
+    make_constant_eye_views,
+    right_aligned_disparity_px,
 )
-SUPPORTED_CONDITIONS = {
-    DUAL_PLANE,
-    SINGLE_PLANE,
-    SINGLE_DEFOCUS,
-    SINGLE_DEFOCUS_BINOCULAR,
-}
+from .selected_pairs import SelectedPair
+
+
+RESAMPLE = Image.Resampling.LANCZOS
 
 
 @dataclass(frozen=True)
 class ImageTrial:
-    condition: str
-    background_path: Path
-    foreground_path: Path
+    trial_order: int
+    block_id: int
+    within_block_order: int
+    condition_id: str
+    pair: SelectedPair
 
 
 @dataclass
 class PreparedImageStimulus:
-    foreground: Image.Image
-    background: Image.Image | None = None
-    singleplane: Image.Image | None = None
-    disparity_total_px: float = 0.0
-    defocus_difference_d: float = 0.0
-    out_of_gamut_ratio: float = 0.0
+    window1_both: Image.Image | None
+    window2_foreground_only: Image.Image
+    window2_both: Image.Image
+    metadata: dict[str, object]
 
 
-def discover_images(directory: Path) -> list[Path]:
-    if not directory.is_dir():
-        return []
-    return sorted(
-        path for path in directory.iterdir()
-        if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS
+def participant_seed(base_seed: int, participant_id: str) -> int:
+    digest = hashlib.sha256(
+        f"{base_seed}:{participant_id.strip()}".encode("utf-8")
+    ).digest()
+    return int.from_bytes(digest[:4], "big")
+
+
+def condition_order_for_participant(
+    condition_ids: tuple[str, ...],
+    participant_id: str,
+    base_seed: int,
+) -> tuple[str, ...]:
+    """奇数・偶数条件に対応した均衡順序を参加者IDから決定する。"""
+    count = len(condition_ids)
+    if count < 2:
+        raise ValueError("At least two image conditions are required")
+    first_row = [0]
+    low, high = 1, count - 1
+    while len(first_row) < count:
+        first_row.append(low)
+        low += 1
+        if len(first_row) < count:
+            first_row.append(high)
+            high -= 1
+
+    base_rows = [
+        [((index + shift) % count) for index in first_row]
+        for shift in range(count)
+    ]
+    # 奇数条件では逆順行も加え、直前条件の方向を均衡させる。
+    design_rows = (
+        base_rows
+        if count % 2 == 0
+        else base_rows + [list(reversed(row)) for row in base_rows]
     )
+    row_index = (
+        participant_seed(base_seed, participant_id) % len(design_rows)
+    )
+    return tuple(condition_ids[index] for index in design_rows[row_index])
 
 
-def build_condition_blocks(
-    config: ImageSessionConfig,
-    background_paths: list[Path],
-    foreground_paths: list[Path],
+def _stratified_pair_order(
+    pairs: list[SelectedPair],
     rng: random.Random,
-) -> list[list[ImageTrial]]:
-    """条件ごとに試行をまとめ、ブロック順とブロック内順を別々にランダム化する。"""
-    unknown = sorted(set(config.conditions) - SUPPORTED_CONDITIONS)
-    if unknown:
-        raise ValueError(f"unsupported image conditions: {unknown}")
-
-    condition_order = list(config.conditions)
-    rng.shuffle(condition_order)
-    blocks: list[list[ImageTrial]] = []
-    for condition in condition_order:
-        trials = [
-            ImageTrial(condition, background, foreground)
-            for background, foreground in product(
-                background_paths, foreground_paths
-            )
-        ]
-        rng.shuffle(trials)
-        blocks.append(trials)
-    return blocks
+) -> list[SelectedPair]:
+    high = [pair for pair in pairs if pair.difference_group == "high"]
+    low = [pair for pair in pairs if pair.difference_group == "low"]
+    if len(high) != 10 or len(low) != 10:
+        raise ValueError("Each condition requires high 10 and low 10 pairs")
+    rng.shuffle(high)
+    rng.shuffle(low)
+    first_half = high[:5] + low[:5]
+    second_half = high[5:] + low[5:]
+    rng.shuffle(first_half)
+    rng.shuffle(second_half)
+    return first_half + second_half
 
 
-def _load_source_images(trial: ImageTrial) -> tuple[Image.Image, Image.Image]:
-    with Image.open(trial.background_path) as source:
-        background = source.convert("RGB")
-    with Image.open(trial.foreground_path) as source:
-        foreground = source.convert("RGB")
-    background = background.resize((512, 512), Image.Resampling.LANCZOS)
-    background = background.crop((0, 128, 512, 384))
-    foreground = foreground.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
-    return background, foreground
+def build_trials(
+    pairs: list[SelectedPair],
+    condition_order: tuple[str, ...],
+    rng: random.Random,
+) -> list[ImageTrial]:
+    trials: list[ImageTrial] = []
+    trial_order = 1
+    for block_id, condition_id in enumerate(condition_order, start=1):
+        get_condition(condition_id)
+        for within_block_order, pair in enumerate(
+            _stratified_pair_order(pairs, rng), start=1
+        ):
+            trials.append(ImageTrial(
+                trial_order=trial_order,
+                block_id=block_id,
+                within_block_order=within_block_order,
+                condition_id=condition_id,
+                pair=pair,
+            ))
+            trial_order += 1
+    expected_trial_count = len(condition_order) * len(pairs)
+    if len(trials) != expected_trial_count:
+        raise RuntimeError(
+            f"Expected {expected_trial_count} trials, generated {len(trials)}"
+        )
+    return trials
 
 
-def _translate_without_wrap(image: Image.Image, shift_x_px: float) -> Image.Image:
-    """画像を水平方向へ移動し、はみ出しを反対側へ回り込ませない。"""
-    return image.transform(
-        image.size,
-        Image.Transform.AFFINE,
-        (1.0, 0.0, -float(shift_x_px), 0.0, 1.0, 0.0),
-        resample=Image.Resampling.BICUBIC,
-        fillcolor=(0, 0, 0),
-    )
+def _read_rgb(path: Path) -> Image.Image:
+    with Image.open(path) as source:
+        return source.convert("RGB").copy()
 
 
-def _calculate_disparity_px(
-    ipd_mm: float,
-    distance_fg_cm: float,
-    distance_bg_cm: float,
-) -> float:
-    """背景の左右眼像間距離を前景面上のピクセル数で返す。"""
-    if ipd_mm <= 0 or distance_fg_cm <= 0 or distance_bg_cm <= 0:
-        raise ValueError("IPD and viewing distances must be positive")
-    ipd_cm = ipd_mm / 10.0
-    shift_cm = ipd_cm * (1.0 - distance_fg_cm / distance_bg_cm)
-    return shift_cm * geometry.PIXELS_PER_CM
-
-
-def _prepare_singleplane_components(
-    background: Image.Image,
-    foreground: Image.Image,
+def _prepare_sources(
+    pair: SelectedPair,
     config: ImageSessionConfig,
-) -> tuple[Image.Image, Image.Image]:
-    """BGとFGを前景面の共通キャンバスへ配置する。"""
-    canvas_width = geometry.get_size_for_visual_angle(
-        config.distance_fg_cm, config.visual_angle_deg * 2.0
-    )
-    canvas_height = geometry.get_size_for_visual_angle(
-        config.distance_fg_cm, config.visual_angle_deg
-    )
+) -> tuple[Image.Image, Image.Image, Image.Image]:
     foreground_size = geometry.get_size_for_visual_angle(
         config.distance_fg_cm, config.visual_angle_deg
     )
-    background = background.resize(
-        (canvas_width, canvas_height), Image.Resampling.LANCZOS
+    background_height = geometry.get_size_for_visual_angle(
+        config.distance_bg_cm, config.visual_angle_deg
     )
-    foreground = foreground.resize(
-        (foreground_size, foreground_size), Image.Resampling.LANCZOS
+    background_width = geometry.get_size_for_visual_angle(
+        config.distance_bg_cm, config.background_visual_angle_width_deg
     )
-    foreground_canvas = Image.new(
-        "RGB", (canvas_width, canvas_height), (0, 0, 0)
+    singleplane_background_height = geometry.get_size_for_visual_angle(
+        config.distance_fg_cm, config.visual_angle_deg
     )
-    foreground_canvas.paste(
-        foreground,
-        (
-            (canvas_width - foreground_size) // 2,
-            (canvas_height - foreground_size) // 2,
-        ),
+    singleplane_background_width = geometry.get_size_for_visual_angle(
+        config.distance_fg_cm, config.background_visual_angle_width_deg
     )
-    return background, foreground_canvas
+
+    foreground = _read_rgb(pair.foreground_path).resize(
+        (foreground_size, foreground_size), RESAMPLE
+    )
+    background_square = _read_rgb(pair.background_path).resize(
+        (512, 512), RESAMPLE
+    )
+    background_strip = background_square.crop((0, 128, 512, 384))
+    physical_background = background_strip.resize(
+        (background_width, background_height), RESAMPLE
+    )
+    singleplane_background = background_strip.resize(
+        (singleplane_background_width, singleplane_background_height),
+        RESAMPLE,
+    )
+    return foreground, physical_background, singleplane_background
 
 
-def _blur_for_eye(
-    background: Image.Image,
-    config: ImageSessionConfig,
-    pupil_diameter_mm: float,
+def _apply_channel_gamma(
+    values: np.ndarray,
+    gamma: dict[str, float],
+    *,
+    inverse: bool,
+) -> np.ndarray:
+    output = np.empty_like(values, dtype=np.float64)
+    for index, channel in enumerate("RGB"):
+        exponent = float(gamma[channel])
+        if exponent <= 0:
+            raise ValueError(f"Invalid gamma for {channel}: {exponent}")
+        power = 1.0 / exponent if inverse else exponent
+        output[..., index] = np.clip(values[..., index], 0.0, 1.0) ** power
+    return output
+
+
+def _color_correct_foreground(
+    foreground: Image.Image,
+    calibration: DisplayCalibration,
 ) -> Image.Image:
-    diopter_difference = abs(
-        100.0 / config.distance_fg_cm
-        - 100.0 / config.distance_bg_cm
+    if calibration.gamma_bg is None or calibration.gamma_fg is None:
+        raise RuntimeError("gamma_bg.csv and gamma_fg.csv are required")
+    encoded = np.asarray(foreground.convert("RGB"), dtype=np.float64) / 255.0
+    linear_background_reference = _apply_channel_gamma(
+        encoded, calibration.gamma_bg, inverse=False
     )
-    pixels_per_degree = geometry.get_size_for_visual_angle(
-        config.distance_fg_cm, 1.0
+    linear_foreground = np.clip(
+        linear_background_reference @ calibration.color_matrix.T,
+        0.0,
+        None,
+    )
+    output = _apply_channel_gamma(
+        linear_foreground, calibration.gamma_fg, inverse=True
+    )
+    return Image.fromarray(
+        np.clip(output * 255.0, 0, 255).astype(np.uint8), "RGB"
+    )
+
+
+def _blur_eye_background(
+    image: Image.Image,
+    *,
+    pupil_mm: float,
+    config: ImageSessionConfig,
+    pixels_per_degree: float,
+) -> Image.Image:
+    distance_fg_m = config.distance_fg_cm / 100.0
+    distance_bg_m = config.distance_bg_cm / 100.0
+    diopter_difference = abs(1.0 / distance_fg_m - 1.0 / distance_bg_m)
+    pupil = (
+        pupil_mm
+        if pupil_mm > 0 else config.initial_pupil_diameter_mm
     )
     return optics.apply_defocus_blur_to_image(
-        background,
+        image,
         diopter_difference,
-        pupil_diameter_mm,
+        pupil,
         pixels_per_degree,
     )
 
@@ -173,75 +233,104 @@ def _blur_for_eye(
 def prepare_trial_stimulus(
     trial: ImageTrial,
     config: ImageSessionConfig,
-    calibration,
     *,
+    calibration: DisplayCalibration,
+    dominant_eye: str,
     left_pupil_mm: float,
     right_pupil_mm: float,
     ipd_mm: float,
 ) -> PreparedImageStimulus:
-    background_source, foreground_source = _load_source_images(trial)
-    foreground_size = geometry.get_size_for_visual_angle(
-        config.distance_fg_cm, config.visual_angle_deg
+    spec = get_condition(trial.condition_id)
+    (
+        foreground_source,
+        physical_background,
+        singleplane_background,
+    ) = _prepare_sources(trial.pair, config)
+    corrected_foreground = _color_correct_foreground(
+        foreground_source, calibration
     )
-    foreground_display = foreground_source.resize(
-        (foreground_size, foreground_size), Image.Resampling.LANCZOS
+    foreground_display = corrected_foreground.transpose(
+        Image.Transpose.FLIP_LEFT_RIGHT
     )
 
-    if trial.condition == DUAL_PLANE:
-        background_height = geometry.get_size_for_visual_angle(
-            config.distance_bg_cm, config.visual_angle_deg
-        )
-        background_width = geometry.get_size_for_visual_angle(
-            config.distance_bg_cm, config.visual_angle_deg * 2.0
-        )
+    base_metadata: dict[str, object] = {
+        "Plane_Mode": spec.plane_mode,
+        "Viewing_Mode": spec.viewing_mode,
+        "Reference_Eye": resolve_reference_eye(spec, dominant_eye),
+        "Defocus_Mode": spec.defocus_mode,
+        "Disparity_Mode": spec.disparity_mode,
+        "Disparity_Px": 0,
+        "Disparity_Map_Path": "",
+        "SinglePlane_OutOfGamut_Ratio": 0.0,
+    }
+    if spec.plane_mode == "dual":
         return PreparedImageStimulus(
-            foreground=foreground_display,
-            background=background_source.resize(
-                (background_width, background_height),
-                Image.Resampling.LANCZOS,
-            ),
+            window1_both=physical_background,
+            window2_foreground_only=foreground_display,
+            window2_both=foreground_display,
+            metadata=base_metadata,
         )
 
-    background, foreground_canvas = _prepare_singleplane_components(
-        background_source, foreground_source, config
+    pixels_per_degree = foreground_source.width / config.visual_angle_deg
+    if spec.disparity_mode == "simple":
+        disparity_px = right_aligned_disparity_px(
+            ipd_mm=ipd_mm,
+            distance_fg_cm=config.distance_fg_cm,
+            distance_bg_cm=config.distance_bg_cm,
+            pixels_per_degree=pixels_per_degree,
+        )
+        right_background, left_background = make_constant_eye_views(
+            singleplane_background, disparity_px
+        )
+    else:
+        disparity_px = 0
+        right_background = singleplane_background.copy()
+        left_background = singleplane_background.copy()
+
+    if spec.defocus_mode == "matched_simulation":
+        right_background = _blur_eye_background(
+            right_background,
+            pupil_mm=right_pupil_mm,
+            config=config,
+            pixels_per_degree=pixels_per_degree,
+        )
+        left_background = _blur_eye_background(
+            left_background,
+            pupil_mm=left_pupil_mm,
+            config=config,
+            pixels_per_degree=pixels_per_degree,
+        )
+
+    if spec.disparity_mode == "simple":
+        reproduced_background = fuse_eye_views(
+            right_background,
+            left_background,
+            dominant_eye=dominant_eye,
+            dominant_weight=config.binocular_fusion_dominant_weight,
+        )
+    else:
+        reproduced_background = singleplane_background
+
+    if (
+        corrected_foreground.width > reproduced_background.width
+        or corrected_foreground.height > reproduced_background.height
+    ):
+        raise ValueError(
+            "Foreground image does not fit inside the Single Plane background"
+        )
+    foreground_layer = Image.new(
+        "RGB", reproduced_background.size, (0, 0, 0)
     )
-    defocus_difference = 0.0
-    disparity_total_px = 0.0
-
-    if trial.condition in {SINGLE_DEFOCUS, SINGLE_DEFOCUS_BINOCULAR}:
-        defocus_difference = abs(
-            100.0 / config.distance_fg_cm
-            - 100.0 / config.distance_bg_cm
-        )
-        left_background = _blur_for_eye(
-            background, config, left_pupil_mm
-        )
-        right_background = _blur_for_eye(
-            background, config, right_pupil_mm
-        )
-        if trial.condition == SINGLE_DEFOCUS_BINOCULAR:
-            disparity_total_px = _calculate_disparity_px(
-                ipd_mm,
-                config.distance_fg_cm,
-                config.distance_bg_cm,
-            )
-            left_background = _translate_without_wrap(
-                left_background, -disparity_total_px / 2.0
-            )
-            right_background = _translate_without_wrap(
-                right_background, disparity_total_px / 2.0
-            )
-        # 常に左右0.5:0.5。片眼像しかない端部も再正規化しない。
-        background = Image.blend(
-            left_background, right_background, 0.5
-        )
-    elif trial.condition != SINGLE_PLANE:
-        raise ValueError(f"unsupported image condition: {trial.condition}")
+    foreground_position = (
+        (reproduced_background.width - corrected_foreground.width) // 2,
+        (reproduced_background.height - corrected_foreground.height) // 2,
+    )
+    foreground_layer.paste(corrected_foreground, foreground_position)
 
     singleplane, out_of_gamut_ratio = (
         photometry.rgb_paths_to_matrix_singleplane_image(
-            background,
-            foreground_canvas,
+            reproduced_background,
+            foreground_layer,
             calibration.t_prime,
             calibration.r_prime,
             calibration.r_prime_inv,
@@ -249,10 +338,16 @@ def prepare_trial_stimulus(
             calibration.gamma_fg,
         )
     )
+    singleplane_display = singleplane.transpose(
+        Image.Transpose.FLIP_LEFT_RIGHT
+    )
+    base_metadata.update({
+        "Disparity_Px": disparity_px,
+        "SinglePlane_OutOfGamut_Ratio": out_of_gamut_ratio,
+    })
     return PreparedImageStimulus(
-        foreground=foreground_display,
-        singleplane=singleplane,
-        disparity_total_px=disparity_total_px,
-        defocus_difference_d=defocus_difference,
-        out_of_gamut_ratio=out_of_gamut_ratio,
+        window1_both=None,
+        window2_foreground_only=foreground_display,
+        window2_both=singleplane_display,
+        metadata=base_metadata,
     )

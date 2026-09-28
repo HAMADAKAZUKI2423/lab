@@ -1,10 +1,10 @@
-"""Image evaluation予備実験のTkinterアプリ。"""
+"""20画像ペア×5条件（計100試行）のImage evaluationアプリ。"""
 
 from datetime import datetime
 from pathlib import Path
 import random
 import tkinter as tk
-from tkinter import messagebox, ttk
+from tkinter import filedialog, messagebox, ttk
 
 from PIL import ImageTk
 
@@ -13,9 +13,10 @@ from experiment.common.defocus_controller import setup_defocus_matching_ui
 from ..experiment_base_ui import ExperimentBaseUI
 
 from .calibration import (
-    apply_dominant_eye_calibration,
+    apply_trial_calibration,
     initialize_defocus_calibration,
 )
+from .conditions import get_condition, resolve_observed_eye
 from .config import ImageSessionConfig
 from .evaluation import show_evaluation_ui
 from .results import (
@@ -23,10 +24,15 @@ from .results import (
     load_participant,
     save_participant,
     save_session_results,
+    save_trial_manifest,
+)
+from .selected_pairs import (
+    load_selected_pairs,
 )
 from .stimuli import (
-    build_condition_blocks,
-    discover_images,
+    build_trials,
+    condition_order_for_participant,
+    participant_seed,
     prepare_trial_stimulus,
 )
 
@@ -36,7 +42,7 @@ WIN2_MARKER_COLOR = "white"
 
 
 class ImageExperimentApp(ExperimentBaseUI):
-    """画像の前景・背景組み合わせを5段階で評価する。"""
+    """high/low各10ペアを暫定5条件で反復評価する。"""
 
     def __init__(self, root: tk.Tk, session_config: ImageSessionConfig):
         super().__init__(root)
@@ -46,6 +52,8 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.root.title("Image Evaluation - Controller (Window 2)")
         self.root.configure(bg=session_config.background_color)
 
+        self.selected_pairs_dir = self._resolve_selected_pairs_dir()
+        self.selected_pairs = load_selected_pairs(self.selected_pairs_dir)
         self.pupil_diameter_val = tk.DoubleVar(
             value=session_config.initial_pupil_diameter_mm
         )
@@ -53,6 +61,7 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.distance2 = session_config.distance_bg_cm
         self.calibration_eyes = ["Right", "Left"]
         self.current_calib_eye_idx = 0
+        self.current_alignment_eye = "Right"
         self.calib_results: dict[str, dict] = {}
         self.detailed_defocus_results: list[dict] = []
         self.current_pd_mean = 0.0
@@ -61,23 +70,37 @@ class ImageExperimentApp(ExperimentBaseUI):
             self, session_config.display_dir
         )
 
-        self.rng = random.Random()
-        self.blocks: list[list] = []
-        self.current_block_index = 0
         self.trial_list = []
-        self.current_trial_in_block = 0
+        self.condition_order: tuple[str, ...] = ()
+        self.participant_seed = 0
         self.current_trial_index = 0
+        self.active_block_id = 0
         self.results: list[dict] = []
         self.eval_buttons: list[dict] = []
         self.current_trial = None
-        self.prepared_stimulus = None
+        self.current_prepared = None
         self.photo_background = None
-        self.photo_foreground = None
-        self.photo_singleplane = None
+        self.photo_foreground_only = None
+        self.photo_both = None
         self.result_dir: Path = session_config.result_root
 
         self._setup_windows()
         self.setup_participant_info_ui()
+
+    def _resolve_selected_pairs_dir(self) -> Path:
+        configured = self.session_config.selected_pairs_dir
+        if configured is not None:
+            if not configured.is_dir():
+                raise FileNotFoundError(configured)
+            return configured.resolve()
+        chosen = filedialog.askdirectory(
+            parent=self.root,
+            title="high10.csvとlow10.csvのある選定結果フォルダ",
+            initialdir=str(self.session_config.selected_pairs_root),
+        )
+        if not chosen:
+            raise RuntimeError("Selected-pair directory was not chosen")
+        return Path(chosen).expanduser().resolve()
 
     def _setup_windows(self) -> None:
         screen_width = self.root.winfo_screenwidth()
@@ -174,7 +197,6 @@ class ImageExperimentApp(ExperimentBaseUI):
             ),
             font=("Arial", 16),
         ).grid(row=0, column=0, columnspan=2, pady=10)
-
         tk.Label(self.participant_frame, text="Age:").grid(
             row=1, column=0, sticky="w", padx=5, pady=5
         )
@@ -188,6 +210,7 @@ class ImageExperimentApp(ExperimentBaseUI):
             self.participant_frame,
             textvariable=self.participant_gender,
             values=["Male", "Female", "Other"],
+            state="readonly",
         )
         gender.grid(row=2, column=1, padx=5, pady=5)
         self.participant_gender.set("Male")
@@ -204,6 +227,7 @@ class ImageExperimentApp(ExperimentBaseUI):
             self.participant_frame,
             textvariable=self.participant_dominance,
             values=["Right", "Left"],
+            state="readonly",
         )
         dominance.grid(row=4, column=1, padx=5, pady=5)
         self.participant_dominance.set("Right")
@@ -215,11 +239,13 @@ class ImageExperimentApp(ExperimentBaseUI):
 
     def register_and_start(self, event=None) -> None:
         try:
-            int(self.participant_age.get())
-            float(self.participant_ipd.get())
+            age = int(self.participant_age.get())
+            ipd = float(self.participant_ipd.get())
+            if age <= 0 or ipd <= 0:
+                raise ValueError
         except ValueError:
             messagebox.showwarning(
-                "Input Error", "Please enter valid Age and IPD values."
+                "Input Error", "Please enter valid positive Age and IPD values."
             )
             return
         save_participant(
@@ -251,11 +277,8 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.current_calib_eye_idx = 0
         self.calib_results = {}
         self.detailed_defocus_results = []
-        self.blocks = []
-        self.current_block_index = 0
-        self.trial_list = []
-        self.current_trial_in_block = 0
         self.current_trial_index = 0
+        self.active_block_id = 0
         self.results = []
         self.start_eye_calibration()
 
@@ -263,7 +286,6 @@ class ImageExperimentApp(ExperimentBaseUI):
         self._destroy_frame("ctrl_frame")
         self.clear_key_bindings()
         if self.current_calib_eye_idx >= len(self.calibration_eyes):
-            apply_dominant_eye_calibration(self)
             self.show_experiment_start_ui()
             return
         eye = self.calibration_eyes[self.current_calib_eye_idx]
@@ -276,7 +298,7 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.pupil_diameter_val.set(
             self.session_config.initial_pupil_diameter_mm
         )
-        self.setup_calibration_ui(is_break=False)
+        self.setup_calibration_ui()
 
     def update_calibration_view(self, *args) -> None:
         self.canvas1.delete("calib")
@@ -310,35 +332,27 @@ class ImageExperimentApp(ExperimentBaseUI):
             self.canvas2, color=WIN2_MARKER_COLOR
         )
 
-    def setup_calibration_ui(self, is_break: bool = False) -> None:
+    def setup_calibration_ui(self) -> None:
         self._destroy_frame("ctrl_frame")
         self.clear_key_bindings()
         self.update_calibration_view()
+        eye = self.calibration_eyes[self.current_calib_eye_idx]
         self.ctrl_frame = tk.Frame(self.root, bg="gray")
         self.ctrl_frame.place(relx=0.5, rely=0.8, anchor="center")
-        if is_break:
-            instruction = (
-                "This is a break. You can adjust the position if needed.\n"
-                "Press Enter to resume."
-            )
-            button_text = "Resume Experiment"
-            command = self.resume_experiment
-        else:
-            instruction = "Use the arrow keys to adjust the red frame."
-            button_text = "Calibration Done, Next"
-            command = self.start_eye_defocus_matching
         tk.Label(
             self.ctrl_frame,
-            text=instruction,
+            text=f"[{eye} eye] Use the arrow keys to align the red frame.",
             bg="gray",
             fg="white",
             font=("Arial", 12),
         ).pack(pady=10, padx=20)
         tk.Button(
-            self.ctrl_frame, text=button_text, command=command
+            self.ctrl_frame,
+            text="Calibration Done, Next",
+            command=self.start_eye_defocus_matching,
         ).pack(pady=10)
         self.key_bindings["<Return>"] = self.root.bind(
-            "<Return>", lambda event: command()
+            "<Return>", lambda event: self.start_eye_defocus_matching()
         )
         self.key_bindings["<Left>"] = self.root.bind(
             "<Left>", lambda event: self.adjust_offset(-1, 0)
@@ -365,16 +379,22 @@ class ImageExperimentApp(ExperimentBaseUI):
             repetitions=self.session_config.defocus_repetitions,
         )
 
+    # ---------- block / trial ----------
+
     def show_experiment_start_ui(self) -> None:
         self.canvas1.delete("all")
         self.canvas2.delete("all")
+        self.clear_key_bindings()
         self.ctrl_frame = tk.Frame(
             self.root, bg="gray", padx=30, pady=30
         )
         self.ctrl_frame.place(relx=0.5, rely=0.5, anchor="center")
         tk.Label(
             self.ctrl_frame,
-            text="The image experiment will now begin.\nPress Enter to start.",
+            text=(
+                "The 5-condition image experiment will now begin.\n"
+                "100 trials: 20 selected pairs in every condition."
+            ),
             bg="gray",
             fg="white",
             font=("Arial", 16),
@@ -388,124 +408,80 @@ class ImageExperimentApp(ExperimentBaseUI):
             "<Return>", self.begin_experiment
         )
 
-    # ---------- trial ----------
-
     def begin_experiment(self, event=None) -> None:
         self._destroy_frame("ctrl_frame")
         self.clear_key_bindings()
-        background_paths = discover_images(
-            self.session_config.background_image_dir
+        participant_id = self.participant_id.get().strip()
+        self.participant_seed = participant_seed(
+            self.session_config.random_seed, participant_id
         )
-        foreground_paths = discover_images(
-            self.session_config.foreground_image_dir
+        self.condition_order = condition_order_for_participant(
+            self.session_config.conditions,
+            participant_id,
+            self.session_config.random_seed,
         )
-        if not background_paths or not foreground_paths:
-            messagebox.showerror(
-                "Error",
-                "Image folder not found or is empty.\n\n"
-                f"BG path: {self.session_config.background_image_dir}\n"
-                f"FG path: {self.session_config.foreground_image_dir}",
-            )
-            self._reset_to_setup_ui()
-            return
-        self.blocks = build_condition_blocks(
-            self.session_config,
-            background_paths,
-            foreground_paths,
-            self.rng,
+        rng = random.Random(self.participant_seed)
+        self.trial_list = build_trials(
+            self.selected_pairs, self.condition_order, rng
         )
-        self.current_block_index = 0
+        save_trial_manifest(
+            self.result_dir,
+            self.trial_list,
+            config=self.session_config,
+            dominant_eye=self.participant_dominance.get(),
+            selection_dir=self.selected_pairs_dir,
+            participant_seed=self.participant_seed,
+        )
+        print(f"Selected pairs: {self.selected_pairs_dir}")
+        print(f"Condition order: {self.condition_order}")
+        print(f"Participant seed: {self.participant_seed}")
+        print(f"Total trials: {len(self.trial_list)}")
         self.current_trial_index = 0
-        total_trials = sum(len(block) for block in self.blocks)
-        print(
-            f"Found {len(background_paths)} background images and "
-            f"{len(foreground_paths)} foreground images."
-        )
-        print(
-            f"Condition blocks: {len(self.blocks)} / "
-            f"Total trials: {total_trials}"
-        )
-        self.canvas1.delete("all")
-        self.canvas2.delete("all")
-        self.start_block()
-
-    def start_block(self) -> None:
-        """次の条件ブロックを準備し、条件確認画面を表示する。"""
-        self._destroy_frame("ctrl_frame")
-        self.clear_key_bindings()
-        self.canvas1.delete("all")
-        self.canvas2.delete("all")
-        if self.current_block_index >= len(self.blocks):
-            self.finish_experiment()
-            return
-
-        self.trial_list = self.blocks[self.current_block_index]
-        self.current_trial_in_block = 0
-        self._show_block_confirmation()
-
-    def _show_block_confirmation(self) -> None:
-        condition = self.trial_list[0].condition
-        self.ctrl_frame = tk.Frame(
-            self.root, bg="gray", padx=30, pady=30
-        )
-        self.ctrl_frame.place(relx=0.5, rely=0.5, anchor="center")
-        tk.Label(
-            self.ctrl_frame,
-            text=(
-                f"[Block {self.current_block_index + 1}/"
-                f"{len(self.blocks)}]\n"
-                f"Condition: {condition}\n"
-                f"Trials: {len(self.trial_list)}\n\n"
-                "Press Enter to start this block."
-            ),
-            bg="gray",
-            fg="white",
-            font=("Arial", 16),
-        ).pack(pady=20, padx=40)
-        tk.Button(
-            self.ctrl_frame,
-            text="Start Block",
-            command=self._start_current_block,
-        ).pack(pady=10)
-        self.key_bindings["<Return>"] = self.root.bind(
-            "<Return>", lambda event: self._start_current_block()
-        )
-        self.root.focus_set()
-
-    def _start_current_block(self) -> None:
-        self._destroy_frame("ctrl_frame")
-        self.clear_key_bindings()
+        self.active_block_id = 0
         self.canvas1.delete("all")
         self.canvas2.delete("all")
         self.run_trial()
 
     def run_trial(self) -> None:
-        if self.current_trial_in_block >= len(self.trial_list):
-            self.current_block_index += 1
-            self.root.after(500, self.start_block)
+        if self.current_trial_index >= len(self.trial_list):
+            self.finish_experiment()
             return
-        self.current_trial = self.trial_list[self.current_trial_in_block]
-        left_result = self.calib_results.get("Left", {})
-        right_result = self.calib_results.get("Right", {})
-        self.prepared_stimulus = prepare_trial_stimulus(
-            self.current_trial,
-            self.session_config,
-            self.defocus_display_calibration,
-            left_pupil_mm=float(left_result.get("pd_mean", 4.0)),
-            right_pupil_mm=float(right_result.get("pd_mean", 4.0)),
-            ipd_mm=float(self.participant_ipd.get()),
-        )
-        self.photo_foreground = ImageTk.PhotoImage(
-            self.prepared_stimulus.foreground
-        )
+        trial = self.trial_list[self.current_trial_index]
+        if trial.block_id != self.active_block_id:
+            self.show_block_confirmation(trial)
+            return
+
+        self.current_trial = trial
+        apply_trial_calibration(self, trial.condition_id)
+        right = self.calib_results.get("Right", {})
+        left = self.calib_results.get("Left", {})
+        try:
+            self.current_prepared = prepare_trial_stimulus(
+                trial,
+                self.session_config,
+                calibration=self.defocus_display_calibration,
+                dominant_eye=self.participant_dominance.get(),
+                left_pupil_mm=float(left.get("pd_mean", 0.0)),
+                right_pupil_mm=float(right.get("pd_mean", 0.0)),
+                ipd_mm=float(self.participant_ipd.get()),
+            )
+        except Exception as exc:
+            messagebox.showerror(
+                "Stimulus preparation failed",
+                f"Trial {trial.trial_order}: {exc}",
+                parent=self.root,
+            )
+            raise
+
+        prepared = self.current_prepared
         self.photo_background = (
-            ImageTk.PhotoImage(self.prepared_stimulus.background)
-            if self.prepared_stimulus.background is not None else None
+            ImageTk.PhotoImage(prepared.window1_both)
+            if prepared.window1_both is not None else None
         )
-        self.photo_singleplane = (
-            ImageTk.PhotoImage(self.prepared_stimulus.singleplane)
-            if self.prepared_stimulus.singleplane is not None else None
+        self.photo_foreground_only = ImageTk.PhotoImage(
+            prepared.window2_foreground_only
         )
+        self.photo_both = ImageTk.PhotoImage(prepared.window2_both)
 
         self.canvas1.configure(bg=self.session_config.background_color)
         self.canvas1.delete("all")
@@ -513,13 +489,60 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.canvas2.create_image(
             self.canvas2.winfo_width() // 2,
             self.canvas2.winfo_height() // 2,
-            image=self.photo_foreground,
+            image=self.photo_foreground_only,
             anchor="center",
             tags="img",
         )
         self.root.after(
             self.session_config.time_foreground_only_ms, self.phase_isi
         )
+
+    def show_block_confirmation(self, trial) -> None:
+        self.canvas1.delete("all")
+        self.canvas2.delete("all")
+        self._destroy_frame("ctrl_frame")
+        self.clear_key_bindings()
+        spec = get_condition(trial.condition_id)
+        observed_eye = resolve_observed_eye(
+            spec, self.participant_dominance.get()
+        )
+        if observed_eye == "Both":
+            eye_instruction = "Use BOTH eyes."
+        else:
+            other_eye = "Left" if observed_eye == "Right" else "Right"
+            eye_instruction = (
+                f"Use the {observed_eye.upper()} eye and cover the "
+                f"{other_eye.lower()} eye."
+            )
+        self.ctrl_frame = tk.Frame(
+            self.root, bg="gray", padx=30, pady=30
+        )
+        self.ctrl_frame.place(relx=0.5, rely=0.5, anchor="center")
+        tk.Label(
+            self.ctrl_frame,
+            text=(
+                f"Block {trial.block_id}/{len(self.condition_order)}\n"
+                f"{spec.label}\n\n{eye_instruction}\n"
+                "20 trials; a short break follows trial 10."
+            ),
+            bg="gray",
+            fg="white",
+            font=("Arial", 16),
+        ).pack(pady=15, padx=20)
+        tk.Button(
+            self.ctrl_frame,
+            text="Start Block",
+            command=lambda: self.start_block(trial.block_id),
+        ).pack(pady=10)
+        self.key_bindings["<Return>"] = self.root.bind(
+            "<Return>", lambda event: self.start_block(trial.block_id)
+        )
+
+    def start_block(self, block_id: int) -> None:
+        self._destroy_frame("ctrl_frame")
+        self.clear_key_bindings()
+        self.active_block_id = block_id
+        self.run_trial()
 
     def phase_isi(self) -> None:
         self.canvas2.delete("img")
@@ -539,8 +562,9 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.root.after(self.session_config.time_isi_ms, self.phase_both)
 
     def phase_both(self) -> None:
+        self.canvas1.delete("img")
         self.canvas2.delete("calib")
-        if self.current_trial.condition == "Dual plane":
+        if self.photo_background is not None:
             self.canvas1.create_image(
                 self.width // 2 + self.offset_x.get(),
                 self.height // 2 + self.offset_y.get(),
@@ -548,23 +572,13 @@ class ImageExperimentApp(ExperimentBaseUI):
                 anchor="center",
                 tags="img",
             )
-            self.canvas2.create_image(
-                self.canvas2.winfo_width() // 2,
-                self.canvas2.winfo_height() // 2,
-                image=self.photo_foreground,
-                anchor="center",
-                tags="img",
-            )
-        else:
-            # Single plane系ではWindow 1を黒のままにし、合成像をWindow 2へ出す。
-            self.canvas1.delete("all")
-            self.canvas2.create_image(
-                self.canvas2.winfo_width() // 2,
-                self.canvas2.winfo_height() // 2,
-                image=self.photo_singleplane,
-                anchor="center",
-                tags="img",
-            )
+        self.canvas2.create_image(
+            self.canvas2.winfo_width() // 2,
+            self.canvas2.winfo_height() // 2,
+            image=self.photo_both,
+            anchor="center",
+            tags="img",
+        )
         self.root.after(
             self.session_config.time_both_ms, self.phase_end_trial
         )
@@ -579,13 +593,17 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.results.append(
             build_result_row(self, self.evaluation_val.get())
         )
+        self._checkpoint_results()
         self._destroy_frame("eval_frame")
-        self.current_trial_in_block += 1
         self.current_trial_index += 1
+        if self.current_trial_index >= len(self.trial_list):
+            self.root.after(500, self.finish_experiment)
+            return
+        next_trial = self.trial_list[self.current_trial_index]
         break_due = (
-            self.current_trial_index
-            % self.session_config.trials_before_break == 0
-            and self.current_trial_index < len(self.trial_list)
+            next_trial.block_id == self.active_block_id
+            and next_trial.within_block_order
+            == self.session_config.trials_before_break + 1
         )
         if break_due:
             self.root.after(500, self.start_break)
@@ -595,28 +613,50 @@ class ImageExperimentApp(ExperimentBaseUI):
     def start_break(self) -> None:
         self.canvas1.delete("all")
         self.canvas2.delete("all")
-        self.setup_calibration_ui(is_break=True)
+        self._destroy_frame("ctrl_frame")
+        self.clear_key_bindings()
+        self.ctrl_frame = tk.Frame(
+            self.root, bg="gray", padx=30, pady=30
+        )
+        self.ctrl_frame.place(relx=0.5, rely=0.5, anchor="center")
+        tk.Label(
+            self.ctrl_frame,
+            text=(
+                "Short break: 10/20 trials completed in this block.\n"
+                "Press Enter when you are ready to continue."
+            ),
+            bg="gray",
+            fg="white",
+            font=("Arial", 16),
+        ).pack(pady=15)
+        tk.Button(
+            self.ctrl_frame,
+            text="Resume",
+            command=self.resume_experiment,
+        ).pack(pady=10)
+        self.key_bindings["<Return>"] = self.root.bind(
+            "<Return>", lambda event: self.resume_experiment()
+        )
 
     def resume_experiment(self) -> None:
         self._destroy_frame("ctrl_frame")
         self.clear_key_bindings()
-        self.canvas1.delete("all")
-        self.canvas2.delete("all")
         self.run_trial()
 
+    def _checkpoint_results(self) -> Path:
+        return save_session_results(
+            self.result_dir,
+            self.results,
+            config=self.session_config,
+            selection_dir=self.selected_pairs_dir,
+            participant_seed=self.participant_seed,
+            condition_order=self.condition_order,
+        )
+
     def finish_experiment(self) -> None:
-        output = save_session_results(self.result_dir, self.results)
+        output = self._checkpoint_results()
         messagebox.showinfo(
             "Finished",
             f"Experiment finished.\nData saved to: {output}",
         )
         self.root.destroy()
-
-    def _reset_to_setup_ui(self) -> None:
-        self._destroy_frame("ctrl_frame")
-        self._destroy_frame("eval_frame")
-        self.clear_key_bindings()
-        self.canvas1.delete("all")
-        self.canvas2.delete("all")
-        self.setup_participant_info_ui()
-
