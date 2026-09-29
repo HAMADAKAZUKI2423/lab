@@ -27,9 +27,9 @@ class ImageSessionConfig:
     background_width_factor: float = 2.0
     trials_per_condition: int = 20
     trials_before_break: int = 10
-    time_foreground_only_ms: int = 500
+    time_foreground_only_ms: int = 1500
     time_isi_ms: int = 1000
-    time_both_ms: int = 500
+    time_both_ms: int = 1500
     distance_fg_cm: float = 50.0
     distance_bg_cm: float = 125.0
     background_color: str = "black"
