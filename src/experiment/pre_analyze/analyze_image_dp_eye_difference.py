@@ -227,31 +227,66 @@ def plot_score_scatter(
     output: Path,
     participant_id: object,
 ) -> None:
-    """優位眼・非優位眼評定の対応散布図を保存する。"""
+    """rankを形、high/lowを色で示し、優位眼から非優位眼への移動を描く。"""
+    from matplotlib.lines import Line2D
+
+    rank_markers = {
+        1: "o",
+        2: "s",
+        3: "^",
+        4: "v",
+        5: "D",
+        6: "P",
+        7: "X",
+        8: "<",
+        9: ">",
+        10: "*",
+    }
+    group_colors = {"high": "#d62728", "low": "#1f77b4"}
     rng = np.random.default_rng(20260929)
-    jitter_x = rng.uniform(-0.06, 0.06, len(participant_df))
-    jitter_y = rng.uniform(-0.06, 0.06, len(participant_df))
-    fig, ax = plt.subplots(figsize=(6.5, 6.5))
-    for group, color in (("high", "#d62728"), ("low", "#1f77b4")):
-        mask = participant_df["Difference_Group"] == group
+    jitter_x = rng.uniform(-0.055, 0.055, len(participant_df))
+    jitter_y = rng.uniform(-0.055, 0.055, len(participant_df))
+
+    fig, ax = plt.subplots(figsize=(9.5, 6.8))
+    for position, row in enumerate(participant_df.itertuples(index=False)):
+        rank = int(row.Group_Rank)
+        group = str(row.Difference_Group)
+        color = group_colors[group]
+        x_value = float(row.Score_DOM) + jitter_x[position]
+        y_value = float(row.Score_NONDOM) + jitter_y[position]
+
+        # y=x上の優位眼スコアから、非優位眼スコアへの移動を矢印で示す。
+    
         ax.scatter(
-            participant_df.loc[mask, "Score_DOM"] + jitter_x[mask.to_numpy()],
-            participant_df.loc[mask, "Score_NONDOM"] + jitter_y[mask.to_numpy()],
-            s=70,
-            alpha=0.8,
+            x_value,
+            y_value,
+            marker=rank_markers[rank],
+            s=105 if rank != 10 else 145,
             color=color,
             edgecolor="white",
-            linewidth=0.7,
-            label=group,
+            linewidth=0.8,
+            alpha=0.9,
+            zorder=2,
         )
-    ax.plot([0.8, 5.2], [0.8, 5.2], "--", color="black", linewidth=1.2)
+
+    ax.plot(
+        [0.8, 5.2],
+        [0.8, 5.2],
+        "--",
+        color="black",
+        linewidth=1.2,
+        label="DOM = NONDOM",
+    )
     ax.set_xlim(0.8, 5.2)
     ax.set_ylim(0.8, 5.2)
     ax.set_xticks(range(1, 6))
     ax.set_yticks(range(1, 6))
     ax.set_xlabel("DP dominant-eye score")
     ax.set_ylabel("DP non-dominant-eye score")
-    ax.set_title(f"Matched image-pair scores\nID={participant_id}")
+    ax.set_title(
+        "Matched image-pair scores\n"
+        f"ID={participant_id} (marker=rank, color=high/low)"
+    )
     overall = participant_summary[
         participant_summary["Group"] == "overall"
     ].iloc[0]
@@ -265,10 +300,48 @@ def plot_score_scatter(
         va="top",
         bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.85},
     )
-    ax.legend(title="Difference group")
+
+    group_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker="o",
+            linestyle="none",
+            markerfacecolor=color,
+            markeredgecolor="white",
+            markersize=9,
+            label=group,
+        )
+        for group, color in group_colors.items()
+    ]
+    group_legend = ax.legend(
+        handles=group_handles,
+        title="Difference group",
+        loc="lower right",
+    )
+    ax.add_artist(group_legend)
+    rank_handles = [
+        Line2D(
+            [0],
+            [0],
+            marker=rank_markers[rank],
+            linestyle="none",
+            color="black",
+            markersize=8,
+            label=f"Rank {rank}",
+        )
+        for rank in range(1, 11)
+    ]
+    ax.legend(
+        handles=rank_handles,
+        title="Group rank",
+        loc="upper left",
+        bbox_to_anchor=(1.01, 1.0),
+        borderaxespad=0,
+    )
     ax.grid(linestyle="--", alpha=0.3)
     fig.tight_layout()
-    fig.savefig(output, dpi=300)
+    fig.savefig(output, dpi=300, bbox_inches="tight")
     plt.close(fig)
 
 
