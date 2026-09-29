@@ -10,8 +10,8 @@
   "DPF_Correction_Method": "z_corrected = z_condition - z_DPF + log10(Ref)",
   "Hypothesis_Rows_Per_Analysis_Group": 16,
   "Analysis_Group_Count": 2,
-  "Session_Count": 14,
-  "Participant_Count": 14,
+  "Session_Count": 15,
+  "Participant_Count": 15,
   "Participant_IDs": [
     "0",
     "1",
@@ -19,6 +19,7 @@
     "11",
     "12",
     "13",
+    "14",
     "2",
     "3",
     "4",
@@ -80,6 +81,14 @@
       "Session_Timestamp": "20260924_132202",
       "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\13_20260924_132202",
       "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\13_20260924_132202\\contrast_matching.csv",
+      "Trial_Count": 80
+    },
+    {
+      "ID": "14",
+      "Session_Type": "experiment",
+      "Session_Timestamp": "20260929_133121",
+      "Session_Dir": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\14_20260929_133121",
+      "Source_CSV": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\tables\\main-experiment-matching\\experiment\\14_20260929_133121\\contrast_matching.csv",
       "Trial_Count": 80
     },
     {
