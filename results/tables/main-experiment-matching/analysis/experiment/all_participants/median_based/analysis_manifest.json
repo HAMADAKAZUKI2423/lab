@@ -1,6 +1,6 @@
 {
   "Manifest_Version": 1,
-  "Generated_At_UTC": "2026-09-29T08:44:27.164066+00:00",
+  "Generated_At_UTC": "2026-10-03T09:21:31.796315+00:00",
   "Run_Name": "all_participants_median_based",
   "Analysis_Mode": "full_analysis",
   "Input_Mode": "all_participants",
@@ -8,7 +8,7 @@
   "Between_Participant_Summary": "mean_of_participant_log10_values",
   "Confidence_Interval": "participant_bootstrap_mean_95_percentile",
   "DPF_Correction_Method": "z_corrected = z_condition - z_DPF + log10(Ref)",
-  "Hypothesis_Rows_Per_Analysis_Group": 16,
+  "Hypothesis_Rows_Per_Analysis_Group": 18,
   "Analysis_Group_Count": 2,
   "Session_Count": 15,
   "Participant_Count": 15,
@@ -32,7 +32,7 @@
   "Trial_Row_Count": 1200,
   "Uncorrected_Summary_Row_Count": 240,
   "Corrected_Summary_Row_Count": 180,
-  "Hypothesis_Test_Row_Count": 32,
+  "Hypothesis_Test_Row_Count": 36,
   "Exclusion_Row_Count": 0,
   "Input_Sessions": [
     {

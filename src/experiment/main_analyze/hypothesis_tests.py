@@ -1,4 +1,9 @@
-"""未補正・DPF補正後の参加者集約値からH1〜H5を検定する。"""
+"""未補正・DPF補正後の参加者集約値からH1〜H6を検定する。
+
+H6は眼別にSP→SPDとSPD→DPのlog10減少量を参加者内で直接比較する。
+両側t検定とH6内2眼のHolm補正を用い、正方向で仮説を支持する。
+既存結果を見て追加したH6は探索的追加分析として報告する。
+"""
 
 from __future__ import annotations
 
@@ -23,7 +28,7 @@ from .config import (
 from .dpf_correction import CORRECTED_LOG10_COLUMN
 
 
-HYPOTHESIS_ROW_COUNTS = {"H1": 2, "H2": 6, "H3": 4, "H4": 3, "H5": 1}
+HYPOTHESIS_ROW_COUNTS = {"H1": 2, "H2": 6, "H3": 4, "H4": 3, "H5": 1, "H6": 2}
 EXPECTED_ROWS_PER_ANALYSIS_GROUP = sum(HYPOTHESIS_ROW_COUNTS.values())
 
 # 観測されたCohen's dzに基づく、両側t検定の参考必要人数。
@@ -485,6 +490,7 @@ def _set_primary(
     h3: list[dict[str, object]],
     h4: list[dict[str, object]],
     h5: list[dict[str, object]],
+    h6: list[dict[str, object]],
 ) -> None:
     for row in h1:
         row["Conclusion_Code"] = _dual_conclusion(row)
@@ -538,12 +544,34 @@ def _set_primary(
             else "not_evaluable"
         )
 
+    for row in h6:
+        raw = float(row["p_value_two_sided"])
+        adjusted = float(row["holm_adjusted_p_value"])
+        mean_difference = float(row["mean_log10_difference"])
+        significant = bool(np.isfinite(adjusted) and adjusted < ALPHA)
+        direction_supported = significant and mean_difference > 0.0
+        row["Primary_P_Value"] = raw
+        row["Primary_Adjusted_P_Value"] = adjusted
+        # 既存H5と同じくPrimary_Passは方向を問わない差の検出。
+        # H6の期待方向はDirectional_Hypothesis_Supportedで明示する。
+        row["Primary_Pass_Alpha_0_05"] = significant
+        row["Directional_Hypothesis_Supported"] = direction_supported
+        row["Conclusion_Code"] = (
+            "difference_detected_spd_to_dp_reduction_larger"
+            if direction_supported
+            else "difference_detected_sp_to_spd_reduction_larger"
+            if significant and mean_difference < 0.0
+            else "no_detected_difference"
+            if np.isfinite(adjusted)
+            else "not_evaluable"
+        )
+
 
 def run_hypothesis_tests(
     uncorrected_df: pd.DataFrame,
     corrected_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """解析計画どおり、1解析群あたりH1〜H5の16行を返す。"""
+    """解析計画どおり、1解析群あたりH1〜H6の18行を返す。"""
     uncorrected = _validate_summary(
         uncorrected_df,
         label="未補正参加者表",
@@ -590,6 +618,7 @@ def run_hypothesis_tests(
         h3: list[dict[str, object]] = []
         h4: list[dict[str, object]] = []
         h5: list[dict[str, object]] = []
+        h6: list[dict[str, object]] = []
 
         for ocularity in OCULARITY_ORDER:
             values = _cell(raw_group, DPF_CONDITION, ocularity, MEAN_LOG10_COLUMN)["value"].to_numpy(float)
@@ -691,6 +720,77 @@ def run_hypothesis_tests(
                     )
                 )
 
+        # H6: 2段階のlog10減少量を、同じ参加者・同じ眼条件で比較する。
+        # D = (SPD - DP) - (SP - SPD) = 2*SPD - SP - DP。
+        # 正ならSPD→DPの減少が大きい。絶対値には変換しない。
+        # DPF補正項は係数和0により相殺される。
+        for ocularity in OCULARITY_ORDER:
+            triple = (
+                fixed_group.loc[
+                    fixed_group["Ocularity"].eq(ocularity),
+                    ["ID", "Condition", CORRECTED_LOG10_COLUMN],
+                ]
+                .pivot(
+                    index="ID",
+                    columns="Condition",
+                    values=CORRECTED_LOG10_COLUMN,
+                )
+                .sort_index()
+            )
+            required_conditions = [SP_CONDITION, SPD_CONDITION, DP_CONDITION]
+            if (
+                any(condition not in triple.columns for condition in required_conditions)
+                or set(triple.index.astype(str)) != set(fixed_group["ID"].astype(str))
+            ):
+                raise HypothesisTestError(
+                    f"H6の3条件の参加者対応が不完全です: {ocularity}"
+                )
+            values = triple.loc[:, required_conditions].to_numpy(dtype=float)
+            if not np.isfinite(values).all():
+                raise HypothesisTestError(
+                    f"H6の3条件に欠測または非有限値があります: {ocularity}"
+                )
+            sp, spd, dp = values.T
+            reduction_sp_to_spd = sp - spd
+            reduction_spd_to_dp = spd - dp
+            difference = reduction_spd_to_dp - reduction_sp_to_spd
+            row = _build_row(
+                metadata=metadata,
+                hypothesis="H6",
+                component=f"H6_{ocularity}",
+                family="H6_successive_reductions",
+                data_state="dpf_corrected",
+                comparison="SPD→DP log10 reduction vs SP→SPD log10 reduction",
+                test_type="paired_t",
+                primary_test="t",
+                condition="SPD→DP log10 reduction",
+                baseline_condition="SP→SPD log10 reduction",
+                ocularity=ocularity,
+                condition_values=reduction_spd_to_dp,
+                baseline_values=reduction_sp_to_spd,
+                difference_values=difference,
+                effect_scale="log10_ratio_of_reduction_factors",
+            )
+            mean_first = float(np.mean(reduction_sp_to_spd))
+            mean_second = float(np.mean(reduction_spd_to_dp))
+            row.update({
+                "mean_log10_reduction_sp_to_spd": mean_first,
+                "mean_log10_reduction_spd_to_dp": mean_second,
+                "geometric_mean_reduction_factor_sp_to_spd": _pow10(mean_first),
+                "geometric_mean_reduction_factor_spd_to_dp": _pow10(mean_second),
+                "Both_Mean_Reductions_Positive": bool(
+                    mean_first > 0.0 and mean_second > 0.0
+                ),
+                "Directional_Hypothesis_Supported": False,
+                "Difference_Definition": "(z_SPD-z_DP)-(z_SP-z_SPD)",
+                "Analysis_Role": "exploratory_added_hypothesis",
+            })
+            # Both_Mean_Reductions_Positiveは記述的フラグであり、
+            # 各減少の正方向が統計的に証明されたことを意味しない。
+            # geometric_mean_ratio = GM(SPD/DP) / GM(SP/SPD)。
+            # TOSTは実行しない。必要人数はH6差分のdzから推定する。
+            h6.append(row)
+
         eye_effects: dict[str, pd.DataFrame] = {}
         for ocularity in OCULARITY_ORDER:
             paired = _paired(fixed_group, DP_CONDITION, SPD_CONDITION, ocularity, CORRECTED_LOG10_COLUMN)
@@ -761,8 +861,10 @@ def run_hypothesis_tests(
             _apply_holm(family_rows, "tost_p_value", "holm_adjusted_tost_p_value", "equivalent_holm_alpha_0_05")
         _apply_holm(h3, "p_value_two_sided", "holm_adjusted_p_value", "significant_holm_alpha_0_05")
         _apply_holm(h5, "p_value_two_sided", "holm_adjusted_p_value", "significant_holm_alpha_0_05")
-        _set_primary(h1, h2, h3, h4, h5)
-        group_rows = [*h1, *h2, *h3, *h4, *h5]
+        # 各Session_Type×Ref_Contrast×Orientation内の2眼をH6ファミリーとする。
+        _apply_holm(h6, "p_value_two_sided", "holm_adjusted_p_value", "significant_holm_alpha_0_05")
+        _set_primary(h1, h2, h3, h4, h5, h6)
+        group_rows = [*h1, *h2, *h3, *h4, *h5, *h6]
         counts = pd.Series([row["Hypothesis"] for row in group_rows]).value_counts()
         actual = {name: int(counts.get(name, 0)) for name in HYPOTHESIS_ROW_COUNTS}
         if actual != HYPOTHESIS_ROW_COUNTS:
