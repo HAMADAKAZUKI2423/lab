@@ -367,6 +367,38 @@ def _condition_figure(
     return figure
 
 
+def _save_with_title_variants(
+    figure,
+    output_path: Path,
+    *,
+    dpi: int,
+) -> list[Path]:
+    """従来の図と、タイトルのみを非表示にした_no_title版を保存する。"""
+    output_path = Path(output_path)
+    save_options = dict(dpi=dpi, bbox_inches="tight", facecolor="white")
+    # 従来版を先に保存し、既存のファイル名・描画内容を維持する。
+    figure.savefig(output_path, **save_options)
+    no_title_path = output_path.with_name(
+        f"{output_path.stem}_no_title{output_path.suffix}"
+    )
+    # 中央・左・右のAxesタイトルと、Figure全体のタイトルを対象にする。
+    title_artists = []
+    for axis in figure.axes:
+        title_artists.extend([axis.title, axis._left_title, axis._right_title])
+    if figure._suptitle is not None:
+        title_artists.append(figure._suptitle)
+    visibility = [(artist, artist.get_visible()) for artist in title_artists]
+    try:
+        for artist, _ in visibility:
+            artist.set_visible(False)
+        # 座標・棒・エラーバー・注記・凡例はそのままにする。
+        figure.savefig(no_title_path, **save_options)
+    finally:
+        for artist, was_visible in visibility:
+            artist.set_visible(was_visible)
+    return [output_path, no_title_path]
+
+
 def _save_condition_figures(
     frame: pd.DataFrame,
     *,
@@ -393,10 +425,10 @@ def _save_condition_figures(
         )
         output_path = destination / _file_name(prefix, metadata)
         try:
-            figure.savefig(output_path, dpi=_DPI, bbox_inches="tight", facecolor="white")
+            saved_paths = _save_with_title_variants(figure, output_path, dpi=_DPI)
         finally:
             plt.close(figure)
-        outputs.append(output_path)
+        outputs.extend(saved_paths)
     return outputs
 
 
@@ -556,10 +588,10 @@ def save_h4_interaction_figures(
         figure = _h4_figure(group, metadata)
         output_path = destination / _file_name("h4_interaction", metadata)
         try:
-            figure.savefig(output_path, dpi=_DPI, bbox_inches="tight", facecolor="white")
+            saved_paths = _save_with_title_variants(figure, output_path, dpi=_DPI)
         finally:
             plt.close(figure)
-        outputs.append(output_path)
+        outputs.extend(saved_paths)
     return outputs
 
 
@@ -846,7 +878,7 @@ def _legacy_metric_figure(
     )
     center_label = "Mean" if center_method == "mean" else "Median"
     axis.set_title(
-        f"{metadata['Session_Type']}: {ylabel} [{center_label}] "
+        f"{metadata['Session_Type']}: {ylabel} ({center_label}) "
         f"(Ref={reference:g}, "
         f"Ori={float(metadata['Orientation']):g}°)"
     )
@@ -916,15 +948,12 @@ def save_legacy_contrast_figures(
                     center_method=center_method,
                 )
                 try:
-                    figure.savefig(
-                        output_path,
-                        dpi=_LEGACY_DPI,
-                        bbox_inches="tight",
-                        facecolor="white",
+                    saved_paths = _save_with_title_variants(
+                        figure, output_path, dpi=_LEGACY_DPI
                     )
                 finally:
                     plt.close(figure)
-                outputs[output_key].append(output_path)
+                outputs[output_key].extend(saved_paths)
     return outputs
 
 
