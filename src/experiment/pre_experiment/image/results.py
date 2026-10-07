@@ -1,4 +1,7 @@
-"""Image実験の参加者、100試行manifest、評価結果を保存する。"""
+"""Image実験の参加者、試行manifest、評価結果を保存する。
+"Observed_Eye", "Reference_Eye", "Reproduced_Eye",
+"Defocus_Mode", "Disparity_Mode",
+"""
 
 from dataclasses import asdict
 from pathlib import Path
@@ -95,6 +98,7 @@ def _trial_metadata(
         "Viewing_Mode": spec.viewing_mode,
         "Observed_Eye": resolve_observed_eye(spec, dominant_eye),
         "Reference_Eye": resolve_reference_eye(spec, dominant_eye),
+        "Reproduced_Eye": spec.reproduced_eye,
         "Defocus_Mode": spec.defocus_mode,
         "Disparity_Mode": spec.disparity_mode,
         "Pair_ID": pair.pair_id,
@@ -143,6 +147,9 @@ def build_result_row(app, score: int) -> dict[str, Any]:
         "PD_Left": left.get("pd_mean"),
         "OffsetX_Left": left.get("offset_x"),
         "OffsetY_Left": left.get("offset_y"),
+        "Reproduced_Eye": prepared_metadata.get(
+            "Reproduced_Eye", row["Reproduced_Eye"]
+        ),
         "Disparity_Px": prepared_metadata.get("Disparity_Px", 0),
         "Disparity_Map_Path": prepared_metadata.get(
             "Disparity_Map_Path", row["Disparity_Map_Path"]

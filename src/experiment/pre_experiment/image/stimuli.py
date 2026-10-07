@@ -1,4 +1,4 @@
-"""20画像ペア×5条件の試行生成と、条件別の表示画像生成。"""
+"""20画像ペア×有効条件の試行生成と、条件別の表示画像生成。"""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -259,6 +259,7 @@ def prepare_trial_stimulus(
         "Reference_Eye": resolve_reference_eye(spec, dominant_eye),
         "Defocus_Mode": spec.defocus_mode,
         "Disparity_Mode": spec.disparity_mode,
+        "Reproduced_Eye": spec.reproduced_eye,
         "Disparity_Px": 0,
         "Disparity_Map_Path": "",
         "SinglePlane_OutOfGamut_Ratio": 0.0,
@@ -301,7 +302,11 @@ def prepare_trial_stimulus(
             pixels_per_degree=pixels_per_degree,
         )
 
-    if spec.disparity_mode == "simple":
+    if spec.reproduced_eye == "Left":
+        reproduced_background = left_background
+    elif spec.reproduced_eye == "Right":
+        reproduced_background = right_background
+    elif spec.reproduced_eye == "Both":
         reproduced_background = fuse_eye_views(
             right_background,
             left_background,

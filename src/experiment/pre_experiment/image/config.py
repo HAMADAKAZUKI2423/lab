@@ -1,4 +1,4 @@
-"""Image evaluation予備実験の5条件・入力・保存先を一元管理する。"""
+"""Image evaluation予備実験の有効条件・入力・保存先を一元管理する。"""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -6,7 +6,7 @@ from typing import Any
 
 from experiment import experiment_config
 
-from .conditions import DEFAULT_CONDITION_IDS
+from .conditions import DEFAULT_CONDITION_IDS, get_condition
 
 
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2]
@@ -27,9 +27,9 @@ class ImageSessionConfig:
     background_width_factor: float = 2.0
     trials_per_condition: int = 20
     trials_before_break: int = 10
-    time_foreground_only_ms: int = 1500
+    time_foreground_only_ms: int = 500
     time_isi_ms: int = 1000
-    time_both_ms: int = 1500
+    time_both_ms: int = 500
     distance_fg_cm: float = 50.0
     distance_bg_cm: float = 125.0
     background_color: str = "black"
@@ -93,8 +93,12 @@ def create_image_config(
         raise ValueError("This experiment requires 20 selected pairs per condition")
     if config.background_width_factor <= 0:
         raise ValueError("background_width_factor must be positive")
-    if len(config.conditions) != 5:
-        raise ValueError("This experiment temporarily requires exactly five conditions")
+    if len(config.conditions) < 2:
+        raise ValueError("At least two image conditions are required")
+    if len(set(config.conditions)) != len(config.conditions):
+        raise ValueError("Image condition IDs must be unique")
+    for condition_id in config.conditions:
+        get_condition(condition_id)
     if not 0.0 <= config.binocular_fusion_dominant_weight <= 1.0:
         raise ValueError("binocular_fusion_dominant_weight must be in [0, 1]")
     config.result_root.mkdir(parents=True, exist_ok=True)

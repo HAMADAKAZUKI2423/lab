@@ -1,4 +1,4 @@
-"""Image実験で使用する暫定5条件を宣言的に定義する。"""
+"""Image実験の全条件を保持し、有効条件だけを切り替える。"""
 
 from dataclasses import dataclass
 from typing import Literal
@@ -10,8 +10,11 @@ ConditionId = Literal[
     "DP_MONO_NONDOM",
     "SP_NO_DEFOCUS",
     "SP_DEFOCUS_SIMPLE",
+    "SP_REPRO_LEFT_EYE",
+    "SP_REPRO_RIGHT_EYE",
 ]
 EyeName = Literal["Left", "Right"]
+ReproducedEye = Literal["", "Both", "Left", "Right"]
 
 
 @dataclass(frozen=True)
@@ -23,9 +26,11 @@ class ImageConditionSpec:
     reference_eye: Literal["dominant", "non_dominant", "both"]
     defocus_mode: Literal["physical", "none", "matched_simulation"]
     disparity_mode: Literal["physical", "none", "simple"]
+    reproduced_eye: ReproducedEye = ""
 
 
-CONDITION_SPECS: tuple[ImageConditionSpec, ...] = (
+# 条件定義はすべて残す。実行対象はENABLED_CONDITION_IDSだけで切り替える。
+ALL_CONDITION_SPECS: tuple[ImageConditionSpec, ...] = (
     ImageConditionSpec(
         "DP_BINOCULAR",
         "Dual Plane / binocular",
@@ -49,12 +54,30 @@ CONDITION_SPECS: tuple[ImageConditionSpec, ...] = (
     ImageConditionSpec(
         "SP_DEFOCUS_SIMPLE",
         "Single Plane / defocus + simple disparity",
-        "single", "binocular", "both", "matched_simulation", "simple",
+        "single", "binocular", "both", "matched_simulation", "simple", "Both",
+    ),
+    ImageConditionSpec(
+        "SP_REPRO_LEFT_EYE",
+        "Single Plane / reproduce left-eye view",
+        "single", "binocular", "both", "matched_simulation", "simple", "Left",
+    ),
+    ImageConditionSpec(
+        "SP_REPRO_RIGHT_EYE",
+        "Single Plane / reproduce right-eye view",
+        "single", "binocular", "both", "matched_simulation", "simple", "Right",
     ),
 )
-CONDITION_BY_ID = {spec.condition_id: spec for spec in CONDITION_SPECS}
-DEFAULT_CONDITION_IDS: tuple[ConditionId, ...] = tuple(
-    spec.condition_id for spec in CONDITION_SPECS
+CONDITION_BY_ID = {spec.condition_id: spec for spec in ALL_CONDITION_SPECS}
+
+# 現在は左右眼の重畳結果を個別再現する2条件だけを有効化する。
+# 旧条件を再開するときは、ここへ対応するIDを戻すだけでよい。
+ENABLED_CONDITION_IDS: tuple[ConditionId, ...] = (
+    "SP_REPRO_LEFT_EYE",
+    "SP_REPRO_RIGHT_EYE",
+)
+DEFAULT_CONDITION_IDS = ENABLED_CONDITION_IDS
+CONDITION_SPECS: tuple[ImageConditionSpec, ...] = tuple(
+    CONDITION_BY_ID[condition_id] for condition_id in ENABLED_CONDITION_IDS
 )
 
 
