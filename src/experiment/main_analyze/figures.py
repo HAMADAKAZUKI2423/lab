@@ -373,29 +373,114 @@ def _save_with_title_variants(
     *,
     dpi: int,
 ) -> list[Path]:
-    """従来の図と、タイトルのみを非表示にした_no_title版を保存する。"""
+    """従来版と、点なし・文字サイズ2.4倍・利用可能な指定フォントの_no_title版を保存する。"""
+    import textwrap
+
+    from matplotlib import font_manager
+    from matplotlib.collections import PathCollection
+    from matplotlib.text import Text
+
+    # 実行環境に存在するフォントだけを選び、暗黙の代替フォントを防ぐ。
+    selected_font = None
+    for candidate in ("Times New Roman", "Arial", "Helvetica", "Times"):
+        try:
+            font_manager.findfont(candidate, fallback_to_default=False)
+        except ValueError:
+            continue
+        selected_font = candidate
+        break
+    if selected_font is None:
+        raise RuntimeError(
+            "Times New Roman / Arial / Helvetica / Timesのいずれかをインストールしてください。"
+            "Symbolは本文・数字用のフォントとして使用しません。"
+        )
+
     output_path = Path(output_path)
     save_options = dict(dpi=dpi, bbox_inches="tight", facecolor="white")
-    # 従来版を先に保存し、既存のファイル名・描画内容を維持する。
+    # タイトルあり版は、点・文字サイズとも従来どおり保存する。
     figure.savefig(output_path, **save_options)
     no_title_path = output_path.with_name(
         f"{output_path.stem}_no_title{output_path.suffix}"
     )
-    # 中央・左・右のAxesタイトルと、Figure全体のタイトルを対象にする。
-    title_artists = []
+    # 描画を確定し、目盛り・軸ラベル・凡例・注記を含む全Textを取得する。
+    figure.canvas.draw()
+    text_sizes = [(text, text.get_fontsize()) for text in figure.findobj(Text)]
+    text_families = [(text, text.get_fontfamily()) for text, _ in text_sizes]
+    hidden_artists = []
     for axis in figure.axes:
-        title_artists.extend([axis.title, axis._left_title, axis._right_title])
+        hidden_artists.extend([axis.title, axis._left_title, axis._right_title])
+        # scatterだけを非表示にする。errorbarのLineCollectionは保持する。
+        # 個別・training図の試行点も_no_title版では非表示にする。
+        hidden_artists.extend(
+            collection for collection in axis.collections
+            if isinstance(collection, PathCollection)
+        )
     if figure._suptitle is not None:
-        title_artists.append(figure._suptitle)
-    visibility = [(artist, artist.get_visible()) for artist in title_artists]
+        hidden_artists.append(figure._suptitle)
+    # 平均・標準偏差の数値注記だけを隠す（棒の高さやCIは維持）。
+    for axis in figure.axes:
+        hidden_artists.extend(
+            text for text in axis.texts
+            if text.get_text().startswith("m=") and "\nd=" in text.get_text()
+        )
+    # タイトルなし版では0.6〜0.9の縦軸数字だけを隠す。目盛線・グリッドは保持する。
+    for axis in figure.axes:
+        for tick in axis.yaxis.get_major_ticks() + axis.yaxis.get_minor_ticks():
+            if any(abs(float(tick.get_loc()) - value) < 1e-8 for value in (0.6, 0.7, 0.8, 0.9)):
+                hidden_artists.extend([tick.label1, tick.label2])
+    ylabel_texts = [(axis.yaxis.label, axis.yaxis.label.get_text()) for axis in figure.axes]
+    visibility = [(artist, artist.get_visible()) for artist in hidden_artists]
+    original_positions = [
+        (axis, axis.get_position(original=True).frozen(), axis.get_position().frozen())
+        for axis in figure.axes
+    ]
+    original_subplotpars = {
+        key: getattr(figure.subplotpars, key)
+        for key in ("left", "bottom", "right", "top", "wspace", "hspace")
+    }
     try:
         for artist, _ in visibility:
             artist.set_visible(False)
-        # 座標・棒・エラーバー・注記・凡例はそのままにする。
+        for text, size in text_sizes:
+            text.set_fontsize(size * 2.4)
+            text.set_fontfamily([selected_font])
+        # 文字拡大に合わせて余白を再計算する。棒とCIの値は変更しない。
+        figure.tight_layout()
+        # 縦向きの軸名がプロットの高さを超えたら、文字サイズを保って改行する。
+        # bbox_inches="tight"と余白再計算により、左端の切れも防ぐ。
+        for axis in figure.axes:
+            label = axis.yaxis.label
+            original_label = label.get_text()
+            prefix, bracket, suffix = original_label.partition("(")
+            if bracket:
+                original_label = prefix.rstrip() + "\n(" + suffix
+                label.set_text(original_label)
+                figure.tight_layout()
+            # 長い場合の追加折り返しでも、括弧直前の改行は維持する。
+            for width in range(max(len(line) for line in original_label.split("\n")), 7, -1):
+                figure.canvas.draw()
+                renderer = figure.canvas.get_renderer()
+                if label.get_window_extent(renderer).height <= axis.get_window_extent(renderer).height * 0.95:
+                    break
+                label.set_text("\n".join(
+                    "\n".join(textwrap.wrap(line, width=width))
+                    for line in original_label.split("\n")
+                ))
+                figure.tight_layout()
         figure.savefig(no_title_path, **save_options)
     finally:
+        for text, family in text_families:
+            text.set_fontfamily(family)
+        for label, original_text in ylabel_texts:
+            label.set_text(original_text)
+        for text, size in text_sizes:
+            text.set_fontsize(size)
         for artist, was_visible in visibility:
             artist.set_visible(was_visible)
+        figure.subplotpars.update(**original_subplotpars)
+        for axis, original, active in original_positions:
+            axis.set_position(original, which="original")
+            axis.set_position(active, which="active")
     return [output_path, no_title_path]
 
 
