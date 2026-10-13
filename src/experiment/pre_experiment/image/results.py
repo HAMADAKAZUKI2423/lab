@@ -1,7 +1,4 @@
-"""Image実験の参加者、試行manifest、評価結果を保存する。
-"Observed_Eye", "Reference_Eye", "Reproduced_Eye",
-"Defocus_Mode", "Disparity_Mode",
-"""
+"""Image実験の参加者、試行manifest、評価結果を保存する。"""
 
 from dataclasses import asdict
 from pathlib import Path
@@ -22,7 +19,8 @@ RESULT_FIELDS = [
     "ID", "Age", "Gender", "IPD(mm)", "Dominance",
     "Trial_ID", "Block_ID", "Within_Block_Order",
     "Condition", "Condition_Label", "Plane_Mode", "Viewing_Mode",
-    "Observed_Eye", "Reference_Eye", "Defocus_Mode", "Disparity_Mode",
+    "Observed_Eye", "Reference_Eye", "Reproduced_Eye",
+    "Defocus_Mode", "Disparity_Mode",
     "Pair_ID", "Difference_Group", "Group_Rank", "Global_Rank",
     "Foreground_Texture_Class",
     "Image_Win1", "Image_Win2", "Background_Path", "Foreground_Path",
@@ -229,6 +227,13 @@ def save_session_results(
         "selected_pairs_dir": str(selection_dir),
         "participant_seed": participant_seed,
         "condition_order": list(condition_order),
+        "condition_enabled": config.condition_enabled,
+        "condition_count": config.condition_count,
+        "condition_labels": {
+            condition_id: get_condition(condition_id).label
+            for condition_id in config.conditions
+        },
+        "expected_trial_count": config.expected_trial_count,
         "actual_trial_count": len(rows),
     })
     with (result_dir / "used_experiment_config.json").open(

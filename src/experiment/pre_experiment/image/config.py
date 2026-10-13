@@ -1,12 +1,12 @@
 """Image evaluation予備実験の有効条件・入力・保存先を一元管理する。"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from experiment import experiment_config
 
-from .conditions import DEFAULT_CONDITION_IDS, get_condition
+from .conditions import ALL_CONDITION_SPECS, get_condition, get_enabled_condition_ids
 
 
 EXPERIMENT_DIR = Path(__file__).resolve().parents[2]
@@ -21,7 +21,7 @@ class ImageSessionConfig:
     selected_pairs_root: Path
     selected_pairs_dir: Path | None
     display_dir: Path
-    conditions: tuple[str, ...] = DEFAULT_CONDITION_IDS
+    conditions: tuple[str, ...] = field(default_factory=get_enabled_condition_ids)
     random_seed: int = 20260928
     visual_angle_deg: float = 7.9
     background_width_factor: float = 2.0
@@ -37,6 +37,42 @@ class ImageSessionConfig:
     defocus_cpd: float = 4.0
     defocus_repetitions: int = 5
     binocular_fusion_dominant_weight: float = 0.5
+
+    def __post_init__(self) -> None:
+        # 有効条件をセッション生成時にtupleへ固定し、開始後の変更を防ぐ。
+        object.__setattr__(self, "conditions", tuple(self.conditions))
+        if not self.conditions:
+            raise ValueError("At least one image condition must be enabled")
+        if len(set(self.conditions)) != len(self.conditions):
+            raise ValueError("Image condition IDs must be unique")
+        for condition_id in self.conditions:
+            get_condition(condition_id)
+
+    @property
+    def condition_count(self) -> int:
+        return len(self.conditions)
+
+    @property
+    def condition_enabled(self) -> dict[str, bool]:
+        """グローバル変数ではなく、実際のセッション条件から保存用T/Fを生成。"""
+        enabled = set(self.conditions)
+        return {
+            spec.condition_id: spec.condition_id in enabled
+            for spec in ALL_CONDITION_SPECS
+        }
+
+    @property
+    def experiment_start_message(self) -> str:
+        labels = "\n".join(
+            f"{index}. {get_condition(condition_id).label}"
+            for index, condition_id in enumerate(self.conditions, start=1)
+        )
+        return (
+            f"Image experiment: {self.condition_count} conditions\n"
+            f"{self.expected_trial_count} trials: "
+            f"{self.trials_per_condition} selected pairs per condition.\n\n"
+            f"{labels}\n\nPress Enter to start."
+        )
 
     @property
     def defocus_result_filename(self) -> str:
@@ -93,8 +129,8 @@ def create_image_config(
         raise ValueError("This experiment requires 20 selected pairs per condition")
     if config.background_width_factor <= 0:
         raise ValueError("background_width_factor must be positive")
-    if len(config.conditions) < 2:
-        raise ValueError("At least two image conditions are required")
+    if not config.conditions:
+        raise ValueError("At least one image condition must be enabled")
     if len(set(config.conditions)) != len(config.conditions):
         raise ValueError("Image condition IDs must be unique")
     for condition_id in config.conditions:

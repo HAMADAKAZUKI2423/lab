@@ -1,5 +1,10 @@
 # cd src && py -m experiment.pre_experiment.pre_experiment_image
-"""6条件×20画像ペアのImage evaluation予備実験を起動する。"""
+"""conditions.pyのCONDITION_ENABLEDで指定した条件の画像予備実験を起動する。
+
+各条件20ペア。今回の既定値はDP両眼・DP利き眼・DP非利き眼・
+SP両眼（defocus＋左右眼像融合）の4条件、計80試行。
+切替はimage/conditions.pyのTrue / Falseを編集し、保存後に再起動する。
+"""
 
 import argparse
 from pathlib import Path

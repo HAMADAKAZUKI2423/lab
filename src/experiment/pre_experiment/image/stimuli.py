@@ -55,8 +55,14 @@ def condition_order_for_participant(
 ) -> tuple[str, ...]:
     """奇数・偶数条件に対応した均衡順序を参加者IDから決定する。"""
     count = len(condition_ids)
-    if count < 2:
-        raise ValueError("At least two image conditions are required")
+    if count == 0:
+        raise ValueError("At least one image condition must be enabled")
+    if len(set(condition_ids)) != count:
+        raise ValueError("Image condition IDs must be unique")
+    for condition_id in condition_ids:
+        get_condition(condition_id)
+    if count == 1:
+        return tuple(condition_ids)
     first_row = [0]
     low, high = 1, count - 1
     while len(first_row) < count:
@@ -104,6 +110,8 @@ def build_trials(
     condition_order: tuple[str, ...],
     rng: random.Random,
 ) -> list[ImageTrial]:
+    if not condition_order or len(set(condition_order)) != len(condition_order):
+        raise ValueError("Condition order must contain nonempty, unique IDs")
     trials: list[ImageTrial] = []
     trial_order = 1
     for block_id, condition_id in enumerate(condition_order, start=1):

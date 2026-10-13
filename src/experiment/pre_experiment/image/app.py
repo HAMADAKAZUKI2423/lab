@@ -1,4 +1,4 @@
-"""20画像ペア×5条件（計100試行）のImage evaluationアプリ。"""
+"""20画像ペア×有効条件のImage evaluationアプリ。"""
 
 from datetime import datetime
 from pathlib import Path
@@ -42,7 +42,7 @@ WIN2_MARKER_COLOR = "white"
 
 
 class ImageExperimentApp(ExperimentBaseUI):
-    """high/low各10ペアを暫定5条件で反復評価する。"""
+    """high/low各10ペアを有効条件ごとに反復評価する。"""
 
     def __init__(self, root: tk.Tk, session_config: ImageSessionConfig):
         super().__init__(root)
@@ -391,10 +391,7 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.ctrl_frame.place(relx=0.5, rely=0.5, anchor="center")
         tk.Label(
             self.ctrl_frame,
-            text=(
-                "The 5-condition image experiment will now begin.\n"
-                "100 trials: 20 selected pairs in every condition."
-            ),
+            text=self.session_config.experiment_start_message,
             bg="gray",
             fg="white",
             font=("Arial", 16),
@@ -424,6 +421,11 @@ class ImageExperimentApp(ExperimentBaseUI):
         self.trial_list = build_trials(
             self.selected_pairs, self.condition_order, rng
         )
+        if len(self.trial_list) != self.session_config.expected_trial_count:
+            raise RuntimeError(
+                f"Configured {self.session_config.expected_trial_count} trials, "
+                f"generated {len(self.trial_list)}"
+            )
         save_trial_manifest(
             self.result_dir,
             self.trial_list,
@@ -432,6 +434,8 @@ class ImageExperimentApp(ExperimentBaseUI):
             selection_dir=self.selected_pairs_dir,
             participant_seed=self.participant_seed,
         )
+        # 開始時点で設定を保存する。完了・中断時も同じセッション設定を保持する。
+        self._checkpoint_results()
         print(f"Selected pairs: {self.selected_pairs_dir}")
         print(f"Condition order: {self.condition_order}")
         print(f"Participant seed: {self.participant_seed}")
@@ -523,7 +527,8 @@ class ImageExperimentApp(ExperimentBaseUI):
             text=(
                 f"Block {trial.block_id}/{len(self.condition_order)}\n"
                 f"{spec.label}\n\n{eye_instruction}\n"
-                "20 trials; a short break follows trial 10."
+                f"{self.session_config.trials_per_condition} trials; "
+                f"a short break follows trial {self.session_config.trials_before_break}."
             ),
             bg="gray",
             fg="white",
@@ -622,7 +627,8 @@ class ImageExperimentApp(ExperimentBaseUI):
         tk.Label(
             self.ctrl_frame,
             text=(
-                "Short break: 10/20 trials completed in this block.\n"
+                f"Short break: {self.session_config.trials_before_break}/"
+                f"{self.session_config.trials_per_condition} trials completed in this block.\n"
                 "Press Enter when you are ready to continue."
             ),
             bg="gray",

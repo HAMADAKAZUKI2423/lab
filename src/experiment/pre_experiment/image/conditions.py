@@ -1,7 +1,7 @@
 """Image実験の全条件を保持し、有効条件だけを切り替える。"""
 
 from dataclasses import dataclass
-from typing import Literal
+from typing import Literal, Mapping
 
 
 ConditionId = Literal[
@@ -69,12 +69,54 @@ ALL_CONDITION_SPECS: tuple[ImageConditionSpec, ...] = (
 )
 CONDITION_BY_ID = {spec.condition_id: spec for spec in ALL_CONDITION_SPECS}
 
-# 現在は左右眼の重畳結果を個別再現する2条件だけを有効化する。
-# 旧条件を再開するときは、ここへ対応するIDを戻すだけでよい。
-ENABLED_CONDITION_IDS: tuple[ConditionId, ...] = (
-    "SP_REPRO_LEFT_EYE",
-    "SP_REPRO_RIGHT_EYE",
-)
+# ===== 条件スイッチ：通常はこのTrue / Falseだけを編集する =====
+# ファイル保存後、実験を再起動する。起動済みセッションの設定は変更しない。
+# 今回：DP両眼・DP利き眼・DP非利き眼・SP両眼の4条件、計80試行。
+# SP_DEFOCUS_SIMPLEは、defocus＋単純視差で作った左右眼像を融合して両眼観察。
+# SP_REPRO_LEFT/RIGHT_EYEも観察は両眼。再現する眼像だけが異なる。
+CONDITION_ENABLED: dict[ConditionId, bool] = {
+    "DP_BINOCULAR":       True,   # DP両眼
+    "DP_MONO_DOM":        True,   # DP利き眼のみ
+    "DP_MONO_NONDOM":     True,   # DP非利き眼のみ
+    "SP_NO_DEFOCUS":      False,  # SP：defocusなし
+    "SP_DEFOCUS_SIMPLE":  False,   # SP：defocus＋左右眼像融合
+    "SP_REPRO_LEFT_EYE":  True,  # SP：左眼像を再現、両眼観察
+    "SP_REPRO_RIGHT_EYE": True,  # SP：右眼像を再現、両眼観察
+}
+
+
+def get_enabled_condition_ids(
+    switches: Mapping[str, bool] | None = None,
+) -> tuple[ConditionId, ...]:
+    """スイッチを検証し、条件定義順で有効IDを返す。T/F文字列や0/1は不可。"""
+    flags = CONDITION_ENABLED if switches is None else switches
+    defined = set(CONDITION_BY_ID)
+    if len(defined) != len(ALL_CONDITION_SPECS):
+        raise ValueError("Image condition definitions contain duplicate IDs")
+    missing = defined - set(flags)
+    unknown = set(flags) - defined
+    if missing or unknown:
+        raise ValueError(
+            f"CONDITION_ENABLED has missing IDs: {sorted(missing)}, "
+            f"unknown IDs: {sorted(unknown)}"
+        )
+    invalid = [key for key, value in flags.items() if type(value) is not bool]
+    if invalid:
+        raise ValueError(
+            "CONDITION_ENABLED values must be True or False: "
+            + ", ".join(sorted(invalid))
+        )
+    enabled = tuple(
+        spec.condition_id for spec in ALL_CONDITION_SPECS
+        if flags[spec.condition_id]
+    )
+    if not enabled:
+        raise ValueError("Enable at least one image condition in CONDITION_ENABLED")
+    return enabled
+
+
+# ===== 以下は自動生成。通常は編集しない =====
+ENABLED_CONDITION_IDS: tuple[ConditionId, ...] = get_enabled_condition_ids()
 DEFAULT_CONDITION_IDS = ENABLED_CONDITION_IDS
 CONDITION_SPECS: tuple[ImageConditionSpec, ...] = tuple(
     CONDITION_BY_ID[condition_id] for condition_id in ENABLED_CONDITION_IDS
