@@ -1,12 +1,21 @@
 #!/usr/bin/env python3
-"""低輝度前景をテクスチャ10クラスに分け、全前景×背景を評価する。
+"""背景defocus後の左右視認性差で、high/low各10組を選定する。
 
-各テクスチャクラスから、異なる前景を使う high 1組 / low 1組を選ぶ。
-high は左右眼の平均視認性スコア差を最大化し、low は最小化する。
-前景・背景は最終20組内で重複させない。
+低輝度前景をテクスチャ10クラスに分け、全前景×背景を評価する。
+各クラスから異なる前景を使うhigh 1組 / low 1組を選び、前景・背景は
+最終20組内で重複させない。前景はぼかさず、モデル・alpha方式は維持する。
 
-実行例（lab/src から）:
-    python -m experiment.stimuli.select_fukiage_disparity_pairs --device cuda:0
+背景は校正ガンマで線形化し、パノラマ全体をGaussian blurしてから
+左右眼像を切り出す。sigmaはcommon.opticsと同じ0.55係数の近似を使う。
+瞳孔径は左右共通で明示指定する。IPDとは別であり、65 mmを流用しない。
+--no-defocusでは旧版の黒補完・ぼかしなし評価へ戻る。
+元画像は上書きせず、DP実機提示にぼかし済み画像を再投入しない。
+
+実行例（lab/src、PowerShell）:
+    $pupilMm = [double](Read-Host "採用する瞳孔径(mm)")
+    py -m experiment.stimuli.select_fukiage_disparity_pairs --device cuda:0 --pupil-diameter-mm $pupilMm
+旧方式:
+    py -m experiment.stimuli.select_fukiage_disparity_pairs --device cuda:0 --no-defocus
 """
 from __future__ import annotations
 
@@ -25,6 +34,10 @@ import numpy as np
 import torch
 
 from experiment import experiment_config
+from experiment.common.optics import (
+    DEFOCUS_BLUR_SCALE_FACTOR,
+    calculate_defocus_parameters,
+)
 from experiment.common.display_calibration import DisplayCalibration, load_display_calibration
 from experiment.pre_experiment.image.config import create_image_config
 
@@ -47,6 +60,7 @@ LAPLACIAN_LEVELS = 3
 KMEANS_RANDOM_STATE = 42
 DTD_SAMPLES_PER_CATEGORY = 20
 DTD_SAMPLING_RANDOM_SEED = 42
+GAUSSIAN_TRUNCATE = 4.0
 
 
 @dataclass(frozen=True)
@@ -67,7 +81,19 @@ class RunSettings:
     texture_class_count: int = TEXTURE_CLASS_COUNT
     laplacian_levels: int = LAPLACIAN_LEVELS
     kmeans_random_state: int = KMEANS_RANDOM_STATE
-    apply_defocus: bool = False
+    apply_defocus: bool = True
+    pupil_diameter_mm: float | None = None
+    diopter_difference: float = 0.0
+    blur_diameter_deg: float = 0.0
+    blur_sigma_deg: float = 0.0
+    blur_sigma_px: float = 0.0
+    blur_scale_factor: float = DEFOCUS_BLUR_SCALE_FACTOR
+    gaussian_truncate: float = GAUSSIAN_TRUNCATE
+
+    @property
+    def eye_boundary_mode(self) -> str:
+        # --no-defocusは旧selectorの数値を再現するため黒補完を保持する。
+        return "reflect" if self.apply_defocus else "black"
 
 
 @dataclass(frozen=True)
@@ -101,11 +127,25 @@ class PairResult:
     difference_group: str = ""
     group_rank: int | None = None
     rank: int | None = None
+    apply_defocus: bool = False
+    pupil_diameter_mm: float | None = None
+    diopter_difference: float = 0.0
+    blur_sigma_deg: float = 0.0
+    blur_sigma_px: float = 0.0
+    eye_boundary_mode: str = "black"
 
 
-def parse_args() -> argparse.Namespace:
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ipd-mm", type=float, default=60.0)
+    parser.add_argument(
+        "--pupil-diameter-mm", type=float, default=None,
+        help="背景defocus用の左右共通瞳孔径[mm]。defocus有効時は必須。IPDとは別",
+    )
+    parser.add_argument(
+        "--no-defocus", action="store_true",
+        help="背景defocusを無効化し、旧版と同じ黒補完・ぼかしなし評価を行う",
+    )
     parser.add_argument("--image-size", type=int, default=512)
     parser.add_argument("--model", default="vismlp_norm")
     parser.add_argument("--device", default="cpu")
@@ -134,7 +174,18 @@ def parse_args() -> argparse.Namespace:
         "--max-clip-ratio", type=float, default=1.0,
         help="左右いずれかの光学加算クリップ率がこの値を超える候補を除外（既定: 1.0）",
     )
-    return parser.parse_args()
+    args = parser.parse_args(argv)
+    if not args.no_defocus and args.pupil_diameter_mm is None:
+        parser.error(
+            "背景defocusには--pupil-diameter-mmが必要です。"
+            "IPD（例: 65 mm）ではなく、採用する瞳孔径を指定してください"
+        )
+    if args.pupil_diameter_mm is not None and (
+        not math.isfinite(args.pupil_diameter_mm)
+        or not 0.0 < args.pupil_diameter_mm <= 10.0
+    ):
+        parser.error("瞳孔径は有限な0より大きく10 mm以下の値にしてください。IPDとは別です")
+    return args
 
 
 def right_aligned_disparity_deg(ipd_mm: float, fg_cm: float, bg_cm: float) -> float:
@@ -153,8 +204,27 @@ def load_settings(args: argparse.Namespace) -> RunSettings:
     angle = float(runtime["VISUAL_ANGLE_DEG"])
     l_fg = float(runtime["L_fg"])
     l_bg = float(runtime["L_bg"])
+    if not all(math.isfinite(value) for value in (fg_cm, bg_cm, angle, l_fg, l_bg)):
+        raise ValueError("距離・視角・輝度設定には有限な値が必要です")
     if not (0 < fg_cm < bg_cm and angle > 0 and l_fg > 0 and l_bg > 0):
         raise ValueError("距離・視角・輝度設定が不正です")
+    if not math.isfinite(args.ipd_mm) or args.ipd_mm <= 0:
+        raise ValueError("--ipd-mmには正の有限値が必要です")
+    if args.image_size <= 0:
+        raise ValueError("--image-sizeには正の整数が必要です")
+    apply_defocus = not args.no_defocus
+    pupil_mm = args.pupil_diameter_mm
+    if pupil_mm is not None and (not math.isfinite(pupil_mm) or not 0 < pupil_mm <= 10):
+        raise ValueError("瞳孔径は0より大きく10 mm以下の有限値にしてください")
+    if apply_defocus and pupil_mm is None:
+        raise ValueError("背景defocusには--pupil-diameter-mmの明示指定が必要です")
+    diopter_difference = abs(100.0 / fg_cm - 100.0 / bg_cm)
+    blur_diameter_deg, sigma_deg = (
+        calculate_defocus_parameters(diopter_difference, float(pupil_mm))
+        if apply_defocus else (0.0, 0.0)
+    )
+    pixels_per_degree = args.image_size / angle
+    sigma_px = sigma_deg * pixels_per_degree
     disparity_deg = right_aligned_disparity_deg(args.ipd_mm, fg_cm, bg_cm)
     disparity_px = round(args.image_size * disparity_deg / angle)
     return RunSettings(
@@ -170,6 +240,12 @@ def load_settings(args: argparse.Namespace) -> RunSettings:
         alpha=l_fg / (l_fg + l_bg),
         model=args.model,
         device=args.device,
+        apply_defocus=apply_defocus,
+        pupil_diameter_mm=pupil_mm,
+        diopter_difference=diopter_difference,
+        blur_diameter_deg=blur_diameter_deg,
+        blur_sigma_deg=sigma_deg,
+        blur_sigma_px=sigma_px,
     )
 
 
@@ -341,14 +417,33 @@ def crop_with_black(panorama: np.ndarray, start_x: int, width: int) -> np.ndarra
     return output
 
 
+def crop_with_reflect(panorama: np.ndarray, start_x: int, width: int) -> np.ndarray:
+    """背景の範囲外を反射補完する。黒い縁による人工的な左右差を避ける。"""
+    left_pad = max(0, -start_x)
+    right_pad = max(0, start_x + width - panorama.shape[1])
+    mode = "reflect" if panorama.shape[1] > 1 else "edge"
+    padded = np.pad(
+        panorama, ((0, 0), (left_pad, right_pad), (0, 0)), mode=mode
+    )
+    return padded[:, start_x + left_pad:start_x + left_pad + width].copy()
+
+
 def make_eye_backgrounds(
-    panorama: np.ndarray, output_width: int, disparity_px: int
+    panorama: np.ndarray, output_width: int, disparity_px: int,
+    *, boundary_mode: str = "black",
 ) -> tuple[np.ndarray, np.ndarray]:
+    if panorama.ndim != 3 or panorama.shape[2] != 3 or min(panorama.shape[:2]) <= 0:
+        raise ValueError("背景には空でないH×W×3配列が必要です")
+    if output_width <= 0:
+        raise ValueError("output_widthには正値が必要です")
+    if boundary_mode not in {"black", "reflect"}:
+        raise ValueError(f"未定義の境界処理: {boundary_mode}")
+    crop = crop_with_reflect if boundary_mode == "reflect" else crop_with_black
     right_start = (panorama.shape[1] - output_width) // 2
     left_start = right_start + disparity_px
     return (
-        crop_with_black(panorama, right_start, output_width),
-        crop_with_black(panorama, left_start, output_width),
+        crop(panorama, right_start, output_width),
+        crop(panorama, left_start, output_width),
     )
 
 
@@ -364,6 +459,51 @@ def invert_gamma(linear_rgb: np.ndarray, gamma: dict[str, float]) -> np.ndarray:
     for i, channel in enumerate("RGB"):
         out[..., i] = np.clip(linear_rgb[..., i], 0, None) ** (1.0 / float(gamma[channel]))
     return out
+
+
+def blur_background_panorama(
+    panorama_bgr: np.ndarray,
+    calibration: DisplayCalibration,
+    settings: RunSettings,
+) -> np.ndarray:
+    """背景全体を線形RGBでぼかし、校正ガンマ付きBGRへ戻す。
+
+    common.opticsと同じsigma式を使うが、畳み込みは反射境界Gaussian。
+    FFTの周期的回り込み、途中の8bit量子化、コントラスト再正規化は行わない。
+    """
+    if not settings.apply_defocus:
+        return panorama_bgr.copy()
+    if settings.pupil_diameter_mm is None:
+        raise ValueError("背景defocus用の瞳孔径が設定されていません")
+    if calibration.gamma_bg is None:
+        raise RuntimeError("背景defocusにはgamma_bg.csvが必要です")
+    sigma = settings.blur_sigma_px
+    if not math.isfinite(sigma) or sigma <= 0:
+        raise ValueError("背景defocusのsigma_pxには正の有限値が必要です")
+    linear_rgb = apply_gamma(panorama_bgr[..., ::-1], calibration.gamma_bg)
+    radius = max(1, math.ceil(settings.gaussian_truncate * sigma))
+    kernel_size = radius * 2 + 1
+    blurred_linear = cv2.GaussianBlur(
+        linear_rgb, (kernel_size, kernel_size),
+        sigmaX=sigma, sigmaY=sigma, borderType=cv2.BORDER_REFLECT_101,
+    )
+    encoded_rgb = invert_gamma(blurred_linear, calibration.gamma_bg)
+    return np.ascontiguousarray(
+        np.clip(encoded_rgb[..., ::-1], 0.0, 1.0), dtype=np.float32
+    )
+
+
+def prepare_scoring_backgrounds(
+    panorama: np.ndarray,
+    calibration: DisplayCalibration,
+    settings: RunSettings,
+) -> tuple[np.ndarray, np.ndarray]:
+    """全候補評価と選定ペア保存で共有する背景準備。前景には触れない。"""
+    blurred_panorama = blur_background_panorama(panorama, calibration, settings)
+    return make_eye_backgrounds(
+        blurred_panorama, settings.image_size_px, settings.disparity_px,
+        boundary_mode=settings.eye_boundary_mode,
+    )
 
 
 def require_calibration(calibration: DisplayCalibration) -> None:
@@ -483,6 +623,12 @@ def evaluate_pair(
         left_clip_ratio=left_clip,
         disparity_deg=settings.disparity_deg,
         disparity_px=settings.disparity_px,
+        apply_defocus=settings.apply_defocus,
+        pupil_diameter_mm=settings.pupil_diameter_mm,
+        diopter_difference=settings.diopter_difference,
+        blur_sigma_deg=settings.blur_sigma_deg,
+        blur_sigma_px=settings.blur_sigma_px,
+        eye_boundary_mode=settings.eye_boundary_mode,
     )
 
 
@@ -641,6 +787,7 @@ def save_selected_pair(
     foreground: np.ndarray, panorama: np.ndarray,
     calibration: DisplayCalibration, model,
     settings: RunSettings, device: torch.device,
+    *, eye_backgrounds: tuple[np.ndarray, np.ndarray] | None = None,
 ) -> None:
     if result.difference_group not in {"high", "low"}:
         raise ValueError(
@@ -652,21 +799,35 @@ def save_selected_pair(
     group_dir = output_dir / f"{result.difference_group}10"
     pair_dir = group_dir / f"rank_{result.group_rank:02d}"
     pair_dir.mkdir(parents=True, exist_ok=False)
-    right_bg, left_bg = make_eye_backgrounds(
-        panorama, settings.image_size_px, settings.disparity_px
+    right_bg, left_bg = (
+        eye_backgrounds if eye_backgrounds is not None
+        else prepare_scoring_backgrounds(panorama, calibration, settings)
     )
     right_target, right_ref = calibrated_model_components(foreground, right_bg, calibration)
     left_target, left_ref = calibrated_model_components(foreground, left_bg, calibration)
     right_map = compute_visibility_map(model, right_target, right_ref, settings.alpha, device)
     left_map = compute_visibility_map(model, left_target, left_ref, settings.alpha, device)
+    # 保存するマップがall_pairs/high10/low10のスコアと一致することを検証。
+    for eye, actual, expected in (
+        ("right", float(right_map.mean()), result.right_visibility_score),
+        ("left", float(left_map.mean()), result.left_visibility_score),
+    ):
+        if not math.isclose(actual, expected, rel_tol=1e-5, abs_tol=1e-6):
+            raise RuntimeError(f"保存時の{eye}スコアが評価時と不一致: {actual} != {expected}")
     right_composite, _ = optical_addition_bgr(foreground, right_bg, calibration)
     left_composite, _ = optical_addition_bgr(foreground, left_bg, calibration)
+    right_unblurred, left_unblurred = make_eye_backgrounds(
+        panorama, settings.image_size_px, settings.disparity_px,
+        boundary_mode=settings.eye_boundary_mode,
+    )
 
     fg_source = Path(result.foreground_path)
     bg_source = Path(result.background_path)
     shutil.copy2(fg_source, pair_dir / f"foreground_original{fg_source.suffix}")
     shutil.copy2(bg_source, pair_dir / f"background_original{bg_source.suffix}")
     save_bgr(pair_dir / "foreground_prepared.png", foreground)
+    save_bgr(pair_dir / "right_background_view_unblurred.png", right_unblurred)
+    save_bgr(pair_dir / "left_background_view_unblurred.png", left_unblurred)
     save_bgr(pair_dir / "right_background_view.png", right_bg)
     save_bgr(pair_dir / "left_background_view.png", left_bg)
     save_bgr(pair_dir / "right_optical_composite.png", right_composite)
@@ -675,6 +836,17 @@ def save_selected_pair(
     save_vismap(pair_dir / "left_vismap_gray.png", left_map)
     save_vismap(pair_dir / "right_vismap_heat.png", right_map, True)
     save_vismap(pair_dir / "left_vismap_heat.png", left_map, True)
+    with (pair_dir / "pair_metadata.json").open("w", encoding="utf-8") as file:
+        json.dump({
+            **asdict(result),
+            "blur_method": "gaussian_linear_rgb" if settings.apply_defocus else "none",
+            "blur_boundary_mode": "reflect101" if settings.apply_defocus else "none",
+            "blur_scale_factor": settings.blur_scale_factor,
+            "gaussian_truncate": settings.gaussian_truncate,
+            "model_input_mode": "calibrated_components_linear_alpha",
+            "original_images_preserved": True,
+            "dp_presentation_source": "background_original (not the blurred view)",
+        }, file, ensure_ascii=False, indent=2)
 
 
 def main() -> None:
@@ -753,8 +925,8 @@ def main() -> None:
         for item in bg_items
     }
     eye_bg_cache = {
-        item.path: make_eye_backgrounds(
-            panorama_cache[item.path], settings.image_size_px, settings.disparity_px
+        item.path: prepare_scoring_backgrounds(
+            panorama_cache[item.path], calibration, settings
         )
         for item in bg_items
     }
@@ -762,6 +934,12 @@ def main() -> None:
     with (output_dir / "config.json").open("w", encoding="utf-8") as file:
         json.dump({
             **asdict(settings),
+            "pixels_per_degree": settings.image_size_px / settings.visual_angle_deg,
+            "blur_method": "gaussian_linear_rgb" if settings.apply_defocus else "none",
+            "blur_boundary_mode": "reflect101" if settings.apply_defocus else "none",
+            "eye_boundary_mode": settings.eye_boundary_mode,
+            "model_input_mode": "calibrated_components_linear_alpha",
+            "original_images_preserved": True,
             "image_dirs": [str(path) for path in image_dirs],
             "image_count": len(paths),
             "dataset_image_counts": (
@@ -799,6 +977,13 @@ def main() -> None:
     print(
         f"FG candidates={len(fg_items)}, BG candidates={len(bg_items)}, pairs={total}, "
         f"disparity={settings.disparity_deg:.4f}deg ({settings.disparity_px}px)"
+    )
+    print(
+        f"Background defocus={settings.apply_defocus}, "
+        f"pupil={settings.pupil_diameter_mm}mm, "
+        f"diopter_difference={settings.diopter_difference:.4f}D, "
+        f"sigma={settings.blur_sigma_deg:.6f}deg ({settings.blur_sigma_px:.4f}px), "
+        f"eye_boundary={settings.eye_boundary_mode}"
     )
     index = 0
     for fg_item in fg_items:
@@ -859,6 +1044,7 @@ def main() -> None:
             output_dir, result,
             fg_cache[fg_path], panorama_cache[bg_path],
             calibration, model, settings, device,
+            eye_backgrounds=eye_bg_cache[bg_path],
         )
     print(f"Saved: {output_dir}")
 
