@@ -1,9 +1,13 @@
+# 保存先: lab/src/experiment/pre_experiment/pre_experiment_image.py
+# 設定コードは image/config.py に保存する。この起動コードとは別ファイル。
 # cd src && py -m experiment.pre_experiment.pre_experiment_image
 """conditions.pyのCONDITION_ENABLEDで指定した条件の画像予備実験を起動する。
 
 各条件20ペア。今回の既定値はDP両眼・DP利き眼・DP非利き眼・
 SP両眼（defocus＋左右眼像融合）の4条件、計80試行。
 切替はimage/conditions.pyのTrue / Falseを編集し、保存後に再起動する。
+既定は上下±3.95°・連続提示の画像マッチング。旧評定は --task-mode rating。
+マッチングは実校正が必須。画面外・色域外があれば開始を停止する。
 """
 
 import argparse
@@ -25,18 +29,29 @@ def parse_args() -> argparse.Namespace:
         type=int,
         help="条件順・ペア順の基準seed（参加者IDと組み合わせて使用）",
     )
+    parser.add_argument("--task-mode", choices=("matching", "rating"), default=None,
+                        help="省略時はimage/config.pyのIMAGE_TASK_MODE")
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
+    print(f"[image] 起動ファイル: {Path(__file__).resolve()}", flush=True)
+    config = create_image_config(args.selected_pairs_dir, args.seed, args.task_mode)
+    print(f"[image] 実験方式: {config.task_mode}", flush=True)
+    app_class = ImageExperimentApp
+    if config.task_mode == "matching":
+        from .image.matching_app import ImageMatchingApp
+        app_class = ImageMatchingApp
     root = tk.Tk()
-    ImageExperimentApp(
-        root,
-        create_image_config(args.selected_pairs_dir, args.seed),
-    )
-    root.mainloop()
-
+    try:
+        print("[image] 実験を準備します。画像フォルダ選択が出たら指定してください。", flush=True)
+        app_class(root, config)
+        print("[image] 表示・参加者入力を開始します。", flush=True)
+        root.mainloop()
+    except Exception:
+        root.destroy()
+        raise
 
 if __name__ == "__main__":
     main()

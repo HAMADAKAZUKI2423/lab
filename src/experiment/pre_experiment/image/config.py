@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+import math
 
 from experiment import experiment_config
 
@@ -13,6 +14,9 @@ EXPERIMENT_DIR = Path(__file__).resolve().parents[2]
 LAB_ROOT = EXPERIMENT_DIR.parents[1]
 RUNTIME_CONFIG: dict[str, Any] = experiment_config.get_config() or {}
 
+# 条件T/Fとは独立。旧ratingへ戻す場合は "rating"、または --task-mode rating。
+IMAGE_TASK_MODE = "matching"
+
 
 @dataclass(frozen=True)
 class ImageSessionConfig:
@@ -22,6 +26,14 @@ class ImageSessionConfig:
     selected_pairs_dir: Path | None
     display_dir: Path
     conditions: tuple[str, ...] = field(default_factory=get_enabled_condition_ids)
+    task_mode: str = IMAGE_TASK_MODE
+    reference_gain: float = 0.5
+    gain_step: float = 0.01
+    gain_fine_step: float = 0.001
+    render_interval_ms: int = 33
+    foreground_pixels_per_cm: float = 1.0 / 0.02331
+    background_pixels_per_cm: float = 1.0 / 0.02331
+    gamut_tolerance: float = 1e-9
     random_seed: int = 20260928
     visual_angle_deg: float = 7.9
     background_width_factor: float = 2.0
@@ -39,6 +51,22 @@ class ImageSessionConfig:
     binocular_fusion_dominant_weight: float = 0.5
 
     def __post_init__(self) -> None:
+        if self.task_mode not in {"matching", "rating"}:
+            raise ValueError("task_mode must be matching or rating")
+        for value in (self.visual_angle_deg, self.distance_fg_cm, self.distance_bg_cm,
+                      self.foreground_pixels_per_cm, self.background_pixels_per_cm,
+                      self.gain_step, self.gain_fine_step):
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError("Angles, distances, pixel density and steps must be finite and positive")
+        if not 0 < self.distance_fg_cm < self.distance_bg_cm:
+            raise ValueError("DISTANCE_FG must be smaller than DISTANCE_BG")
+        if self.visual_angle_deg >= 80 or not 0 < self.reference_gain < 1:
+            raise ValueError("Invalid visual angle or reference gain")
+        if (not math.isfinite(self.reference_gain) or not math.isfinite(self.gamut_tolerance)
+                or self.render_interval_ms < 1 or self.gamut_tolerance < 0):
+            raise ValueError("Invalid update interval or gamut tolerance")
+        if self.task_mode == "matching" and self.background_color.lower() != "black":
+            raise ValueError("Matching requires black blank regions")
         # 有効条件をセッション生成時にtupleへ固定し、開始後の変更を防ぐ。
         object.__setattr__(self, "conditions", tuple(self.conditions))
         if not self.conditions:
@@ -68,11 +96,19 @@ class ImageSessionConfig:
             for index, condition_id in enumerate(self.conditions, start=1)
         )
         return (
-            f"Image experiment: {self.condition_count} conditions\n"
+            f"Image {self.task_mode}: {self.condition_count} conditions\n"
             f"{self.expected_trial_count} trials: "
             f"{self.trials_per_condition} selected pairs per condition.\n\n"
             f"{labels}\n\nPress Enter to start."
         )
+
+    @property
+    def reference_center_deg(self) -> float:
+        return self.visual_angle_deg / 2.0
+
+    @property
+    def test_center_deg(self) -> float:
+        return -self.visual_angle_deg / 2.0
 
     @property
     def defocus_result_filename(self) -> str:
@@ -91,10 +127,18 @@ class ImageSessionConfig:
 def create_image_config(
     selected_pairs_dir: Path | None = None,
     random_seed: int | None = None,
+    task_mode: str | None = None,
 ) -> ImageSessionConfig:
+    mode = IMAGE_TASK_MODE if task_mode is None else task_mode
     config = ImageSessionConfig(
+        task_mode=mode,
+        foreground_pixels_per_cm=float(RUNTIME_CONFIG.get("IMAGE_FG_PIXELS_PER_CM", 1.0 / 0.02331)),
+        background_pixels_per_cm=float(RUNTIME_CONFIG.get("IMAGE_BG_PIXELS_PER_CM", 1.0 / 0.02331)),
         result_root=(
-            LAB_ROOT / "results" / "tables" / "pre-experiment-image"
+            LAB_ROOT / "results" / "tables" / (
+                "pre-experiment-image-matching" if mode == "matching"
+                else "pre-experiment-image"
+            )
         ),
         participant_data_dir=(
             LAB_ROOT / "data" / "processed" / "tables"
