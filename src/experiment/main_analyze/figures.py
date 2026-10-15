@@ -42,20 +42,22 @@ _BOOTSTRAP_SAMPLES = 10_000
 _DPI = 180
 
 # 追加出力 *_significance_no_title.png だけの見た目設定。
-# FIGSIZE: (幅, 高さ) [inch]。FONT_SIZE: [pt]。
-_SIGNIFICANCE_FIGSIZE = (9.2, 9.5)
+# FIGSIZE: 基準PNGを指定しない単独呼び出し時の(幅, 高さ) [inch]。
+# 通常のsave_all_figuresではuncorrectedの_no_title PNGと同じ画素数にする。
+# FONT_SIZE: [pt]。
+_SIGNIFICANCE_FIGSIZE = (9.2, 5.8)
 _SIGNIFICANCE_AXIS_FONT_SIZE = 22
 _SIGNIFICANCE_YLABEL_FONT_SIZE = 22
-_SIGNIFICANCE_LABEL_FONT_SIZE = 18       # アスタリスク / n.s. の希望サイズ
-_SIGNIFICANCE_LEGEND_FONT_SIZE = 16      # Reference / Monocular / Binocular
-_SIGNIFICANCE_MIN_FONT_SIZE = 8         # 空き領域不足時の自動縮小の下限
-_SIGNIFICANCE_TOP_PADDING_PT = 5
-_SIGNIFICANCE_DATA_GAP_PT = 5
-_SIGNIFICANCE_LEGEND_GAP_PT = 3
-_SIGNIFICANCE_ROW_GAP_PT = 1.5
-_SIGNIFICANCE_CAP_HEIGHT_PT = 2
-_SIGNIFICANCE_LABEL_GAP_PT = 1
-_SIGNIFICANCE_LINE_WIDTH = 1.2
+_SIGNIFICANCE_LABEL_FONT_SIZE = 16       # アスタリスク / n.s. の希望サイズ
+_SIGNIFICANCE_LEGEND_FONT_SIZE = 22      # Reference / Monocular / Binocular
+_SIGNIFICANCE_MIN_FONT_SIZE = 6         # 空き領域不足時の自動縮小の下限
+_SIGNIFICANCE_TOP_PADDING_PT = 3
+_SIGNIFICANCE_DATA_GAP_PT = 3
+_SIGNIFICANCE_LEGEND_GAP_PT = 2
+_SIGNIFICANCE_ROW_GAP_PT = 1
+_SIGNIFICANCE_CAP_HEIGHT_PT = 1.5
+_SIGNIFICANCE_LABEL_GAP_PT = 0.5
+_SIGNIFICANCE_LINE_WIDTH = 1.0
 _CONTRAST_Y_TICKS = np.array(
     [0.05, *np.arange(0.1, 1.01, 0.1)],
     dtype=float,
@@ -693,8 +695,10 @@ def _corrected_significance_figure(
     group: pd.DataFrame,
     metadata: dict[str, object],
     annotations: list[dict[str, object]],
+    *,
+    reference_pixel_size: tuple[int, int] | None = None,
 ):
-    """既存と同じ棒・CIに、タイトル等なしの6比較括弧を追加する。"""
+    """未補正4条件版と同じサイズに、補正後3条件の6比較を収める。"""
     from matplotlib import font_manager
     from matplotlib.collections import PathCollection
     from matplotlib.container import BarContainer, ErrorbarContainer
@@ -723,7 +727,15 @@ def _corrected_significance_figure(
     )
     try:
         # 既存PNGと既存_no_title版の描画処理は触らない。
-        figure.set_size_inches(*_SIGNIFICANCE_FIGSIZE)
+        if reference_pixel_size is None:
+            figure.set_size_inches(*_SIGNIFICANCE_FIGSIZE)
+        else:
+            # tight crop済みの既存PNGの画素数をそのままキャンバスに使う。
+            # 0.01 pixelの余裕はfloat→整数変換の丸め落ち防止用。
+            width_px, height_px = reference_pixel_size
+            if width_px <= 0 or height_px <= 0:
+                raise FigureInputError("基準PNGの画像サイズが不正です")
+            figure.set_size_inches((width_px + 0.01) / _DPI, (height_px + 0.01) / _DPI)
         axis = figure.axes[0]
         for title in (axis.title, axis._left_title, axis._right_title):
             title.set_visible(False)
@@ -754,13 +766,26 @@ def _corrected_significance_figure(
             for condition, bar in zip(CORRECTED_CONDITIONS, bars):
                 centers[(eye, condition)] = bar.get_x() + bar.get_width() / 2.0
 
-        # 値・CI・対数尺度は変更せず、新規版の上限だけ1.0に固定する。
-        ci_values = [float(metadata["Ref_Contrast"])]
-        for container in axis.containers:
-            if isinstance(container, ErrorbarContainer):
-                for collection in container.lines[2]:
-                    for segment in collection.get_segments():
-                        ci_values.extend(np.asarray(segment)[:, 1].tolist())
+        # CIの数値・対数尺度は変更しない。各括弧の横幅内にある
+        # 棒・CIだけを避けて配置し、SPD対DPをSPの高さまで持ち上げない。
+        reference = float(metadata["Ref_Contrast"])
+        ci_values = [reference]
+        ci_tops = {
+            (eye, condition): float(bar.get_height())
+            for eye, bars in zip(OCULARITY_ORDER, bar_containers)
+            for condition, bar in zip(CORRECTED_CONDITIONS, bars)
+        }
+        errorbars = [c for c in axis.containers if isinstance(c, ErrorbarContainer)]
+        if len(errorbars) != len(OCULARITY_ORDER):
+            raise FigureInputError("CIの眼条件の配置を特定できません")
+        for eye, container in zip(OCULARITY_ORDER, errorbars):
+            segments = container.lines[2][0].get_segments()
+            if len(segments) != len(CORRECTED_CONDITIONS):
+                raise FigureInputError("CIの条件数が不正です")
+            for condition, segment in zip(CORRECTED_CONDITIONS, segments):
+                ys = np.asarray(segment)[:, 1]
+                ci_values.extend(ys.tolist())
+                ci_tops[(eye, condition)] = float(max(ys))
         low_ci, high_ci = min(ci_values), max(ci_values)
         if low_ci <= 0.0 or not np.isfinite(ci_values).all():
             raise FigureInputError("対数軸で表示できない補正後CIです")
@@ -793,8 +818,6 @@ def _corrected_significance_figure(
         bounds = axis.get_window_extent(renderer)
         px_per_pt = figure.dpi / 72.0
         pt = lambda value: value * px_per_pt
-        data_top = axis.transData.transform((0.0, high_ci))[1]
-        region_bottom = data_top + pt(_SIGNIFICANCE_DATA_GAP_PT)
         region_top = bounds.y1 - pt(_SIGNIFICANCE_TOP_PADDING_PT)
         if len(annotations) != 6:
             raise FigureInputError("比較注記は6本必要です")
@@ -803,8 +826,22 @@ def _corrected_significance_figure(
         )):
             raise FigureInputError("注記・凡例の希望サイズはMIN_FONT_SIZE以上にしてください")
 
-        # 実際の文字寸法を測り、CIと1.0の間に6段＋凡例を収める。
-        # 対数y値の等差ではなく表示座標の等間隔なので、上段も潰れない。
+        # 全6比較を一律に最高の棒の上へ積まず、各比較の横範囲に
+        # 必要な高さから詰める。線と文字の占有領域が重ならないようにする。
+        intervals = []
+        for level, annotation in enumerate(annotations):
+            eye = str(annotation["Ocularity"])
+            left = centers[(eye, str(annotation["Baseline_Condition"]))]
+            right = centers[(eye, str(annotation["Condition"]))]
+            left, right = sorted((left, right))
+            local_high = max([
+                reference,
+                *[value for key, value in ci_tops.items()
+                  if left - 0.02 <= centers[key] <= right + 0.02],
+            ])
+            floor = axis.transData.transform((0.0, local_high))[1]
+            intervals.append((level, annotation, left, right, floor))
+        intervals.sort(key=lambda item: (item[4], item[3] - item[2], item[0]))
         fitted = None
         for scale in np.linspace(1.0, _SIGNIFICANCE_MIN_FONT_SIZE / max(
             _SIGNIFICANCE_LABEL_FONT_SIZE, _SIGNIFICANCE_LEGEND_FONT_SIZE,
@@ -834,10 +871,32 @@ def _corrected_significance_figure(
             row_gap = pt(_SIGNIFICANCE_ROW_GAP_PT)
             row_height = cap + label_gap + text_height
             annotation_top = legend_box.y0 - pt(_SIGNIFICANCE_LEGEND_GAP_PT)
-            required = len(annotations) * row_height + (len(annotations) - 1) * row_gap
-            if (required <= annotation_top - region_bottom
+            placed = []
+            for level, annotation, left, right, floor in intervals:
+                # xも表示座標にして、文字の横幅込みで衝突判定する。
+                x0, x1 = axis.transData.transform([(left, lower), (right, lower)])[:, 0]
+                prop = font_manager.FontProperties(family=selected_font, size=label_size)
+                text_width = renderer.get_text_width_height_descent(
+                    str(annotation["Label"]), prop, ismath=False,
+                )[0]
+                center_x = (x0 + x1) / 2.0
+                x0 = min(x0, center_x - text_width / 2.0) - pt(1)
+                x1 = max(x1, center_x + text_width / 2.0) + pt(1)
+                bottom = floor + pt(_SIGNIFICANCE_DATA_GAP_PT)
+                for other in sorted(placed, key=lambda item: item["bottom"]):
+                    overlaps_x = x0 < other["x1"] and x1 > other["x0"]
+                    if (overlaps_x and bottom < other["top"] + row_gap
+                            and bottom + row_height + row_gap > other["bottom"]):
+                        bottom = other["top"] + row_gap
+                if bottom + row_height > annotation_top:
+                    break
+                placed.append(dict(
+                    level=level, annotation=annotation, left=left, right=right,
+                    x0=x0, x1=x1, bottom=bottom, top=bottom + row_height,
+                ))
+            if (len(placed) == len(annotations)
                     and legend_box.x0 >= bounds.x0 and legend_box.x1 <= bounds.x1):
-                fitted = (label_size, cap, label_gap, row_height, row_gap)
+                fitted = (label_size, cap, label_gap, placed)
                 break
             legend.remove()
         if fitted is None:
@@ -846,13 +905,13 @@ def _corrected_significance_figure(
                 "_SIGNIFICANCE_FIGSIZEの高さを増やすか、文字サイズ・余白を小さくしてください。"
                 "CIや値は切り捨てていません。"
             )
-        label_size, cap, label_gap, row_height, row_gap = fitted
+        label_size, cap, label_gap, placed = fitted
         transform = axis.get_xaxis_transform()
-        for level, annotation in enumerate(annotations):
+        for item in placed:
+            level, annotation = item["level"], item["annotation"]
             eye = str(annotation["Ocularity"])
-            left = centers[(eye, str(annotation["Baseline_Condition"]))]
-            right = centers[(eye, str(annotation["Condition"]))]
-            y_px = region_bottom + cap + level * (row_height + row_gap)
+            left, right = item["left"], item["right"]
+            y_px = item["bottom"] + cap
             y = (y_px - bounds.y0) / bounds.height
             cap_y = cap / bounds.height
             color = _EYE_COLORS[eye]
@@ -880,8 +939,13 @@ def save_corrected_significance_figures(
     corrected_df: pd.DataFrame,
     hypothesis_tests: pd.DataFrame,
     output_dir: str | Path,
+    *,
+    uncorrected_output_dir: str | Path | None = None,
 ) -> list[Path]:
     """補正後3条件×2眼の6比較付きPNGを既存図とは別名で追加保存する。
+
+    uncorrected_output_dir指定時は、同じパネルの未補正4条件_no_title PNGと
+    画素数を一致させる。既存PNGは読み取りのみで変更しない。
 
     注記は既存の両側t検定のholm_adjusted_p_valueのみを参照する。
     H3内4検定・H4内3検定の補正を維持し、描画対象6行で再補正しない。
@@ -900,12 +964,32 @@ def save_corrected_significance_figures(
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
     outputs: list[Path] = []
+    from PIL import Image
+
     for group, metadata, annotations in panels:
-        figure = _corrected_significance_figure(group, metadata, annotations)
+        reference_pixel_size = None
+        if uncorrected_output_dir is not None:
+            reference_base = Path(uncorrected_output_dir) / _file_name("uncorrected", metadata)
+            reference_path = reference_base.with_name(
+                f"{reference_base.stem}_no_title{reference_base.suffix}"
+            )
+            if not reference_path.is_file():
+                raise FigureInputError(f"サイズ基準の未補正PNGがありません: {reference_path}")
+            with Image.open(reference_path) as image:
+                reference_pixel_size = image.size
+        figure = _corrected_significance_figure(
+            group, metadata, annotations, reference_pixel_size=reference_pixel_size,
+        )
         base_path = destination / _file_name("dpf_corrected", metadata)
         output_path = base_path.with_name(f"{base_path.stem}_significance_no_title{base_path.suffix}")
         try:
-            figure.savefig(output_path, dpi=_DPI, bbox_inches="tight", facecolor="white")
+            # tight cropすると注記や軸名で縦横サイズが変わるため、この追加版だけ固定保存。
+            with _pyplot().rc_context({"savefig.bbox": None}):
+                figure.savefig(output_path, dpi=_DPI, bbox_inches=None, facecolor="white")
+            if reference_pixel_size is not None:
+                with Image.open(output_path) as image:
+                    if image.size != reference_pixel_size:
+                        raise FigureInputError("追加PNGの画素数が未補正4条件版と一致しません")
         finally:
             _pyplot().close(figure)
         outputs.append(output_path)
@@ -1416,7 +1500,8 @@ def save_all_figures(
     }
     if hypothesis_tests is not None:
         outputs["dpf_corrected_significance"] = save_corrected_significance_figures(
-            corrected_df, hypothesis_tests, output_paths.corrected_figure_dir
+            corrected_df, hypothesis_tests, output_paths.corrected_figure_dir,
+            uncorrected_output_dir=output_paths.uncorrected_figure_dir,
         )
     return outputs
 
