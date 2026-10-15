@@ -10,6 +10,7 @@ import pandas as pd
 
 from .config import (
     ANALYSIS_GROUP_COLUMNS,
+    ANALYSIS_SCALE,
     CONDITION_ORDER,
     CORRECTED_CONDITIONS,
     DP_CONDITION,
@@ -39,6 +40,22 @@ _EYE_LABELS = {"monocular": "Monocular", "binocular": "Binocular"}
 _EYE_COLORS = {"monocular": "royalblue", "binocular": "darkorange"}
 _BOOTSTRAP_SAMPLES = 10_000
 _DPI = 180
+
+# 追加出力 *_significance_no_title.png だけの見た目設定。
+# FIGSIZE: (幅, 高さ) [inch]。FONT_SIZE: [pt]。
+_SIGNIFICANCE_FIGSIZE = (9.2, 9.5)
+_SIGNIFICANCE_AXIS_FONT_SIZE = 22
+_SIGNIFICANCE_YLABEL_FONT_SIZE = 22
+_SIGNIFICANCE_LABEL_FONT_SIZE = 18       # アスタリスク / n.s. の希望サイズ
+_SIGNIFICANCE_LEGEND_FONT_SIZE = 16      # Reference / Monocular / Binocular
+_SIGNIFICANCE_MIN_FONT_SIZE = 8         # 空き領域不足時の自動縮小の下限
+_SIGNIFICANCE_TOP_PADDING_PT = 5
+_SIGNIFICANCE_DATA_GAP_PT = 5
+_SIGNIFICANCE_LEGEND_GAP_PT = 3
+_SIGNIFICANCE_ROW_GAP_PT = 1.5
+_SIGNIFICANCE_CAP_HEIGHT_PT = 2
+_SIGNIFICANCE_LABEL_GAP_PT = 1
+_SIGNIFICANCE_LINE_WIDTH = 1.2
 _CONTRAST_Y_TICKS = np.array(
     [0.05, *np.arange(0.1, 1.01, 0.1)],
     dtype=float,
@@ -157,6 +174,31 @@ def _annotate_median_and_iqr(
 def _stable_seed(parts: tuple[object, ...]) -> int:
     token = "|".join(str(part) for part in parts).encode("utf-8")
     return int.from_bytes(sha256(token).digest()[:8], "big", signed=False)
+
+
+def _mean_t_ci(values) -> tuple[float, float, float]:
+    """参加者単位の対数値から平均と両側95% t信頼区間を返す。
+
+    自由度はn-1、標準偏差はddof=1。参加者の対数値が独立で、
+    平均のt区間を適用できる分布であることを前提とする。
+    元のcontrast尺度への逆変換は呼び出し側で行う。
+    """
+    array = np.asarray(values, dtype=float)
+    if array.ndim != 1 or not np.isfinite(array).all():
+        raise FigureInputError("t信頼区間には1次元の有限な参加者値が必要です")
+    n = len(array)
+    if n < 2:
+        raise FigureInputError("95% t信頼区間の計算には2人以上の参加者が必要です")
+    from scipy.stats import t
+
+    mean = float(np.mean(array))
+    sd = float(np.std(array, ddof=1))
+    sem = sd / np.sqrt(n)
+    critical_t = float(t.ppf(0.975, df=n - 1))
+    half_width = critical_t * sem
+    if not np.isfinite([mean, half_width]).all():
+        raise FigureInputError("95% t信頼区間を有限値として計算できません")
+    return mean, float(mean - half_width), float(mean + half_width)
 
 
 def _bootstrap_mean_ci(
@@ -291,10 +333,8 @@ def _condition_figure(
                 & (group["Condition"] == condition),
                 value_column,
             ].to_numpy(float)
-            mean, lower, upper = _bootstrap_mean_ci(
-                values,
-                seed_parts=(label, *metadata.values(), eye, condition),
-            )
+            # 参加者ごとのlog10代表値に基づく、平均の95% t信頼区間。
+            mean, lower, upper = _mean_t_ci(values)
             mean_logs.append(mean)
             lower_logs.append(lower)
             upper_logs.append(upper)
@@ -557,6 +597,319 @@ def save_corrected_figures(
         label="DPF-corrected participant summaries",
         prefix="dpf_corrected",
     )
+
+
+# 以下は既存出力を置換せず、補正後・6比較注記付きの別PNGだけを追加する。
+def _significance_label(adjusted_p: float) -> str:
+    """両側t検定のHolm補正後p値を表示用記号へ変換する。"""
+    value = float(adjusted_p)
+    if not np.isfinite(value) or not 0.0 <= value <= 1.0:
+        # 評価不能・欠損をn.s.として表示しない。
+        raise FigureInputError(f"有意差注記に使えない補正後p値です: {value}")
+    if value < 0.001:
+        return "***"
+    if value < 0.01:
+        return "**"
+    if value < 0.05:
+        return "*"
+    return "n.s."
+
+
+def _condition_significance_rows(
+    group: pd.DataFrame,
+    tests: pd.DataFrame,
+    metadata: dict[str, object],
+) -> list[dict[str, object]]:
+    """解析群・集約方法・眼・比較を照合し、予定した6比較だけを返す。"""
+    required = [
+        *ANALYSIS_GROUP_COLUMNS,
+        "Participant_Aggregation", "Analysis_Scale", "Data_State",
+        "Hypothesis", "Ocularity", "Condition", "Baseline_Condition",
+        "holm_adjusted_p_value", "n",
+    ]
+    missing = [column for column in required if column not in tests.columns]
+    if missing:
+        raise FigureInputError(f"有意差注記の検定表に必要な列がありません: {missing}")
+    if "Participant_Aggregation" not in group:
+        raise FigureInputError("補正後参加者表にParticipant_Aggregationがありません")
+    aggregations = group["Participant_Aggregation"].astype("string").str.strip()
+    if aggregations.isna().any() or aggregations.eq("").any() or aggregations.nunique() != 1:
+        raise FigureInputError("補正後参加者表の集約方法を一意に特定できません")
+    aggregation = str(aggregations.iloc[0])
+    mask = (
+        tests["Session_Type"].astype("string").eq(str(metadata["Session_Type"]))
+        & tests["Participant_Aggregation"].astype("string").eq(aggregation)
+    )
+    for column in ("Ref_Contrast", "Orientation"):
+        numeric = pd.to_numeric(tests[column], errors="coerce").to_numpy(float)
+        mask &= np.isclose(numeric, float(metadata[column]), rtol=0.0, atol=1e-12)
+    matched = tests.loc[mask.fillna(False)]
+    # 各ペアについて単眼→両眼の順。長いSP–DP括弧は上段に置く。
+    comparisons = (
+        ("H3", SPD_CONDITION, SP_CONDITION),
+        ("H4", DP_CONDITION, SPD_CONDITION),
+        ("H3", DP_CONDITION, SP_CONDITION),
+    )
+    annotations: list[dict[str, object]] = []
+    for hypothesis, condition, baseline in comparisons:
+        for eye in OCULARITY_ORDER:
+            rows = matched.loc[
+                matched["Hypothesis"].eq(hypothesis)
+                & matched["Ocularity"].eq(eye)
+                & matched["Condition"].eq(condition)
+                & matched["Baseline_Condition"].eq(baseline)
+            ]
+            if len(rows) != 1:
+                raise FigureInputError(
+                    "有意差注記の検定結果は1行必要です: "
+                    f"group={metadata}, aggregation={aggregation}, "
+                    f"eye={eye}, {condition} vs {baseline}, found={len(rows)}"
+                )
+            row = rows.iloc[0]
+            if row["Data_State"] != "dpf_corrected" or row["Analysis_Scale"] != ANALYSIS_SCALE:
+                raise FigureInputError("有意差注記の検定表の補正状態・解析尺度が一致しません")
+            n_expected = group.loc[group["Ocularity"].eq(eye), "ID"].nunique()
+            try:
+                n_test = float(row["n"])
+                adjusted_p = float(row["holm_adjusted_p_value"])
+            except (TypeError, ValueError) as error:
+                raise FigureInputError("有意差注記のnまたはp値が数値ではありません") from error
+            if not np.isfinite(n_test) or n_test < 2 or n_test != n_expected:
+                raise FigureInputError(
+                    f"図と検定の参加者数が一致しません: plot={n_expected}, test={n_test}"
+                )
+            annotations.append({
+                "Ocularity": eye,
+                "Condition": condition,
+                "Baseline_Condition": baseline,
+                # Primary_Adjusted_P_Valueは使わない。H4単眼ではTOSTを指すため。
+                "Adjusted_P_Value": adjusted_p,
+                "Label": _significance_label(adjusted_p),
+            })
+    return annotations
+
+
+def _corrected_significance_figure(
+    group: pd.DataFrame,
+    metadata: dict[str, object],
+    annotations: list[dict[str, object]],
+):
+    """既存と同じ棒・CIに、タイトル等なしの6比較括弧を追加する。"""
+    from matplotlib import font_manager
+    from matplotlib.collections import PathCollection
+    from matplotlib.container import BarContainer, ErrorbarContainer
+    from matplotlib.text import Text
+
+    selected_font = None
+    for candidate in ("Times New Roman", "Arial", "Helvetica", "Times"):
+        try:
+            font_manager.findfont(candidate, fallback_to_default=False)
+        except ValueError:
+            continue
+        selected_font = candidate
+        break
+    if selected_font is None:
+        raise RuntimeError(
+            "Times New Roman / Arial / Helvetica / Timesのいずれかをインストールしてください。"
+        )
+
+    figure = _condition_figure(
+        group,
+        conditions=CORRECTED_CONDITIONS,
+        value_column=CORRECTED_LOG10_COLUMN,
+        # 棒・CIとも既存の補正後図と同じ計算を共有する。
+        label="DPF-corrected participant summaries",
+        metadata=metadata,
+    )
+    try:
+        # 既存PNGと既存_no_title版の描画処理は触らない。
+        figure.set_size_inches(*_SIGNIFICANCE_FIGSIZE)
+        axis = figure.axes[0]
+        for title in (axis.title, axis._left_title, axis._right_title):
+            title.set_visible(False)
+        if figure._suptitle is not None:
+            figure._suptitle.set_visible(False)
+        for collection in axis.collections:
+            if isinstance(collection, PathCollection):
+                collection.set_visible(False)
+        for text in axis.texts:
+            if text.get_text().startswith("m=") and "\nd=" in text.get_text():
+                text.set_visible(False)
+        figure.canvas.draw()
+        for text in figure.findobj(Text):
+            text.set_fontsize(_SIGNIFICANCE_AXIS_FONT_SIZE)
+            text.set_fontfamily([selected_font])
+        axis.set_ylabel(
+            "DPF-corrected matched contrast\n" + r"$C'_{\mathrm{AR}}$ (geometric mean)",
+            fontsize=_SIGNIFICANCE_YLABEL_FONT_SIZE,
+        )
+
+        bar_containers = [c for c in axis.containers if isinstance(c, BarContainer)]
+        if len(bar_containers) != len(OCULARITY_ORDER):
+            raise FigureInputError("6比較注記の棒の配置を特定できません")
+        centers: dict[tuple[str, str], float] = {}
+        for eye, bars in zip(OCULARITY_ORDER, bar_containers):
+            if len(bars) != len(CORRECTED_CONDITIONS):
+                raise FigureInputError("6比較注記の棒の数が不正です")
+            for condition, bar in zip(CORRECTED_CONDITIONS, bars):
+                centers[(eye, condition)] = bar.get_x() + bar.get_width() / 2.0
+
+        # 値・CI・対数尺度は変更せず、新規版の上限だけ1.0に固定する。
+        ci_values = [float(metadata["Ref_Contrast"])]
+        for container in axis.containers:
+            if isinstance(container, ErrorbarContainer):
+                for collection in container.lines[2]:
+                    for segment in collection.get_segments():
+                        ci_values.extend(np.asarray(segment)[:, 1].tolist())
+        low_ci, high_ci = min(ci_values), max(ci_values)
+        if low_ci <= 0.0 or not np.isfinite(ci_values).all():
+            raise FigureInputError("対数軸で表示できない補正後CIです")
+        if high_ci >= 1.0:
+            raise FigureInputError(
+                "CIまたはreferenceが1.0以上のため、全注記をその上かつ1.0未満には配置できません。"
+                "値を切り捨てずに停止しました。"
+            )
+        lower = min(axis.get_ylim()[0], low_ci / 1.1)
+        axis.set_ylim(lower, 1.0)
+        ticks = sorted(set([
+            *_CONTRAST_Y_TICKS,
+            *([lower] if lower < _CONTRAST_Y_TICKS[0] else []),
+        ]))
+        tick_labels = [
+            "" if any(abs(value - hidden) < 1e-8 for hidden in (0.6, 0.7, 0.8, 0.9))
+            else f"{value:.1f}" if 0.1 <= value <= 1.0 else f"{value:g}"
+            for value in ticks
+        ]
+        axis.set_yticks(ticks)
+        axis.set_yticklabels(
+            tick_labels, fontsize=_SIGNIFICANCE_AXIS_FONT_SIZE, fontfamily=selected_font,
+        )
+        # 古い枠外凡例を外してから、軸名・目盛りのための余白を確定する。
+        if axis.get_legend() is not None:
+            axis.get_legend().remove()
+        figure.tight_layout()
+        figure.canvas.draw()
+        renderer = figure.canvas.get_renderer()
+        bounds = axis.get_window_extent(renderer)
+        px_per_pt = figure.dpi / 72.0
+        pt = lambda value: value * px_per_pt
+        data_top = axis.transData.transform((0.0, high_ci))[1]
+        region_bottom = data_top + pt(_SIGNIFICANCE_DATA_GAP_PT)
+        region_top = bounds.y1 - pt(_SIGNIFICANCE_TOP_PADDING_PT)
+        if len(annotations) != 6:
+            raise FigureInputError("比較注記は6本必要です")
+        if not (0 < _SIGNIFICANCE_MIN_FONT_SIZE <= min(
+            _SIGNIFICANCE_LABEL_FONT_SIZE, _SIGNIFICANCE_LEGEND_FONT_SIZE,
+        )):
+            raise FigureInputError("注記・凡例の希望サイズはMIN_FONT_SIZE以上にしてください")
+
+        # 実際の文字寸法を測り、CIと1.0の間に6段＋凡例を収める。
+        # 対数y値の等差ではなく表示座標の等間隔なので、上段も潰れない。
+        fitted = None
+        for scale in np.linspace(1.0, _SIGNIFICANCE_MIN_FONT_SIZE / max(
+            _SIGNIFICANCE_LABEL_FONT_SIZE, _SIGNIFICANCE_LEGEND_FONT_SIZE,
+        ), 51):
+            label_size = max(_SIGNIFICANCE_MIN_FONT_SIZE, _SIGNIFICANCE_LABEL_FONT_SIZE * scale)
+            legend_size = max(_SIGNIFICANCE_MIN_FONT_SIZE, _SIGNIFICANCE_LEGEND_FONT_SIZE * scale)
+            legend = axis.legend(
+                frameon=False, ncol=3, loc="upper center",
+                bbox_to_anchor=(0.5, (region_top - bounds.y0) / bounds.height),
+                fontsize=legend_size, borderaxespad=0.0,
+                handlelength=1.2, handletextpad=0.5, columnspacing=0.8,
+                borderpad=0.15,
+            )
+            for text in legend.get_texts():
+                text.set_fontfamily([selected_font])
+            probe = axis.text(
+                0.5, 0.5, "n.s.", transform=axis.transAxes,
+                fontsize=label_size, fontfamily=selected_font, va="bottom",
+            )
+            figure.canvas.draw()
+            renderer = figure.canvas.get_renderer()
+            text_height = probe.get_window_extent(renderer).height
+            probe.remove()
+            legend_box = legend.get_window_extent(renderer)
+            cap = pt(_SIGNIFICANCE_CAP_HEIGHT_PT)
+            label_gap = pt(_SIGNIFICANCE_LABEL_GAP_PT)
+            row_gap = pt(_SIGNIFICANCE_ROW_GAP_PT)
+            row_height = cap + label_gap + text_height
+            annotation_top = legend_box.y0 - pt(_SIGNIFICANCE_LEGEND_GAP_PT)
+            required = len(annotations) * row_height + (len(annotations) - 1) * row_gap
+            if (required <= annotation_top - region_bottom
+                    and legend_box.x0 >= bounds.x0 and legend_box.x1 <= bounds.x1):
+                fitted = (label_size, cap, label_gap, row_height, row_gap)
+                break
+            legend.remove()
+        if fitted is None:
+            raise FigureInputError(
+                "1.0未満の空き領域に6比較と凡例が収まりません。"
+                "_SIGNIFICANCE_FIGSIZEの高さを増やすか、文字サイズ・余白を小さくしてください。"
+                "CIや値は切り捨てていません。"
+            )
+        label_size, cap, label_gap, row_height, row_gap = fitted
+        transform = axis.get_xaxis_transform()
+        for level, annotation in enumerate(annotations):
+            eye = str(annotation["Ocularity"])
+            left = centers[(eye, str(annotation["Baseline_Condition"]))]
+            right = centers[(eye, str(annotation["Condition"]))]
+            y_px = region_bottom + cap + level * (row_height + row_gap)
+            y = (y_px - bounds.y0) / bounds.height
+            cap_y = cap / bounds.height
+            color = _EYE_COLORS[eye]
+            line, = axis.plot(
+                [left, left, right, right], [y - cap_y, y, y, y - cap_y],
+                transform=transform, clip_on=True,
+                color=color, linewidth=_SIGNIFICANCE_LINE_WIDTH, zorder=10,
+            )
+            line.set_gid(f"significance_bracket_{level}")
+            text = axis.text(
+                (left + right) / 2.0, y + label_gap / bounds.height,
+                str(annotation["Label"]), transform=transform, clip_on=True,
+                ha="center", va="bottom", fontsize=label_size,
+                fontfamily=selected_font, color=color, zorder=11,
+            )
+            text.set_gid(f"significance_label_{level}")
+        # ここから先はtight_layoutを呼ばない（測定済みの軸サイズを変えない）。
+        return figure
+    except Exception:
+        _pyplot().close(figure)
+        raise
+
+
+def save_corrected_significance_figures(
+    corrected_df: pd.DataFrame,
+    hypothesis_tests: pd.DataFrame,
+    output_dir: str | Path,
+) -> list[Path]:
+    """補正後3条件×2眼の6比較付きPNGを既存図とは別名で追加保存する。
+
+    注記は既存の両側t検定のholm_adjusted_p_valueのみを参照する。
+    H3内4検定・H4内3検定の補正を維持し、描画対象6行で再補正しない。
+    H2/reference比較、H4 interaction、H6はこの図には注記しない。
+    """
+    validated = _validate_frame(
+        corrected_df, label="有意差注記用DPF補正後参加者表",
+        conditions=CORRECTED_CONDITIONS, value_column=CORRECTED_LOG10_COLUMN,
+    )
+    # 全パネルを先に照合する。欠損・重複・不正p値はn.s.扱いにしない。
+    panels = []
+    for values, group in validated.groupby(list(ANALYSIS_GROUP_COLUMNS), sort=True, dropna=False):
+        metadata = dict(zip(ANALYSIS_GROUP_COLUMNS, values))
+        annotations = _condition_significance_rows(group, hypothesis_tests, metadata)
+        panels.append((group, metadata, annotations))
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    outputs: list[Path] = []
+    for group, metadata, annotations in panels:
+        figure = _corrected_significance_figure(group, metadata, annotations)
+        base_path = destination / _file_name("dpf_corrected", metadata)
+        output_path = base_path.with_name(f"{base_path.stem}_significance_no_title{base_path.suffix}")
+        try:
+            figure.savefig(output_path, dpi=_DPI, bbox_inches="tight", facecolor="white")
+        finally:
+            _pyplot().close(figure)
+        outputs.append(output_path)
+    return outputs
 
 
 def _h4_effects(group: pd.DataFrame) -> pd.DataFrame:
@@ -1046,9 +1399,11 @@ def save_all_figures(
     uncorrected_df: pd.DataFrame,
     corrected_df: pd.DataFrame,
     output_paths: AnalysisOutputPaths,
+    *,
+    hypothesis_tests: pd.DataFrame | None = None,
 ) -> dict[str, list[Path]]:
-    """同じrun名の3サブフォルダへ全図を保存する。"""
-    return {
+    """既存図を維持し、検定表があれば6比較注記付き別PNGを追加する。"""
+    outputs = {
         "uncorrected": save_uncorrected_figures(
             uncorrected_df, output_paths.uncorrected_figure_dir
         ),
@@ -1059,12 +1414,18 @@ def save_all_figures(
             corrected_df, output_paths.h4_figure_dir
         ),
     }
+    if hypothesis_tests is not None:
+        outputs["dpf_corrected_significance"] = save_corrected_significance_figures(
+            corrected_df, hypothesis_tests, output_paths.corrected_figure_dir
+        )
+    return outputs
 
 
 __all__ = [
     "FigureInputError",
     "save_all_figures",
     "save_corrected_figures",
+    "save_corrected_significance_figures",
     "save_h4_interaction_figures",
     "save_legacy_contrast_figures",
     "save_uncorrected_figures",

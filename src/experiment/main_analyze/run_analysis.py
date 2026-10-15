@@ -309,6 +309,7 @@ def _run_full_analysis_variant(
             uncorrected_summary,
             corrected_summary,
             output_paths,
+            hypothesis_tests=hypothesis_tests,
         )
         figure_files = {
             family: tuple(paths) for family, paths in saved_figures.items()
@@ -318,6 +319,7 @@ def _run_full_analysis_variant(
             "uncorrected": tuple(),
             "dpf_corrected": tuple(),
             "h4_interaction": tuple(),
+            "dpf_corrected_significance": tuple(),
         }
 
     defocus_result = save_defocus_matching_outputs(

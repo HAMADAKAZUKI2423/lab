@@ -1,6 +1,6 @@
 {
   "Manifest_Version": 1,
-  "Generated_At_UTC": "2026-10-08T08:48:09.169318+00:00",
+  "Generated_At_UTC": "2026-10-15T04:07:50.447591+00:00",
   "Run_Name": "all_participants_mean_based",
   "Analysis_Mode": "full_analysis",
   "Input_Mode": "all_participants",
@@ -185,6 +185,10 @@
       "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\h4_interaction\\h4_interaction__experiment__ref_0p1__ori_0_no_title.png",
       "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\h4_interaction\\h4_interaction__experiment__ref_0p2__ori_0.png",
       "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\h4_interaction\\h4_interaction__experiment__ref_0p2__ori_0_no_title.png"
+    ],
+    "dpf_corrected_significance": [
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\dpf_corrected\\dpf_corrected__experiment__ref_0p1__ori_0_significance_no_title.png",
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\dpf_corrected\\dpf_corrected__experiment__ref_0p2__ori_0_significance_no_title.png"
     ],
     "defocus_matching": [
       "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\defocus_matching\\defocus_matching_by_participant.png"
