@@ -49,14 +49,14 @@ _SIGNIFICANCE_FIGSIZE = (9.2, 5.8)
 _SIGNIFICANCE_AXIS_FONT_SIZE = 22
 _SIGNIFICANCE_YLABEL_FONT_SIZE = 22
 _SIGNIFICANCE_LABEL_FONT_SIZE = 16       # アスタリスク / n.s. の希望サイズ
-_SIGNIFICANCE_LEGEND_FONT_SIZE = 22      # Reference / Monocular / Binocular
+_SIGNIFICANCE_LEGEND_FONT_SIZE = 22      # Reference / Monocular / Binocular（自動縮小しない）
 _SIGNIFICANCE_MIN_FONT_SIZE = 6         # 空き領域不足時の自動縮小の下限
-_SIGNIFICANCE_TOP_PADDING_PT = 3
-_SIGNIFICANCE_DATA_GAP_PT = 3
-_SIGNIFICANCE_LEGEND_GAP_PT = 2
-_SIGNIFICANCE_ROW_GAP_PT = 1
-_SIGNIFICANCE_CAP_HEIGHT_PT = 1.5
-_SIGNIFICANCE_LABEL_GAP_PT = 0.5
+_SIGNIFICANCE_TOP_PADDING_PT = 2
+_SIGNIFICANCE_DATA_GAP_PT = 2
+_SIGNIFICANCE_LEGEND_GAP_PT = 1
+_SIGNIFICANCE_ROW_GAP_PT = 0.4
+_SIGNIFICANCE_CAP_HEIGHT_PT = 4.0
+_SIGNIFICANCE_LABEL_GAP_PT = 0.3
 _SIGNIFICANCE_LINE_WIDTH = 1.0
 _CONTRAST_Y_TICKS = np.array(
     [0.05, *np.arange(0.1, 1.01, 0.1)],
@@ -841,19 +841,43 @@ def _corrected_significance_figure(
             ])
             floor = axis.transData.transform((0.0, local_high))[1]
             intervals.append((level, annotation, left, right, floor))
-        intervals.sort(key=lambda item: (item[4], item[3] - item[2], item[0]))
+        # 同じ条件ペアをまとめ、必ず単眼→両眼の順に配置する。
+        # CIの高さで眼条件を別々に並べ替えると上下が逆転するため、
+        # ペア単位の必要高さ・横幅で配置順を決める。
+        def comparison_pair(annotation):
+            return tuple(sorted((
+                str(annotation["Baseline_Condition"]),
+                str(annotation["Condition"]),
+            )))
+
+        pair_priority = {}
+        for _, annotation, left, right, floor in intervals:
+            pair = comparison_pair(annotation)
+            if pair not in pair_priority:
+                pair_priority[pair] = (floor, right - left)
+            else:
+                previous_floor, previous_width = pair_priority[pair]
+                pair_priority[pair] = (
+                    min(previous_floor, floor), max(previous_width, right - left),
+                )
+        eye_priority = {"monocular": 0, "binocular": 1}
+        intervals.sort(key=lambda item: (
+            *pair_priority[comparison_pair(item[1])],
+            comparison_pair(item[1]), eye_priority[str(item[1]["Ocularity"])],
+            item[0],
+        ))
         fitted = None
-        for scale in np.linspace(1.0, _SIGNIFICANCE_MIN_FONT_SIZE / max(
-            _SIGNIFICANCE_LABEL_FONT_SIZE, _SIGNIFICANCE_LEGEND_FONT_SIZE,
-        ), 51):
+        for scale in np.linspace(
+            1.0, _SIGNIFICANCE_MIN_FONT_SIZE / _SIGNIFICANCE_LABEL_FONT_SIZE, 51,
+        ):
             label_size = max(_SIGNIFICANCE_MIN_FONT_SIZE, _SIGNIFICANCE_LABEL_FONT_SIZE * scale)
-            legend_size = max(_SIGNIFICANCE_MIN_FONT_SIZE, _SIGNIFICANCE_LEGEND_FONT_SIZE * scale)
+            legend_size = _SIGNIFICANCE_LEGEND_FONT_SIZE  # 凡例は固定サイズ。星だけ縮小する。
             legend = axis.legend(
                 frameon=False, ncol=3, loc="upper center",
                 bbox_to_anchor=(0.5, (region_top - bounds.y0) / bounds.height),
                 fontsize=legend_size, borderaxespad=0.0,
                 handlelength=1.2, handletextpad=0.5, columnspacing=0.8,
-                borderpad=0.15,
+                borderpad=0.0,
             )
             for text in legend.get_texts():
                 text.set_fontfamily([selected_font])
@@ -883,6 +907,17 @@ def _corrected_significance_figure(
                 x0 = min(x0, center_x - text_width / 2.0) - pt(1)
                 x1 = max(x1, center_x + text_width / 2.0) + pt(1)
                 bottom = floor + pt(_SIGNIFICANCE_DATA_GAP_PT)
+                if str(annotation["Ocularity"]) == "binocular":
+                    # 横方向の衝突の有無によらず、対応する単眼注記の
+                    # 占有領域より上に両眼の比較線を配置する。
+                    monocular = [
+                        item for item in placed
+                        if str(item["annotation"]["Ocularity"]) == "monocular"
+                        and comparison_pair(item["annotation"]) == comparison_pair(annotation)
+                    ]
+                    if len(monocular) != 1:
+                        raise FigureInputError("両眼比較線に対応する単眼比較線が一意ではありません")
+                    bottom = max(bottom, monocular[0]["top"] + row_gap)
                 for other in sorted(placed, key=lambda item: item["bottom"]):
                     overlaps_x = x0 < other["x1"] and x1 > other["x0"]
                     if (overlaps_x and bottom < other["top"] + row_gap
