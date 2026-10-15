@@ -2,6 +2,7 @@
 from pathlib import Path
 from dataclasses import asdict
 import csv, json, os, random
+import tempfile
 from .results import RESULT_FIELDS, _trial_metadata, _jsonable
 
 EXTRA_FIELDS=['Task_Mode','Reference_Observed_Eye','Alignment_Eye','Initial_Gain',
@@ -73,15 +74,35 @@ def build_matching_row(app,status,elapsed):
     row.update(app.matching_prepared.metadata);row.update(app.render_metrics)
     return {k:row.get(k,'') for k in MATCHING_FIELDS}
 
-def save_matching_manifest(app):
+def save_matching_manifest(app,output_dir=None):
     fields=[k for k in MATCHING_FIELDS if k not in {'Match_Status','Matched_Gain','Final_Gain',
             'Adjustment_Time_s','Adjustment_Count'}]
-    atomic_csv(app.result_dir/'trial_manifest.csv',fields,[trial_base(app,t) for t in app.trial_list])
+    directory=app.result_dir if output_dir is None else Path(output_dir)
+    atomic_csv(directory/'trial_manifest.csv',fields,[trial_base(app,t) for t in app.trial_list])
 
 def save_matching_session(app):
     cfg=app.session_config
-    atomic_csv(app.result_dir/'image_matching.csv',MATCHING_FIELDS,app.results)
-    atomic_csv(app.result_dir/'matching_adjustments.csv',HISTORY_FIELDS,app.adjustment_history)
+    # 途中の試行数・中断行・不完全な校正から結果ファイルを作らない。
+    if app.matching_state!='finished':
+        raise ValueError('Only a completed matching session can be saved')
+    expected=cfg.expected_trial_count
+    if (not app.preflight_complete or len(app.trial_list)!=expected
+            or len(app.results)!=expected or app.current_trial_index!=expected):
+        raise ValueError('All configured trials must be completed before saving')
+    planned=[t.trial_order for t in app.trial_list]
+    actual=[r.get('Trial_ID') for r in app.results]
+    valid_statuses={'matched','above_range','below_range','cannot_judge'}
+    if (len(set(planned))!=expected or actual!=planned
+            or any(r.get('Match_Status') not in valid_statuses for r in app.results)):
+        raise ValueError('Completed trial IDs/statuses do not match the manifest')
+    defocus=app.detailed_defocus_results
+    if any(sum(r.get('Eye')==eye for r in defocus)!=cfg.defocus_repetitions for eye in ('Right','Left')):
+        raise ValueError('Both eyes must have complete defocus calibration results')
+    destination=Path(app.result_dir)
+    if destination.parent.resolve()!=cfg.result_root.resolve():
+        raise ValueError('Session destination is outside the matching result root')
+    if destination.exists():
+        raise FileExistsError(f'Refusing to overwrite an existing session: {destination}')
     settings=asdict(cfg)
     settings.update({'task_mode':'matching','condition_enabled':cfg.condition_enabled,
       'condition_order':list(app.condition_order),'condition_count':cfg.condition_count,
@@ -93,7 +114,20 @@ def save_matching_session(app):
       'preflight':app.preflight_records,'session_state':app.matching_state,
       'reference_center_deg':cfg.reference_center_deg,'test_center_deg':cfg.test_center_deg,
       'runtime_config':__import__('experiment.pre_experiment.image.config',fromlist=['RUNTIME_CONFIG']).RUNTIME_CONFIG,
-      'gamut_policy':'clip_linear_rgb_0_1',
+      'gamut_policy':'clip_linear_rgb_0_1','result_save_policy':'complete_session_only',
       'luminance_basis':'calibrated_XYZ_increment; black-inclusive absolute luminance not verified'})
-    atomic_json(app.result_dir/'used_experiment_config.json',settings)
-    return app.result_dir/'image_matching.csv'
+    # 全試行完了後にだけ一時領域へ書き、全ファイル成功後に一括公開する。
+    # 一時領域は通常のmatching結果ルートの外。同一filesystem内のrenameを使う。
+    cfg.result_root.mkdir(parents=True,exist_ok=True)
+    defocus_fields=['ID','Eye','Trial','Spatial_Freq(cpd)','Noise_Seed','Matched_PD(mm)']
+    with tempfile.TemporaryDirectory(prefix='.image-matching-',dir=cfg.result_root.parent) as temp:
+        staging=Path(temp)/'session';staging.mkdir()
+        atomic_csv(staging/'image_matching.csv',MATCHING_FIELDS,app.results)
+        atomic_csv(staging/'matching_adjustments.csv',HISTORY_FIELDS,app.adjustment_history)
+        atomic_csv(staging/cfg.defocus_result_filename,defocus_fields,defocus)
+        save_matching_manifest(app,staging)
+        atomic_json(staging/'used_experiment_config.json',settings)
+        if destination.exists():
+            raise FileExistsError(f'Refusing to overwrite an existing session: {destination}')
+        os.rename(staging,destination)
+    return destination/'image_matching.csv' 

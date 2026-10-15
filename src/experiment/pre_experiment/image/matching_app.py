@@ -1,5 +1,6 @@
 """旧ratingアプリを保持し、matchingのみの位置合わせ・提示・保存を追加。"""
 import math, random, time
+from datetime import datetime
 import tkinter as tk
 from tkinter import messagebox
 from PIL import ImageTk
@@ -16,6 +17,8 @@ class ImageMatchingApp(ImageExperimentApp):
     def __init__(self,root,session_config):
         if session_config.task_mode!='matching': raise ValueError('Matching configuration required')
         self.calibration_file_info=calibration_files_metadata(session_config.display_dir)
+        # 本試行・校正・調整履歴をメモリに保持し、途中ではファイルを作らない。
+        self.defer_result_saving=True
         self.controls=None;self.confirm_down_held=False
         self.matching_state='setup';self.preflight_complete=False;self.preflight_records=[]
         self.adjustment_history=[];self.initial_gains={};self.pending_render=None
@@ -33,6 +36,20 @@ class ImageMatchingApp(ImageExperimentApp):
         super()._setup_windows()
         # 試行間でキーバインドを解除しても、Downの離鍵は追跡する。
         self.root.bind('<KeyRelease-Down>',self.release_confirm_down)
+        self.root.bind('<Escape>',lambda event:self.request_close())
+
+    def start_calibration_sequence(self):
+        # 親rating版と異なり、保存先名を決めるだけ。mkdirは全試行完了後。
+        self.win1.update_idletasks()
+        self.width=self.win1.winfo_width();self.height=self.win1.winfo_height()
+        participant=self.participant_id.get().strip() or 'participant'
+        safe_id=''.join(c if c.isalnum() or c in '-_' else '_' for c in participant)
+        stamp=datetime.now().strftime('%Y%m%d_%H%M%S_%f')
+        self.result_dir=self.session_config.result_root / f'{safe_id}_{stamp}'
+        self.current_calib_eye_idx=0;self.calib_results={};self.detailed_defocus_results=[]
+        self.current_trial_index=0;self.active_block_id=0;self.results=[]
+        self.adjustment_history=[];self.matching_state='setup'
+        self.start_eye_calibration()
 
     def bind_control_key(self,key,command):
         def callback(event): command(event);return 'break'
@@ -101,7 +118,7 @@ class ImageMatchingApp(ImageExperimentApp):
         self._destroy_frame('ctrl_frame');self.clear_key_bindings();self.update_calibration_view()
         self.ctrl_frame=tk.Frame(self.root,bg='gray',padx=8,pady=8)
         eye=self.calibration_eyes[self.current_calib_eye_idx]
-        tk.Label(self.ctrl_frame,text=f'{eye} eye: align the red frame with\nthe LOWER white square (-3.95 deg).\nArrow keys move the background frame.\nPress Enter when aligned.',bg='gray',fg='white',wraplength=350).pack(pady=10)
+        tk.Label(self.ctrl_frame,text=f'{eye} eye: align the red frame with\nthe LOWER white square ({self.session_config.test_center_deg:+g} deg).\nArrow keys move the background frame.\nPress Enter when aligned.',bg='gray',fg='white',wraplength=350).pack(pady=10)
         tk.Button(self.ctrl_frame,text='Alignment done / Defocus matching',command=self.start_eye_defocus_matching).pack(pady=8)
         for key,dx,dy in (('<Left>',-1,0),('<Right>',1,0),('<Up>',0,-1),('<Down>',0,1)):
             self.bind_control_key(key,lambda e,x=dx,y=dy:self.adjust_offset(x,y))
@@ -125,7 +142,7 @@ class ImageMatchingApp(ImageExperimentApp):
         self.canvas1.delete('all');self.canvas2.delete('all')
         self.ctrl_frame=tk.Frame(self.root,bg='gray');self.ctrl_frame.place(relx=.5,rely=.5,anchor='center')
         self.progress_label=tk.Label(self.ctrl_frame,text='Checking geometry, calibration and gamut...',bg='black',fg='white');self.progress_label.pack(pady=30)
-        save_matching_manifest(self);self._checkpoint_results()
+        # Manifestも結果も全試行完了後に保存する。
         self.pending_transition=self.root.after(1,self._preflight_next)
 
     def prepare(self,trial):
@@ -143,7 +160,7 @@ class ImageMatchingApp(ImageExperimentApp):
         self.pending_transition=None
         if self.matching_state!='preflight': return
         if self.preflight_index==len(self.trial_list):
-            self.preflight_complete=True;self.matching_state='ready';self._checkpoint_results()
+            self.preflight_complete=True;self.matching_state='ready'
             self._destroy_frame('ctrl_frame')
             self.current_trial_index=0;self.active_block_id=0
             messagebox.showinfo('Matching instructions','Same viewing eye for upper reference and lower test.\nMatch the FOREGROUND features, not brightness alone.\nThe upper reference is fixed; only lower foreground light changes.\nUse the slider or Left/Right keys; press Down to confirm and advance.\nControls are inside the foreground window, outside both images.\nXYZ-increment calibration: black-inclusive luminance must be verified on hardware.',parent=self.root)
@@ -249,7 +266,7 @@ class ImageMatchingApp(ImageExperimentApp):
         elapsed=time.monotonic()-self.trial_started
         self.log_adjustment('confirm:'+status)
         self.results.append(build_matching_row(self,status,elapsed))
-        self.matching_state='between_trials';self._checkpoint_results()
+        self.matching_state='between_trials'
         self.controls.destroy();self.controls=None;self.clear_key_bindings()
         self.canvas1.delete('all');self.canvas2.delete('all');self.current_trial_index+=1
         if self.current_trial_index>=len(self.trial_list): callback=self.finish_experiment
@@ -259,14 +276,16 @@ class ImageMatchingApp(ImageExperimentApp):
         self.pending_transition=self.root.after(500,callback)
         return 'break'
 
-    def _checkpoint_results(self): return save_matching_session(self)
+    def _checkpoint_results(self):
+        # 既存呼出しとの互換用。完了以外は絶対に保存しない。
+        if self.matching_state!='finished': return None
+        return save_matching_session(self)
 
     def fail_matching(self,exc):
         self.matching_state='error';self.cancel_pending();self.clear_key_bindings()
         if self.controls is not None: self.controls.disable()
         self.canvas1.delete('all');self.canvas2.delete('all')
-        if self.trial_list: self._checkpoint_results()
-        messagebox.showerror('Matching stopped',str(exc)+'\nNo geometry, background or luminance limits were silently changed. Correct the setup and restart.',parent=self.root)
+        messagebox.showerror('Matching stopped',str(exc)+'\nIncomplete session results were not saved. No geometry, background or luminance limits were silently changed. Correct the setup and restart.',parent=self.root)
 
     def cancel_pending(self):
         for name in ('pending_render','pending_transition'):
@@ -275,17 +294,32 @@ class ImageMatchingApp(ImageExperimentApp):
                 self.root.after_cancel(identity);setattr(self,name,None)
 
     def request_close(self):
-        if not messagebox.askyesno('Close','Stop the session and save available results?',parent=self.root): return
-        if self.matching_state=='adjusting':
-            self.flush_render()
-            if self.matching_state=='adjusting':
-                self.results.append(build_matching_row(self,'aborted',time.monotonic()-self.trial_started))
+        if self.matching_state=='finished':
+            self.root.destroy();return
+        if not messagebox.askyesno('Discard session',
+                'Stop and discard this session?\nNo trial, adjustment or defocus results will be saved.',
+                parent=self.root): return
         self.matching_state='aborted';self.cancel_pending();self.clear_key_bindings()
-        if self.trial_list: self._checkpoint_results()
+        # 中断試行をaborted行として追加しない。以前の完了セッションには触れない。
+        self.results.clear();self.adjustment_history.clear();self.detailed_defocus_results.clear()
         self.root.destroy()
 
     def finish_experiment(self):
-        self.cancel_pending();self.matching_state='finished';output=self._checkpoint_results()
+        if self.matching_state in {'finished','aborted','error'}: return
+        self.cancel_pending();self.clear_key_bindings();self.matching_state='finished'
+        try:
+            output=self._checkpoint_results()
+        except Exception as exc:
+            # 全試行の回答はメモリに維持し、保存失敗時は再試行できるようにする。
+            self.matching_state='save_error'
+            self.canvas1.delete('all');self.canvas2.delete('all');self._destroy_frame('ctrl_frame')
+            self.ctrl_frame=tk.Frame(self.root,bg='gray',padx=20,pady=20)
+            self.ctrl_frame.place(relx=.5,rely=.5,anchor='center')
+            tk.Label(self.ctrl_frame,text='Saving failed. All responses remain in memory.\nPress Enter to retry saving. Closing discards this session.',bg='gray',fg='white').pack()
+            tk.Button(self.ctrl_frame,text='Retry saving',command=self.finish_experiment).pack(pady=10)
+            self.bind_control_key('<Return>',lambda event:self.finish_experiment())
+            messagebox.showerror('Save failed',str(exc)+'\nNo partial result session was published.',parent=self.root)
+            return
         matched=sum(r['Match_Status']=='matched' for r in self.results)
         messagebox.showinfo('Finished',f'Matching complete: {len(self.results)} responses, {matched} matched.\n{output}',parent=self.root)
         self.root.destroy()

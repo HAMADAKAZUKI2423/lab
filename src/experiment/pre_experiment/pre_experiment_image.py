@@ -6,8 +6,9 @@
 各条件20ペア。今回の既定値はDP両眼・DP利き眼・DP非利き眼・
 SP両眼（defocus＋左右眼像融合）の4条件、計80試行。
 切替はimage/conditions.pyのTrue / Falseを編集し、保存後に再起動する。
-既定は上下±3.95°・連続提示の画像マッチング。旧評定は --task-mode rating。
-マッチングは実校正が必須。画面外・色域外があれば開始を停止する。
+既定は視角7.5°・上下±3.75°・連続提示の画像マッチング。旧評定は --task-mode rating。
+matchingは全試行完了時だけ一括保存し、中断時の途中結果は保存しない。
+実校正は必須。画面外は警告、SP色域外はクリッピングで継続する。
 """
 
 import argparse
@@ -49,9 +50,12 @@ def main() -> None:
         app_class(root, config)
         print("[image] 表示・参加者入力を開始します。", flush=True)
         root.mainloop()
-    except Exception:
-        root.destroy()
-        raise
+    finally:
+        # Ctrl+C/例外でも途中結果を保存せず、GUIを閉じる。
+        try:
+            root.destroy()
+        except tk.TclError:
+            pass
 
 if __name__ == "__main__":
     main()

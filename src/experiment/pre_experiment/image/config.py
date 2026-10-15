@@ -17,6 +17,9 @@ RUNTIME_CONFIG: dict[str, Any] = experiment_config.get_config() or {}
 # 条件T/Fとは独立。旧ratingへ戻す場合は "rating"、または --task-mode rating。
 IMAGE_TASK_MODE = "matching"
 
+# Image実験専用。共通VISUAL_ANGLE_DEG（他実験/selector）には影響させない。
+IMAGE_VISUAL_ANGLE_DEG = 7.5
+
 
 @dataclass(frozen=True)
 class ImageSessionConfig:
@@ -35,7 +38,7 @@ class ImageSessionConfig:
     background_pixels_per_cm: float = 1.0 / 0.02331
     gamut_tolerance: float = 1e-9
     random_seed: int = 20260928
-    visual_angle_deg: float = 7.9
+    visual_angle_deg: float = IMAGE_VISUAL_ANGLE_DEG
     background_width_factor: float = 2.0
     trials_per_condition: int = 20
     trials_before_break: int = 10
@@ -159,7 +162,7 @@ def create_image_config(
             if random_seed is not None
             else int(RUNTIME_CONFIG.get("IMAGE_EXPERIMENT_SEED", 20260928))
         ),
-        visual_angle_deg=float(RUNTIME_CONFIG.get("VISUAL_ANGLE_DEG", 7.9)),
+        visual_angle_deg=float(RUNTIME_CONFIG.get("IMAGE_VISUAL_ANGLE_DEG", IMAGE_VISUAL_ANGLE_DEG)),
         background_width_factor=float(
             RUNTIME_CONFIG.get("IMAGE_BACKGROUND_WIDTH_FACTOR", 2.0)
         ),
