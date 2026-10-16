@@ -1,0 +1,127 @@
+{
+  "background_cluster_count": 10,
+  "min_background_rank_gap": 3,
+  "laplacian_levels": 3,
+  "random_state": 42,
+  "n_init": 10,
+  "feature": "calibrated_linear_Y_band_MAD_L1_normalized",
+  "frequency_weights": [
+    3,
+    2,
+    1,
+    0
+  ],
+  "frequency_index_is_cpd": false,
+  "fit_scope": "both_eyes_of_bright_backgrounds",
+  "flat_pair_policy": "exclude_pair_from_fit_and_selection",
+  "centers": [
+    [
+      0.029739947681050347,
+      0.09389265874653467,
+      0.20912625536910107,
+      0.6672411382033139
+    ],
+    [
+      0.010239482947551573,
+      0.03368577818109986,
+      0.085529166911569,
+      0.8705455719597796
+    ],
+    [
+      0.04621907739374178,
+      0.140903753861058,
+      0.28439323298549524,
+      0.528483935759705
+    ],
+    [
+      0.01890347164624275,
+      0.061137620354359226,
+      0.1466445452746501,
+      0.773314362724748
+    ],
+    [
+      0.006238511642444393,
+      0.02067082759435742,
+      0.05371996389957638,
+      0.9193706968636217
+    ],
+    [
+      0.05903844423979855,
+      0.1783399943520825,
+      0.3447552552730968,
+      0.41786630613502224
+    ],
+    [
+      0.036369414795589854,
+      0.11366267408293947,
+      0.2464722747642249,
+      0.6034956363572458
+    ],
+    [
+      0.11873112923071893,
+      0.30439741581154184,
+      0.3556759160418187,
+      0.2211955389159206
+    ],
+    [
+      0.02407784389595339,
+      0.07682173022396696,
+      0.17754950165397798,
+      0.7215509242261017
+    ],
+    [
+      0.014512923989548445,
+      0.047295545803322805,
+      0.11620102999112132,
+      0.8219905002160074
+    ]
+  ],
+  "label_to_rank": {
+    "4": 1,
+    "1": 2,
+    "9": 3,
+    "3": 4,
+    "8": 5,
+    "0": 6,
+    "6": 7,
+    "2": 8,
+    "5": 9,
+    "7": 10
+  },
+  "run_settings": {
+    "ipd_mm": 60.0,
+    "distance_fg_cm": 50.0,
+    "distance_bg_cm": 125.0,
+    "visual_angle_deg": 7.5,
+    "nominal_l_fg": 15.0,
+    "nominal_l_bg": 15.0,
+    "image_size_px": 512,
+    "disparity_deg": 4.0946852325771905,
+    "disparity_px": 280,
+    "alpha": 0.5,
+    "model": "vismlp_norm",
+    "device": "cuda:0",
+    "luminance_class_count": 5,
+    "texture_class_count": 10,
+    "laplacian_levels": 3,
+    "kmeans_random_state": 42,
+    "apply_defocus": true,
+    "pupil_diameter_mm": 2.6,
+    "diopter_difference": 1.2,
+    "blur_diameter_deg": 0.17876283208081686,
+    "blur_sigma_deg": 0.049159778822224644,
+    "blur_sigma_px": 3.355974234263869,
+    "blur_scale_factor": 0.55,
+    "gaussian_truncate": 4.0,
+    "background_cluster_count": 10,
+    "min_background_rank_gap": 3,
+    "low_backgrounds_per_class": 5,
+    "low_background_random_seed": 42
+  },
+  "source_count": 5766,
+  "bright_count": 2306,
+  "accepted_count": 88,
+  "high_count": 39,
+  "low_eligible_count": 1454,
+  "low_sampled_count": 49
+}
