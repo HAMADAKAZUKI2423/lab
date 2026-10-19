@@ -18,7 +18,7 @@ RUNTIME_CONFIG: dict[str, Any] = experiment_config.get_config() or {}
 IMAGE_TASK_MODE = "matching"
 
 # Image実験専用。共通VISUAL_ANGLE_DEG（他実験/selector）には影響させない。
-IMAGE_VISUAL_ANGLE_DEG = 7.5
+IMAGE_VISUAL_ANGLE_DEG = 7.0
 
 
 @dataclass(frozen=True)

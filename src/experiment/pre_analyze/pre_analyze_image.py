@@ -1,322 +1,268 @@
-# cd src && py -m experiment.pre_analyze.pre_analyze_image
-import pandas as pd
+"""画像matchingを1セッションずつ解析し、CI・検定なしの6図と左右差MSD CSVを保存する。
+cd src && py -m experiment.pre_analyze.pre_analyze_image [session_dir]
+省略時はimage_matching.csvを含む最新セッション。旧rating CSVは対象外。
+値は物理輝度ではなく、確定した前景ゲイン（スライダー値0〜1）。
+"""
+from pathlib import Path
+import argparse
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
-import re
-import os
-import glob
-import argparse
+import pandas as pd
 
-# 解析対象のフォルダ
-script_dir = os.path.dirname(os.path.abspath(__file__))
-lab_root = os.path.abspath(os.path.join(script_dir, "..", "..", ".."))
-
-# 入力データのベースディレクトリ (pre_experiment_image.py の出力先)
-DATA_BASE_DIR = os.path.join(lab_root, "results", "tables", "pre-experiment-image")
-
-parser = argparse.ArgumentParser(description='Analyze Image experiment results.')
-parser.add_argument('target_dir', nargs='?', help='Path to the target directory')
-args = parser.parse_args()
-
-if args.target_dir:
-    TARGET_DIR = args.target_dir
-    if not os.path.exists(TARGET_DIR):
-        print(f"指定されたディレクトリが見つかりません: {TARGET_DIR}")
-        exit()
-else:
-    # 最新のフォルダを検索
-    if not os.path.exists(DATA_BASE_DIR):
-        print(f"データディレクトリが見つかりません: {DATA_BASE_DIR}")
-        exit()
-
-    subdirs = [d for d in glob.glob(os.path.join(DATA_BASE_DIR, "*")) if os.path.isdir(d)]
-    if not subdirs:
-        print(f"データフォルダが見つかりません: {DATA_BASE_DIR}")
-        exit()
-
-    # 最新のフォルダを取得 (更新日時順)
-    TARGET_DIR = max(subdirs, key=os.path.getmtime)
-
-target_folder_name = os.path.basename(os.path.normpath(TARGET_DIR))
-print(f"解析対象フォルダ: {TARGET_DIR}")
-
-# 出力先ディレクトリの設定
-OUTPUT_DIR = os.path.join(lab_root, "results", "figures", "pre-experiment-image", target_folder_name)
-if not os.path.exists(OUTPUT_DIR):
-    os.makedirs(OUTPUT_DIR)
-print(f"結果出力先: {OUTPUT_DIR}")
-
-# image実験本試行の結果だけを解析する。
-# 同じフォルダに保存されるdefocus_matching.csvは列構成が異なるため対象外。
-result_path = os.path.join(TARGET_DIR, "image_evaluation.csv")
-if not os.path.isfile(result_path):
-    raise FileNotFoundError(
-        f"画像評価結果が見つかりません: {result_path}"
-    )
-file_paths = [result_path]
-
-all_data = []
-
-CURRENT_DISTANCE_COLUMNS = ("Distance_FG(cm)", "Distance_BG(cm)")
-LEGACY_DISTANCE_COLUMNS = ("Distance1(cm)", "Distance2(cm)")
-REQUIRED_COLUMNS = {"Condition", "Image_Win1", "Image_Win2", "Score"}
-
-for file in file_paths:
-    # 現行のimage実験が出力するCSVを読み込む。
-    df = pd.read_csv(file, encoding="utf-8")
-    if df.empty:
-        print(f"WARN: 空のCSVを除外します: {file}")
-        continue
-
-    missing = sorted(REQUIRED_COLUMNS - set(df.columns))
-    if missing:
-        raise ValueError(f"{file}: 必須列が不足しています: {missing}")
-
-    if all(column in df.columns for column in CURRENT_DISTANCE_COLUMNS):
-        fg_column, bg_column = CURRENT_DISTANCE_COLUMNS
-    elif all(column in df.columns for column in LEGACY_DISTANCE_COLUMNS):
-        # 過去に保存したCSVも解析できるよう、旧列名をフォールバックとして受け付ける。
-        fg_column, bg_column = LEGACY_DISTANCE_COLUMNS
-    else:
-        raise ValueError(
-            f"{file}: 距離列が見つかりません。"
-            f"現行列={CURRENT_DISTANCE_COLUMNS}, 旧列={LEGACY_DISTANCE_COLUMNS}"
-        )
-
-    distance_fg = float(df[fg_column].iloc[0])
-    distance_bg = float(df[bg_column].iloc[0])
-    df["distance"] = f"{distance_fg:g}-{distance_bg:g} cm"
-    # ソート用にディオプトリ差と前景距離を計算する。
-    df["d1"] = distance_fg
-    df["diopter_diff"] = (
-        abs(100 / distance_fg - 100 / distance_bg)
-        if distance_fg > 0 and distance_bg > 0
-        else 0
-    )
-    all_data.append(df)
-
-# 全データを統合
-if not all_data:
-    print("No data to process.")
-    exit()
-final_df = pd.concat(all_data, ignore_index=True)
-
-# 3. 画像名からラベルを抽出 (fg/bg_texX_LumX)
-def extract_label(filename, prefix):
-    # ファイル名から texX と LumX を抽出
-    tex_match = re.search(r'(tex\d+)', str(filename), re.IGNORECASE)
-    # 新しい形式 (lumi_default, lumi_half, lumi_quarter)
-    lum_match = re.search(r'(lumi_(?:default|half|quarter))', str(filename), re.IGNORECASE)
-    # 古い形式 (LumL, LumM, LumH)
-    if not lum_match:
-        lum_match = re.search(r'(Lum[LMH])', str(filename), re.IGNORECASE)
-    
-    parts = [prefix]
-    if tex_match:
-        parts.append(tex_match.group(1))
-    if lum_match:
-        parts.append(lum_match.group(1))
-    
-    if len(parts) > 1:
-        return "_".join(parts)
-    
-    # 旧形式などのフォールバック
-    match = re.search(r'lum(\d+\.?\d*)', str(filename), re.IGNORECASE)
-    if match:
-        return f"{prefix}_{match.group(1)}nit"
-    return str(filename)
-
-# 元のファイル名でソートして順序を決定（ファイル名先頭の番号が輝度ランク順になっているため）
-unique_files = sorted(final_df['Image_Win2'].unique())
-fg_labels = []
-seen = set()
-for f in unique_files:
-    lbl = extract_label(f, "fg")
-    if lbl not in seen:
-        fg_labels.append(lbl)
-        seen.add(lbl)
-
-final_df['fg_image'] = final_df['Image_Win2'].apply(lambda x: extract_label(x, "fg"))
-final_df['fg_image'] = pd.Categorical(final_df['fg_image'], categories=fg_labels, ordered=True)
-
-unique_bg_files = sorted(final_df['Image_Win1'].unique())
-bg_labels = []
-seen_bg = set()
-for f in unique_bg_files:
-    lbl = extract_label(f, "bg")
-    if lbl not in seen_bg:
-        bg_labels.append(lbl)
-        seen_bg.add(lbl)
-
-final_df['bg_image'] = final_df['Image_Win1'].apply(lambda x: extract_label(x, "bg"))
-final_df['bg_image'] = pd.Categorical(final_df['bg_image'], categories=bg_labels, ordered=True)
-
-# 4条件を固定順で解析する。
-CONDITION_ORDER = [
-    "Single plane",
-    "Single plane + defocus simulation",
-    "Single plane + defocus + binocular overlay",
-    "Dual plane",
-]
-CONDITION_SLUGS = {
-    "Single plane": "single_plane",
-    "Single plane + defocus simulation": "single_plane_defocus",
-    "Single plane + defocus + binocular overlay": "single_plane_defocus_binocular",
-    "Dual plane": "dual_plane",
+LAB_ROOT = Path(__file__).resolve().parents[3]
+RESULT_ROOT = LAB_ROOT / 'results/tables/pre-experiment-image-matching'
+FIGURE_ROOT = LAB_ROOT / 'results/figures/pre-experiment-image-matching'
+CONDITIONS = {
+    'DP_BINOCULAR': 'DP binocular',
+    'DP_MONO_DOM': 'DP dominant',
+    'DP_MONO_NONDOM': 'DP non-dominant',
+    'SP_NO_DEFOCUS': 'SP no defocus',
+    'SP_DEFOCUS_SIMPLE': 'SP fused',
+    'SP_REPRO_LEFT_EYE': 'SP reproduce Left',
+    'SP_REPRO_RIGHT_EYE': 'SP reproduce Right',
 }
-BASELINE_CONDITION = "Single plane"
+DP_EYES = ('DP_MONO_DOM', 'DP_MONO_NONDOM')
+PAIR_COLUMNS = ['Pair_ID', 'Difference_Group', 'Group_Rank']
 
-final_df["Score"] = pd.to_numeric(final_df["Score"], errors="coerce")
-if final_df["Score"].isna().any():
-    raise ValueError("Scoreに数値へ変換できない値が含まれています")
 
-available_conditions = set(final_df["Condition"].dropna().astype(str))
-missing_conditions = [
-    condition for condition in CONDITION_ORDER
-    if condition not in available_conditions
-]
-if missing_conditions:
-    raise ValueError(
-        "解析に必要なConditionが不足しています: "
-        f"{missing_conditions}; found={sorted(available_conditions)}"
-    )
-unexpected_conditions = sorted(available_conditions - set(CONDITION_ORDER))
-if unexpected_conditions:
-    print(f"WARN: 未定義のConditionは解析対象外です: {unexpected_conditions}")
+def resolve_target(argument=None):
+    if argument:
+        path = Path(argument).expanduser().resolve()
+        if path.is_file():
+            if path.name != 'image_matching.csv':
+                raise ValueError('Specify image_matching.csv, not rating/calibration CSV')
+            path = path.parent
+    else:
+        candidates = list(RESULT_ROOT.glob('*/image_matching.csv'))
+        if not candidates:
+            raise FileNotFoundError(f'No matching sessions: {RESULT_ROOT}')
+        path = max(candidates, key=lambda p: (p.stat().st_mtime_ns, str(p))).parent
+    if not (path / 'image_matching.csv').is_file():
+        raise FileNotFoundError(path / 'image_matching.csv')
+    return path
 
-# この解析の出力を毎回5枚だけにするため、同じ出力先の既存PNGを削除する。
-for old_png in glob.glob(os.path.join(OUTPUT_DIR, "*.png")):
-    os.remove(old_png)
 
-# --- ConditionごとのBG×FGヒートマップ（4枚） ---
-for condition in CONDITION_ORDER:
-    condition_df = final_df[final_df["Condition"] == condition]
-    heatmap_df = (
-        condition_df
-        .groupby(["bg_image", "fg_image"], observed=False)["Score"]
-        .mean()
-        .reset_index()
-    )
-    heatmap_pivot = heatmap_df.pivot(
-        index="bg_image", columns="fg_image", values="Score"
-    ).reindex(
-        index=final_df["bg_image"].cat.categories,
-        columns=final_df["fg_image"].cat.categories,
-    )
+def load_results(target):
+    frame = pd.read_csv(target / 'image_matching.csv', encoding='utf-8-sig', dtype=str)
+    required = ['ID', 'Condition', *PAIR_COLUMNS, 'Dominance', 'Match_Status', 'Matched_Gain']
+    missing = set(required) - set(frame.columns)
+    if frame.empty or missing:
+        raise ValueError(f'Empty matching data or missing columns: {sorted(missing)}')
+    for column in required:
+        if column != 'Matched_Gain':
+            frame[column] = frame[column].fillna('').str.strip()
+            if frame[column].eq('').any():
+                raise ValueError(f'Blank required value: {column}')
+    if frame['ID'].nunique() != 1:
+        raise ValueError('Analyze one participant/session at a time')
+    frame['Dominance'] = frame['Dominance'].str.capitalize()
+    if frame['Dominance'].nunique() != 1 or not frame['Dominance'].isin(['Left', 'Right']).all():
+        raise ValueError('Dominance must be one consistent Left/Right value')
+    if not frame['Condition'].isin(CONDITIONS).all():
+        raise ValueError('Unknown matching condition')
+    if not set(DP_EYES).issubset(set(frame['Condition'])):
+        raise ValueError('Both DP_MONO_DOM and DP_MONO_NONDOM are required for the 3 figures')
+    allowed = ['matched', 'above_range', 'below_range', 'cannot_judge']
+    if not frame['Match_Status'].isin(allowed).all():
+        raise ValueError('Unknown/incomplete Match_Status')
+    if frame.duplicated(['Condition', 'Pair_ID']).any():
+        raise ValueError('Duplicate Condition/Pair_ID')
+    frame['Difference_Group'] = frame['Difference_Group'].str.lower()
+    frame['Group_Rank'] = pd.to_numeric(frame['Group_Rank'], errors='raise')
+    if not frame['Group_Rank'].isin(range(1, 11)).all():
+        raise ValueError('Group_Rank must be integer 1..10')
+    metadata = frame[PAIR_COLUMNS].drop_duplicates()
+    if metadata['Pair_ID'].duplicated().any():
+        raise ValueError('Pair metadata differs between conditions')
+    if len(metadata) != 20 or set(metadata['Difference_Group']) != {'high', 'low'}:
+        raise ValueError('Exactly high 10 + low 10 image pairs are required')
+    for _, group in metadata.groupby('Difference_Group'):
+        if len(group) != 10 or set(group['Group_Rank']) != set(range(1, 11)):
+            raise ValueError('Each group requires ranks 1..10')
+    for condition, group in frame.groupby('Condition'):
+        if set(group['Pair_ID']) != set(metadata['Pair_ID']):
+            raise ValueError(f'Incomplete image pairs: {condition}')
+    frame['Gain'] = pd.to_numeric(frame['Matched_Gain'], errors='coerce')
+    matched = frame['Match_Status'].eq('matched')
+    values = frame.loc[matched, 'Gain']
+    if not np.isfinite(values).all() or not values.between(0, 1).all():
+        raise ValueError('Matched_Gain must be finite and in [0,1] for matched trials')
+    # 範囲外・判断不能は一致値として平均しない。Final_Gainへの代替もしない。
+    frame.loc[~matched, 'Gain'] = np.nan
+    print('Response counts:\n', pd.crosstab(frame['Condition'], frame['Match_Status']))
+    metadata = metadata.assign(_order=metadata['Difference_Group'].map({'high': 0, 'low': 1}))
+    metadata = metadata.sort_values(['_order', 'Group_Rank']).drop(columns='_order')
+    return frame, metadata
 
-    fig, ax = plt.subplots(figsize=(10, 8))
-    image = ax.imshow(
-        heatmap_pivot.to_numpy(dtype=float),
-        cmap="Reds",
-        vmin=1,
-        vmax=5,
-        origin="lower",
-        aspect="auto",
-    )
-    ax.set_xticks(np.arange(len(heatmap_pivot.columns)))
-    ax.set_yticks(np.arange(len(heatmap_pivot.index)))
-    ax.set_xticklabels(heatmap_pivot.columns, rotation=45, ha="right")
-    ax.set_yticklabels(heatmap_pivot.index)
-    ax.set_xlabel("Foreground image")
-    ax.set_ylabel("Background image")
-    ax.set_title(f"BG × FG score heatmap\n{condition}")
 
-    for row_index in range(len(heatmap_pivot.index)):
-        for column_index in range(len(heatmap_pivot.columns)):
-            value = heatmap_pivot.iloc[row_index, column_index]
-            if pd.notna(value):
-                ax.text(
-                    column_index,
-                    row_index,
-                    f"{value:.2f}",
-                    ha="center",
-                    va="center",
-                    color="white" if value > 3.5 else "black",
-                )
+def build_dp_pairs(frame, metadata):
+    dp = frame.loc[frame['Condition'].isin(DP_EYES)].copy()
+    dominant = frame['Dominance'].iloc[0]
+    other = 'Left' if dominant == 'Right' else 'Right'
+    dp['Eye'] = np.where(dp['Condition'].eq('DP_MONO_DOM'), dominant, other)
+    # 実眼情報があるCSVでは、利き眼から導いた左右対応と照合する。
+    if 'Observed_Eye' in dp:
+        if not dp['Observed_Eye'].str.strip().str.capitalize().eq(dp['Eye']).all():
+            raise ValueError('Observed_Eye disagrees with Condition/Dominance')
+    pivot = dp.pivot(index='Pair_ID', columns='Eye', values='Gain')
+    paired = metadata.merge(pivot.reindex(columns=['Left', 'Right']),
+                            left_on='Pair_ID', right_index=True, how='left', validate='one_to_one')
+    paired['Difference'] = paired['Left'] - paired['Right']
+    return paired
 
-    colorbar = fig.colorbar(image, ax=ax)
-    colorbar.set_label("Mean score")
-    fig.tight_layout()
-    output_path = os.path.join(
-        OUTPUT_DIR,
-        f"score_heatmap_{CONDITION_SLUGS[condition]}.png",
-    )
-    fig.savefig(output_path, dpi=300)
-    plt.close(fig)
-    print(f"Saved heatmap: {output_path}")
 
-# --- 画像ペアごとにSingle planeとの差を求め、その平均を4本で表示（1枚） ---
-# 差の符号は「各ConditionのScore - Single planeのScore」とする。
-# 同一条件・同一画像ペアに複数試行がある場合は、先にペア内平均を取る。
-pair_scores = (
-    final_df[final_df["Condition"].isin(CONDITION_ORDER)]
-    .groupby(
-        ["Image_Win1", "Image_Win2", "Condition"],
-        as_index=False,
-    )["Score"]
-    .mean()
-)
-pair_pivot = pair_scores.pivot(
-    index=["Image_Win1", "Image_Win2"],
-    columns="Condition",
-    values="Score",
-)
+def save_dp_msd_csv(frame, paired, target):
+    """high/low別の平均二乗差mean((Left-Right)**2)。平方根は取らない。"""
+    rows = []
+    for group_name in ('high', 'low'):
+        group = paired.loc[paired['Difference_Group'].eq(group_name)]
+        valid = np.isfinite(group[['Left', 'Right']].to_numpy(dtype=float)).all(axis=1)
+        differences = (
+            group.loc[valid, 'Left'] - group.loc[valid, 'Right']
+        ).to_numpy(dtype=float)
+        n = len(differences)
+        rows.append({
+            'ID': frame['ID'].iloc[0],
+            'Session': target.name,
+            'Difference_Group': group_name,
+            'Total_Pairs': len(group),
+            'Valid_Pairs': n,
+            'Excluded_Pairs': len(group) - n,
+            'Mean_Squared_Difference': float(np.mean(differences ** 2)) if n else np.nan,
+            'Calculation_Status': 'ok' if n else 'no_valid_pairs',
+            'Metric_Definition': 'mean((Left_Gain - Right_Gain)**2)',
+            'Unit': 'normalized_gain_squared',
+        })
+    output = target / 'matching_analysis' / 'dp_eye_mean_squared_difference.csv'
+    output.parent.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(rows).to_csv(output, index=False, encoding='utf-8-sig', na_rep='')
+    print(f'Saved high/low mean squared differences: {output}')
+    return output
 
-complete_pairs = pair_pivot.dropna(subset=CONDITION_ORDER).copy()
-if complete_pairs.empty:
-    raise ValueError(
-        "4条件がそろった画像ペアがないため、Single plane基準のスコア差を計算できません"
-    )
 
-score_differences = complete_pairs[CONDITION_ORDER].subtract(
-    complete_pairs[BASELINE_CONDITION], axis=0
-)
-# 棒の高さは画像ペアごとのスコア差の平均、誤差棒はそのSEM。
-difference_mean = score_differences.mean(axis=0).reindex(CONDITION_ORDER)
-difference_sem = score_differences.sem(axis=0).reindex(CONDITION_ORDER).fillna(0.0)
-# 基準条件自身との差は各画像ペアで必ず0なので、明示的に固定する。
-difference_mean.loc[BASELINE_CONDITION] = 0.0
-difference_sem.loc[BASELINE_CONDITION] = 0.0
+def save_figures(frame, paired, output):
+    output.mkdir(parents=True, exist_ok=True)
+    identity = f"ID={frame['ID'].iloc[0]} / {len(paired)} image pairs"
+    def save(fig, name):
+        fig.tight_layout()
+        try:
+            fig.savefig(output / name, dpi=300, bbox_inches='tight')
+        finally:
+            plt.close(fig)
 
-fig, ax = plt.subplots(figsize=(12, 7))
-x_positions = np.arange(len(CONDITION_ORDER))
-bars = ax.bar(
-    x_positions,
-    difference_mean.to_numpy(dtype=float),
-    yerr=difference_sem.to_numpy(dtype=float),
-    capsize=5,
-    color=["#7f7f7f", "#4c78a8", "#f58518", "#54a24b"],
-)
-ax.axhline(0.0, color="black", linestyle="--", linewidth=1.5)
-ax.set_xticks(x_positions)
-ax.set_xticklabels(CONDITION_ORDER, rotation=15, ha="right")
-ax.set_xlabel("Condition")
-ax.set_ylabel("Score difference from Single plane")
-ax.set_title(
-    "Mean score difference across matched BG × FG image pairs\n"
-    f"n = {len(score_differences)} complete image pairs"
-)
-error_low = difference_mean.to_numpy() - difference_sem.to_numpy()
-error_high = difference_mean.to_numpy() + difference_sem.to_numpy()
-limit = max(
-    0.5,
-    float(np.nanmax(np.abs(np.concatenate([error_low, error_high])))) * 1.2,
-)
-ax.set_ylim(-limit, limit)
-ax.grid(axis="y", linestyle="--", alpha=0.5)
-for bar, value in zip(bars, difference_mean):
-    vertical_alignment = "bottom" if value >= 0 else "top"
-    offset = limit * 0.02 if value >= 0 else -limit * 0.02
-    ax.text(
-        bar.get_x() + bar.get_width() / 2,
-        value + offset,
-        f"{value:+.3f}",
-        ha="center",
-        va=vertical_alignment,
-    )
-fig.tight_layout()
-bar_path = os.path.join(OUTPUT_DIR, "score_difference_vs_single_plane.png")
-fig.savefig(bar_path, dpi=300)
-plt.close(fig)
-print(f"Saved score-difference bar chart: {bar_path}")
-print(f"Saved exactly 5 figures to: {OUTPUT_DIR}")
+    order = [c for c in CONDITIONS if c in set(frame['Condition'])]
+    for group, subset, total, filename in (
+        ('All', frame, 20, '01_condition_mean_gain.png'),
+        ('High', frame.loc[frame['Difference_Group'].eq('high')], 10,
+         '01_condition_mean_gain_high.png'),
+        ('Low', frame.loc[frame['Difference_Group'].eq('low')], 10,
+         '01_condition_mean_gain_low.png'),
+    ):
+        summary = subset.groupby('Condition')['Gain'].agg(['mean', 'count']).reindex(order)
+        fig, ax = plt.subplots(figsize=(10, 6))
+        x = np.arange(len(order))
+        ax.bar(x, summary['mean'], color='steelblue')  # 信頼区間・その他の誤差棒なし。
+        for i, row in enumerate(summary.itertuples()):
+            text = (f'{row.mean:.3f}\nn={row.count}/{total}' if row.count
+                    else f'no matched\nn=0/{total}')
+            ax.text(i, row.mean if row.count else 0, text,
+                    ha='center', va='bottom', fontsize=9)
+        ax.set_xticks(x, [CONDITIONS[c] for c in order], rotation=20, ha='right')
+        ax.set_ylim(0, 1.1)
+        ax.set_yticks(np.linspace(0, 1, 6))
+        ax.set_ylabel('Mean matched foreground gain (slider 0-1)')
+        ax.set_title(f'Condition means / {group} (matched responses only)\n'
+                     f"ID={frame['ID'].iloc[0]} / {total} image pairs")
+        save(fig, filename)
+
+    valid = paired[['Left', 'Right']].notna().all(axis=1)
+    n = int(valid.sum())
+    fig, ax = plt.subplots(figsize=(12, 5))
+    colors = paired['Difference_Group'].map({'high': 'tab:red', 'low': 'tab:blue'})
+    ax.bar(np.arange(len(paired)), paired['Difference'], color=colors)
+    for i in np.flatnonzero(~valid.to_numpy()):
+        ax.text(i, 0, 'NA', ha='center', va='bottom', color='gray', fontsize=8)
+    ax.axhline(0, color='black', linewidth=1)
+    ax.axvline(9.5, color='gray', linestyle=':')
+    ax.set_xticks(np.arange(len(paired)), paired['Pair_ID'], rotation=60, ha='right')
+    ax.set_ylim(-1.05, 1.05)
+    ax.set_ylabel('DP matched gain: Left - Right')
+    ax.set_xlabel('Image pair (red=high, blue=low; NA=unmatched)')
+    ax.set_title(f'DP eye differences / valid pairs={n}/20\n{identity}')
+    save(fig, '02_dp_left_minus_right_gain.png')
+
+    fig, ax = plt.subplots(figsize=(7, 7))
+    for group, color in [('high', 'tab:red'), ('low', 'tab:blue')]:
+        subset = paired.loc[valid & paired['Difference_Group'].eq(group)]
+        ax.scatter(subset['Left'], subset['Right'], color=color, label=group)
+        for row in subset.itertuples():
+            ax.annotate(str(int(row.Group_Rank)), (row.Left, row.Right),
+                        xytext=(4, 4), textcoords='offset points', fontsize=8)
+    ax.plot([0, 1], [0, 1], '--', color='black', label='Left = Right')
+    ax.set(xlim=(-.03, 1.03), ylim=(-.03, 1.03),
+           xlabel='DP Left-eye matched gain (slider 0-1)',
+           ylabel='DP Right-eye matched gain (slider 0-1)',
+           title=f'DP eye comparison / valid pairs={n}/20\n{identity}')
+    ax.set_aspect('equal', adjustable='box')
+    ax.legend()
+    save(fig, '03_dp_left_vs_right_gain.png')
+
+    # 集約しない生データ。現在の5条件なら横20×縦5の正方形セル。
+    pair_order = paired['Pair_ID'].tolist()  # high_01..10, low_01..10
+    grid = frame.pivot(index='Condition', columns='Pair_ID', values='Gain')
+    grid = grid.reindex(index=order, columns=pair_order)
+    statuses = frame.pivot(index='Condition', columns='Pair_ID', values='Match_Status')
+    statuses = statuses.reindex(index=order, columns=pair_order)
+    values = grid.to_numpy(dtype=float)
+    cmap = plt.get_cmap('viridis').copy()
+    cmap.set_bad('lightgray')
+    fig, ax = plt.subplots(figsize=(16, max(5, len(order) * 0.65 + 2)))
+    image = ax.imshow(np.ma.masked_invalid(values), vmin=0, vmax=1,
+                      cmap=cmap, aspect='equal', interpolation='nearest')
+    ax.set_xticks(np.arange(len(pair_order)), pair_order, rotation=60, ha='right')
+    ax.set_yticks(np.arange(len(order)), [CONDITIONS[c] for c in order])
+    ax.set_xticks(np.arange(-0.5, len(pair_order), 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, len(order), 1), minor=True)
+    ax.grid(which='minor', color='white', linewidth=0.8)
+    ax.tick_params(which='minor', bottom=False, left=False)
+    ax.axvline(9.5, color='black', linewidth=2)
+    status_labels = {'above_range': 'Above', 'below_range': 'Below',
+                     'cannot_judge': '?'}
+    for row in range(len(order)):
+        for col in range(len(pair_order)):
+            value = values[row, col]
+            if np.isfinite(value):
+                label = f'{value:.3f}'
+                # 背景色の明るさに合わせて数値の文字色を切り替える。
+                red, green, blue, _ = cmap(value)
+                lightness = 0.2126 * red + 0.7152 * green + 0.0722 * blue
+                color = 'black' if lightness > 0.5 else 'white'
+            else:
+                label = status_labels.get(statuses.iat[row, col], 'NA')
+                color = 'black'
+            ax.text(col, row, label, ha='center', va='center', fontsize=7, color=color)
+    fig.colorbar(image, ax=ax, fraction=0.025, pad=0.02,
+                 ticks=np.linspace(0, 1, 6), label='Matched foreground gain (slider 0-1)')
+    ax.set_xlabel('Image pair: high 10 | low 10')
+    ax.set_ylabel('Condition')
+    ax.set_title(f'Raw matching gains / {identity}\n'
+                 'Gray: Above=above range, Below=below range, ?=cannot judge, NA=missing')
+    save(fig, '04_raw_gain_heatmap.png')
+    print(f'Saved 6 figures (no CI, no tests): {output}')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('target_dir', nargs='?', help='Session directory or image_matching.csv')
+    args = parser.parse_args()
+    target = resolve_target(args.target_dir)
+    frame, metadata = load_results(target)
+    paired = build_dp_pairs(frame, metadata)
+    save_dp_msd_csv(frame, paired, target)
+    save_figures(frame, paired, FIGURE_ROOT / target.name / 'matching_analysis')
+
+
+if __name__ == '__main__':
+    main()

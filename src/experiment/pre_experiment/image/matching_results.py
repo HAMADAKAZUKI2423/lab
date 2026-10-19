@@ -11,7 +11,12 @@ EXTRA_FIELDS=['Task_Mode','Reference_Observed_Eye','Alignment_Eye','Initial_Gain
  'Test_Target_FG_Y_cd_m2','Test_Quantized_FG_Y_cd_m2','Match_Status',
  'Adjustment_Time_s','Adjustment_Count','Reference_Center_Deg','Test_Center_Deg',
  'Layout_JSON','Luminance_Basis','Gamut_Policy',
- 'Gamut_Ratio_At_Zero','Gamut_Ratio_At_One']
+ 'Gamut_Ratio_At_Zero','Gamut_Ratio_At_One',
+ 'Reference_Plane_Mode','Reference_BG_Type','Reference_Noise_Seed',
+ 'Reference_Noise_Center_Cpd','Reference_Noise_Bandwidth_Octave',
+ 'Reference_Noise_Mean_Y_cd_m2','Reference_Noise_Modulation',
+ 'Reference_Reproduction_Method','Reference_OutOfGamut_Ratio',
+ 'Reference_Total_Target_Y_cd_m2','Reference_Total_Quantized_Y_cd_m2']
 MATCHING_FIELDS=[f for f in RESULT_FIELDS if f!='Score']+EXTRA_FIELDS
 HISTORY_FIELDS=['ID','Trial_ID','Condition','Pair_ID','Elapsed_s','Requested_Gain','Displayed_Gain','Event']
 
@@ -101,8 +106,18 @@ def save_matching_session(app):
     destination=Path(app.result_dir)
     if destination.parent.resolve()!=cfg.result_root.resolve():
         raise ValueError('Session destination is outside the matching result root')
-    if destination.exists():
-        raise FileExistsError(f'Refusing to overwrite an existing session: {destination}')
+    def check_destination():
+        # 空フォルダ、または先行保存されたdefocus結果だけなら許容する。
+        # 本試行結果や他のファイルがあるセッションは上書きしない。
+        if destination.is_symlink():
+            raise FileExistsError(f'Refusing to overwrite a linked session: {destination}')
+        if destination.exists():
+            if not destination.is_dir() or any(
+                p.name != cfg.defocus_result_filename or not p.is_file() or p.is_symlink()
+                for p in destination.iterdir()
+            ):
+                raise FileExistsError(f'Refusing to overwrite an existing result session: {destination}')
+    check_destination()
     settings=asdict(cfg)
     settings.update({'task_mode':'matching','condition_enabled':cfg.condition_enabled,
       'condition_order':list(app.condition_order),'condition_count':cfg.condition_count,
@@ -127,7 +142,24 @@ def save_matching_session(app):
         atomic_csv(staging/cfg.defocus_result_filename,defocus_fields,defocus)
         save_matching_manifest(app,staging)
         atomic_json(staging/'used_experiment_config.json',settings)
+        check_destination()
+        backup=Path(temp)/'prior_calibration'
         if destination.exists():
-            raise FileExistsError(f'Refusing to overwrite an existing session: {destination}')
-        os.rename(staging,destination)
+            existing_defocus=destination/cfg.defocus_result_filename
+            if existing_defocus.is_file():
+                # 先行保存された校正CSVは内容を変えずに引き継ぐ。
+                (staging/cfg.defocus_result_filename).write_bytes(existing_defocus.read_bytes())
+            os.rename(destination,backup)
+        try:
+            os.rename(staging,destination)
+        except Exception:
+            if backup.exists():
+                try:
+                    os.rename(backup,destination)
+                except Exception as restore_error:
+                    # 復元にも失敗した場合は一時領域外へ退避して消失を防ぐ。
+                    recovery=cfg.result_root/(destination.name+'_defocus_recovery_'+Path(temp).name)
+                    os.rename(backup,recovery)
+                    raise RuntimeError(f'Calibration backup preserved at: {recovery}') from restore_error
+            raise
     return destination/'image_matching.csv' 

@@ -69,9 +69,10 @@ class ImageMatchingApp(ImageExperimentApp):
         """Canvasサイズを変えず、刺激領域の外に操作Frameを配置する。"""
         self.root.update_idletasks()
         layout=self.layout_for_current_eye() if calibration else self.current_layout
-        names=('test',) if calibration else ('reference','singleplane' if self.matching_prepared.background_xyz is not None else 'test')
+        names=('test',) if calibration else ('reference_singleplane','singleplane' if self.matching_prepared.background_xyz is not None else 'test')
         fg,bg=self.viewports()
         occupied=[layout[name].translated(fg[2],fg[3]) for name in names]
+        # Referenceは前景面だけに提示し、背景面の上段は黒のまま。
         if calibration or self.matching_prepared.physical_background is not None:
             occupied.append(layout['background'].translated(bg[2],bg[3]))
         width,height=frame.winfo_reqwidth(),frame.winfo_reqheight()
@@ -108,7 +109,7 @@ class ImageMatchingApp(ImageExperimentApp):
         self.canvas1.delete('calib');self.canvas2.delete('calib')
         layout=self.layout_for_current_eye()
         for name in ('background','background_square'):
-            draw_brackets(self.canvas1,layout[name],WIN1_MARKER_COLOR,7.5)
+            draw_brackets(self.canvas1,layout[name],WIN1_MARKER_COLOR,7.0)
         draw_brackets(self.canvas2,layout['test'],WIN2_MARKER_COLOR)
         x,y=layout['test'].center
         self.canvas2.create_line(x-12,y,x+12,y,fill=WIN2_MARKER_COLOR,tags='calib')
@@ -187,8 +188,10 @@ class ImageMatchingApp(ImageExperimentApp):
             self.current_prepared=None
             self.canvas1.delete('all');self.canvas2.delete('all')
             self.photo_reference=ImageTk.PhotoImage(self.matching_prepared.reference_image)
-            self.canvas2.create_image(self.current_layout['reference'].x0,self.current_layout['reference'].y0,
+            rb=self.current_layout['reference_singleplane']
+            self.canvas2.create_image(rb.x0,rb.y0,
                 image=self.photo_reference,anchor='nw',tags='matching')
+            # Referenceの背景経路はXYZ加算画像に含める。背景面上段には描画しない。
             if self.matching_prepared.physical_background is not None:
                 self.photo_background=ImageTk.PhotoImage(self.matching_prepared.physical_background)
                 b=self.current_layout['background'];self.canvas1.create_image(b.x0,b.y0,image=self.photo_background,anchor='nw',tags='matching')
@@ -205,7 +208,7 @@ class ImageMatchingApp(ImageExperimentApp):
         window=self.controls.frame
         control=Box(window.winfo_rootx(),window.winfo_rooty(),window.winfo_rootx()+window.winfo_width(),window.winfo_rooty()+window.winfo_height())
         fg,bg=self.viewports()
-        boxes=[self.current_layout['reference'].translated(fg[2],fg[3]),
+        boxes=[self.current_layout['reference_singleplane'].translated(fg[2],fg[3]),
                self.current_layout['singleplane' if self.matching_prepared.background_xyz is not None else 'test'].translated(fg[2],fg[3])]
         if self.matching_prepared.physical_background is not None: boxes.append(self.current_layout['background'].translated(bg[2],bg[3]))
         if not Box(control.x0-fg[2],control.y0-fg[3],control.x1-fg[2],control.y1-fg[3]).contains(fg[0],fg[1]):

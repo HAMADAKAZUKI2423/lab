@@ -46,11 +46,17 @@ def make_layout(config, foreground_size, background_size, offset_x=0, offset_y=0
     # BGの正方形校正枠も下段。横長背景枠と同じ上下端を使う。
     bg_square=project_box(bw,bh,config.distance_bg_cm,config.background_pixels_per_cm,
                          config.test_center_deg,*common,offset_x,offset_y)
-    return {'reference':ref,'test':test,'singleplane':sp,'background':bg,'background_square':bg_square}
+    ref_bg=project_box(bw,bh,config.distance_bg_cm,config.background_pixels_per_cm,
+                      config.reference_center_deg,config.visual_angle_deg,
+                      config.background_visual_angle_width_deg,offset_x,offset_y)
+    ref_sp=project_box(fw,fh,config.distance_fg_cm,config.foreground_pixels_per_cm,
+                      config.reference_center_deg,config.visual_angle_deg,
+                      config.background_visual_angle_width_deg)
+    return {'reference':ref,'reference_singleplane':ref_sp,'reference_background':ref_bg,'test':test,'singleplane':sp,'background':bg,'background_square':bg_square}
 
 def validate_layout(layout, foreground_size, background_size, singleplane):
     """画面外の刺激は警告のみ。サイズ・比率・位置は変えずCanvasで見切れる。"""
-    fg_names=('reference','singleplane' if singleplane else 'test')
+    fg_names=('reference_singleplane','singleplane' if singleplane else 'test')
     checks=[(name,foreground_size) for name in fg_names]
     if not singleplane:
         checks.append(('background',background_size))
@@ -63,7 +69,7 @@ def validate_layout(layout, foreground_size, background_size, singleplane):
                 flush=True,
             )
     # 画面内収容とは別の検査。上下刺激の重なりと中央境界は維持する。
-    if layout['reference'].intersects(layout[fg_names[1]]):
+    if layout['reference_singleplane'].intersects(layout[fg_names[1]]):
         raise ValueError("Reference and test overlap")
     if layout['reference'].y1 != layout['test'].y0:
         raise ValueError("Central boundary has a gap or overlap")
