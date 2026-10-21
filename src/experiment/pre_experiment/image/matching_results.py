@@ -16,7 +16,9 @@ EXTRA_FIELDS=['Task_Mode','Reference_Observed_Eye','Alignment_Eye','Initial_Gain
  'Reference_Noise_Center_Cpd','Reference_Noise_Bandwidth_Octave',
  'Reference_Noise_Mean_Y_cd_m2','Reference_Noise_Modulation',
  'Reference_Reproduction_Method','Reference_OutOfGamut_Ratio',
- 'Reference_Total_Target_Y_cd_m2','Reference_Total_Quantized_Y_cd_m2']
+ 'Reference_Total_Target_Y_cd_m2','Reference_Total_Quantized_Y_cd_m2',
+ 'Reference_FG_Alpha','Reference_BG_Alpha','Reference_Blend_Space',
+ 'Reference_FG_Weighted_Target_Y_cd_m2']
 MATCHING_FIELDS=[f for f in RESULT_FIELDS if f!='Score']+EXTRA_FIELDS
 HISTORY_FIELDS=['ID','Trial_ID','Condition','Pair_ID','Elapsed_s','Requested_Gain','Displayed_Gain','Event']
 

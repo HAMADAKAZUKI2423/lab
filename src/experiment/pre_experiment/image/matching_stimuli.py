@@ -96,34 +96,14 @@ def prepare_matching_stimulus(trial,config,*,layout,calibration,dominant_eye,lef
     if config.reference_gain != 0.5:
         raise ValueError("Image matching reference_gain must be 0.5")
     ref=encode(0.5*fg,calibration.gamma_fg)
-    # 条件名や試行順をseedへ含めず、同一ペアでは全条件で同じ静止ノイズ。
-    noise_key=f"{config.random_seed}:reference_noise:{trial.pair.pair_id}"
-    noise_seed=int.from_bytes(hashlib.sha256(noise_key.encode()).digest()[:4],'big')
-    from experiment.common import patterns, geometry, photometry
-    noise_width,noise_height=layout['reference_background'].size
-    ppd_bg=geometry.get_size_for_visual_angle(
-        config.distance_bg_cm,1.0,config.background_pixels_per_cm)
-    if ppd_bg/2 <= 4.0*math.sqrt(2.0):
-        raise ValueError("Background resolution is insufficient for the reference noise")
-    noise=patterns.create_noise_base(
-        noise_width,noise_height,ppd_bg,4.0,bandwidth_octave=1.0,
-        rng=np.random.default_rng(noise_seed))
-    # 輝度領域で帯域制限。平均15 cd/m²、ピーク絶対値で正規化した変調係数1。
-    noise_luminance=15.0*(1.0+noise)
-    if (not np.isfinite(noise_luminance).all()
-            or noise_luminance.min()<calibration.bg_lums.min()
-            or noise_luminance.max()>calibration.bg_lums.max()):
-        raise ValueError("Reference noise luminance is outside the measured background LUT")
-    reference_background=photometry.luminance_to_pil(
-        noise_luminance,calibration.bg_lums,calibration.bg_pixels).convert('RGB')
-    # 現在のreference二経路の実表示RGBを線形化し、XYZで光学加算。
-    # 背景を前景面の同じ角度範囲へ写像。補間はガンマ符号値でなく線形RGBで行う。
+    # 全条件で同じ元ペアを使う。refは視差・defocus適用前の背景と
+    # 輝度半減前景を、共通の校正済み線形RGB領域で7:3にαブレンドする。
+    # T'/R'による光学加算再現やノイズ背景はreferenceには使用しない。
+    alpha=0.7
     rw,rh=layout['reference_singleplane'].size
+    reference_background=sp_bg.resize((rw,rh),RESAMPLE)
     bg_linear=decode(reference_background,calibration.gamma_bg)
-    bg_on_fg=np.stack([
-        np.asarray(Image.fromarray(bg_linear[...,i].astype(np.float32)).resize(
-            (rw,rh),Image.Resampling.BILINEAR),dtype=float)
-        for i in range(3)],axis=-1)
+    bg_on_fg=bg_linear @ calibration.color_matrix.T
     ref_fg_linear=decode(ref,calibration.gamma_fg)
     fw,fh=ref.size
     if fw>rw or fh>rh:
@@ -131,17 +111,16 @@ def prepare_matching_stimulus(trial,config,*,layout,calibration,dominant_eye,lef
     x=(rw-fw)//2; y=(rh-fh)//2
     reference_layer=np.zeros((rh,rw,3))
     reference_layer[y:y+fh,x:x+fw]=ref_fg_linear
-    reference_xyz=(bg_on_fg @ calibration.t_prime.T
-                   + reference_layer @ calibration.r_prime.T)
-    reference_linear=reference_xyz @ calibration.r_prime_inv.T
+    reference_linear=alpha*reference_layer+(1.0-alpha)*bg_on_fg
+    reference_xyz=reference_linear @ calibration.r_prime.T
     if not np.isfinite(reference_linear).all():
-        raise ValueError("Non-finite reference reproduction RGB")
+        raise ValueError("Non-finite reference alpha-blend RGB")
     reference_gamut=float(np.mean(np.any(
         (reference_linear < -config.gamut_tolerance)
         | (reference_linear > 1+config.gamut_tolerance),axis=-1)))
     reference_composite=encode(reference_linear,calibration.gamma_fg)
     if reference_gamut:
-        print(f"WARN: reference reproduction out-of-gamut ratio={reference_gamut:.6f}; clipping linear RGB to [0,1].",flush=True)
+        print(f"WARN: reference alpha blend out-of-gamut ratio={reference_gamut:.6f}; clipping linear RGB to [0,1].",flush=True)
     meta={'Task_Mode':'matching','Plane_Mode':spec.plane_mode,'Viewing_Mode':spec.viewing_mode,
           'Reference_Observed_Eye':resolve_observed_eye(spec,dominant_eye),
           'Reproduced_Eye':spec.reproduced_eye,'Defocus_Mode':spec.defocus_mode,
@@ -153,18 +132,16 @@ def prepare_matching_stimulus(trial,config,*,layout,calibration,dominant_eye,lef
           'Reference_Center_Deg':config.reference_center_deg,'Test_Center_Deg':config.test_center_deg,
           'Visual_Angle_Deg':config.visual_angle_deg,
           'Gamut_Policy':'clip_linear_rgb_0_1',
-          'Reference_Plane_Mode':'single_matrix_reproduction',
-          'Reference_Reproduction_Method':'XYZ_sum_Tprime_BG_plus_Rprime_FG_then_inv_Rprime',
+          'Reference_Plane_Mode':'single_alpha_blend',
+          'Reference_Reproduction_Method':'alpha_blend_calibrated_linear_RGB_FG_0.7_BG_0.3',
           'Reference_OutOfGamut_Ratio':reference_gamut,
           'Reference_Total_Target_Y_cd_m2':float(np.mean(reference_xyz[...,1])),
           'Reference_Total_Quantized_Y_cd_m2':mean_y(
               decode(reference_composite,calibration.gamma_fg),calibration.r_prime),
-          'Reference_BG_Type':'static_bandpass_white_noise',
-          'Reference_Noise_Seed':noise_seed,
-          'Reference_Noise_Center_Cpd':4.0,
-          'Reference_Noise_Bandwidth_Octave':1.0,
-          'Reference_Noise_Mean_Y_cd_m2':15.0,
-          'Reference_Noise_Modulation':1.0}
+          'Reference_BG_Type':'selected_pair_background_no_defocus_no_disparity',
+          'Reference_FG_Alpha':0.7,'Reference_BG_Alpha':0.3,
+          'Reference_Blend_Space':'calibrated_linear_RGB',
+          'Reference_FG_Weighted_Target_Y_cd_m2':0.7*config.reference_gain*original_y}
     background_xyz=None; physical=None; fg_slice=(slice(None),slice(None))
     if spec.plane_mode=='dual':
         physical=physical_bg.resize(layout['background'].size,RESAMPLE)

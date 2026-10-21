@@ -1,0 +1,3 @@
+﻿ID,Session,Difference_Group,Total_Pairs,Valid_Pairs,Excluded_Pairs,Mean_Squared_Difference,Calculation_Status,Metric_Definition,Unit
+0,0_20261021_134235_161986,high,9,9,0,0.002399999999999999,ok,mean((Left_Gain - Right_Gain)**2),normalized_gain_squared
+0,0_20261021_134235_161986,low,9,9,0,0.014088888888888885,ok,mean((Left_Gain - Right_Gain)**2),normalized_gain_squared
