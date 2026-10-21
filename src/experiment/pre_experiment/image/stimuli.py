@@ -88,22 +88,21 @@ def condition_order_for_participant(
     return tuple(condition_ids[index] for index in design_rows[row_index])
 
 
-def _stratified_pair_order(
-    pairs: list[SelectedPair],
-    rng: random.Random,
-) -> list[SelectedPair]:
-    high = [pair for pair in pairs if pair.difference_group == "high"]
-    low = [pair for pair in pairs if pair.difference_group == "low"]
-    if len(high) != 10 or len(low) != 10:
-        raise ValueError("Each condition requires high 10 and low 10 pairs")
-    rng.shuffle(high)
-    rng.shuffle(low)
-    first_half = high[:5] + low[:5]
-    second_half = high[5:] + low[5:]
-    rng.shuffle(first_half)
-    rng.shuffle(second_half)
-    return first_half + second_half
-
+def _stratified_pair_order(pairs: list[SelectedPair], rng: random.Random) -> list[SelectedPair]:
+    """新形式はhigh/low×視認性3層を均等化。旧20組も従来どおり均衡化。"""
+    if any(pair.visibility_level for pair in pairs):
+        groups={(difference,level):[p for p in pairs if p.difference_group==difference and p.visibility_level==level]
+                for difference in ('high','low') for level in ('low','mid','high')}
+        if any(len(rows)!=3 for rows in groups.values()): raise ValueError('Each high/low × visibility level requires 3 pairs')
+        for rows in groups.values(): rng.shuffle(rows)
+        order=[]
+        for index in range(3):
+            block=[groups[key][index] for key in groups]; rng.shuffle(block); order.extend(block)
+        return order
+    high=[p for p in pairs if p.difference_group=='high']; low=[p for p in pairs if p.difference_group=='low']
+    if len(high)!=10 or len(low)!=10: raise ValueError('Legacy format requires high 10 and low 10')
+    rng.shuffle(high); rng.shuffle(low); first=high[:5]+low[:5]; second=high[5:]+low[5:]; rng.shuffle(first); rng.shuffle(second)
+    return first+second
 
 def build_trials(
     pairs: list[SelectedPair],

@@ -1,0 +1,16 @@
+{
+  "input_csv": "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\fukiage-disparity-selection\\20261020_140656_939694\\all_pairs.csv",
+  "candidate_count": 38144,
+  "selected_count": 18,
+  "selection_pool_size": 0,
+  "max_clip_ratio": 1.0,
+  "visibility_tercile_thresholds": {
+    "low_mid": 0.3706344962120056,
+    "mid_high": 0.46194205681482947
+  },
+  "use_laplacian_difference": true,
+  "use_model_difference": true,
+  "visibility_recomputed": "selected_18_only",
+  "visibility_maps_regenerated": true,
+  "cross_role_image_duplicates": 0
+}

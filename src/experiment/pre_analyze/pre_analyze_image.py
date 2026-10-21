@@ -71,16 +71,16 @@ def load_results(target):
         raise ValueError('Duplicate Condition/Pair_ID')
     frame['Difference_Group'] = frame['Difference_Group'].str.lower()
     frame['Group_Rank'] = pd.to_numeric(frame['Group_Rank'], errors='raise')
-    if not frame['Group_Rank'].isin(range(1, 11)).all():
-        raise ValueError('Group_Rank must be integer 1..10')
+    frame['Group_Rank'] = frame['Group_Rank'].astype(int)
     metadata = frame[PAIR_COLUMNS].drop_duplicates()
     if metadata['Pair_ID'].duplicated().any():
         raise ValueError('Pair metadata differs between conditions')
-    if len(metadata) != 20 or set(metadata['Difference_Group']) != {'high', 'low'}:
-        raise ValueError('Exactly high 10 + low 10 image pairs are required')
+    pair_count=len(metadata); per_group=pair_count//2
+    if pair_count not in {18,20} or set(metadata['Difference_Group']) != {'high','low'}:
+        raise ValueError('Exactly high/low 9+9 or legacy 10+10 pairs are required')
     for _, group in metadata.groupby('Difference_Group'):
-        if len(group) != 10 or set(group['Group_Rank']) != set(range(1, 11)):
-            raise ValueError('Each group requires ranks 1..10')
+        if len(group)!=per_group or set(group['Group_Rank'])!=set(range(1,per_group+1)):
+            raise ValueError('Invalid group ranks')
     for condition, group in frame.groupby('Condition'):
         if set(group['Pair_ID']) != set(metadata['Pair_ID']):
             raise ValueError(f'Incomplete image pairs: {condition}')
@@ -154,10 +154,10 @@ def save_figures(frame, paired, output):
 
     order = [c for c in CONDITIONS if c in set(frame['Condition'])]
     for group, subset, total, filename in (
-        ('All', frame, 20, '01_condition_mean_gain.png'),
-        ('High', frame.loc[frame['Difference_Group'].eq('high')], 10,
+        ('All', frame, frame['Pair_ID'].nunique(), '01_condition_mean_gain.png'),
+        ('High', frame.loc[frame['Difference_Group'].eq('high')], frame.loc[frame['Difference_Group'].eq('high'),'Pair_ID'].nunique(),
          '01_condition_mean_gain_high.png'),
-        ('Low', frame.loc[frame['Difference_Group'].eq('low')], 10,
+        ('Low', frame.loc[frame['Difference_Group'].eq('low')], frame.loc[frame['Difference_Group'].eq('low'),'Pair_ID'].nunique(),
          '01_condition_mean_gain_low.png'),
     ):
         summary = subset.groupby('Condition')['Gain'].agg(['mean', 'count']).reindex(order)
@@ -185,12 +185,12 @@ def save_figures(frame, paired, output):
     for i in np.flatnonzero(~valid.to_numpy()):
         ax.text(i, 0, 'NA', ha='center', va='bottom', color='gray', fontsize=8)
     ax.axhline(0, color='black', linewidth=1)
-    ax.axvline(9.5, color='gray', linestyle=':')
+    ax.axvline((len(paired) / 2) - 0.5, color='gray', linestyle=':')
     ax.set_xticks(np.arange(len(paired)), paired['Pair_ID'], rotation=60, ha='right')
     ax.set_ylim(-1.05, 1.05)
     ax.set_ylabel('DP matched gain: Left - Right')
     ax.set_xlabel('Image pair (red=high, blue=low; NA=unmatched)')
-    ax.set_title(f'DP eye differences / valid pairs={n}/20\n{identity}')
+    ax.set_title(f'DP eye differences / valid pairs={n}/{len(paired)}\n{identity}')
     save(fig, '02_dp_left_minus_right_gain.png')
 
     fig, ax = plt.subplots(figsize=(7, 7))
@@ -204,7 +204,7 @@ def save_figures(frame, paired, output):
     ax.set(xlim=(-.03, 1.03), ylim=(-.03, 1.03),
            xlabel='DP Left-eye matched gain (slider 0-1)',
            ylabel='DP Right-eye matched gain (slider 0-1)',
-           title=f'DP eye comparison / valid pairs={n}/20\n{identity}')
+           title=f'DP eye comparison / valid pairs={n}/{len(paired)}\n{identity}')
     ax.set_aspect('equal', adjustable='box')
     ax.legend()
     save(fig, '03_dp_left_vs_right_gain.png')

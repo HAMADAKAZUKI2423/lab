@@ -18,7 +18,7 @@ RUNTIME_CONFIG: dict[str, Any] = experiment_config.get_config() or {}
 IMAGE_TASK_MODE = "matching"
 
 # Image実験専用。共通VISUAL_ANGLE_DEG（他実験/selector）には影響させない。
-IMAGE_VISUAL_ANGLE_DEG = 7.0
+IMAGE_VISUAL_ANGLE_DEG = 7.5
 
 
 @dataclass(frozen=True)
@@ -40,7 +40,7 @@ class ImageSessionConfig:
     random_seed: int = 20260928
     visual_angle_deg: float = IMAGE_VISUAL_ANGLE_DEG
     background_width_factor: float = 2.0
-    trials_per_condition: int = 20
+    trials_per_condition: int = 18
     trials_before_break: int = 10
     time_foreground_only_ms: int = 500
     time_isi_ms: int = 1000
@@ -172,8 +172,8 @@ def create_image_config(
     )
     if not 0 < config.distance_fg_cm < config.distance_bg_cm:
         raise ValueError("DISTANCE_FG must be positive and smaller than DISTANCE_BG")
-    if config.trials_per_condition != 20:
-        raise ValueError("This experiment requires 20 selected pairs per condition")
+    if config.trials_per_condition not in {18, 20}:
+        raise ValueError("Image experiment requires 18 new-format or 20 legacy pairs")
     if config.background_width_factor <= 0:
         raise ValueError("background_width_factor must be positive")
     if not config.conditions:

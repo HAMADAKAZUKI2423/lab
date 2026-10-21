@@ -77,7 +77,7 @@ BACKGROUND_CLUSTER_COUNT = 10
 MIN_BACKGROUND_RANK_GAP = 3
 LOW_BACKGROUNDS_PER_CLASS = 5
 LOW_BACKGROUND_RANDOM_SEED = 42
-FOREGROUND_DTD_SAMPLES_PER_CATEGORY = 20
+FOREGROUND_DTD_SAMPLES_PER_CATEGORY = 10
 FOREGROUND_DTD_SAMPLING_SEED = 42
 
 
@@ -159,6 +159,9 @@ class PairResult:
     background_left_texture_class: int | None = None
     background_texture_rank_gap: int | None = None
     background_candidate_group: str = ""
+    visibility_level: str = ""
+    visibility_map_l2: float = 0.0
+    visibility_map_l2_rms: float = 0.0
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -182,7 +185,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
               "ディレクトリ群を前景・背景とも全件使用します。既定入力は前景のみDTD各カテゴリ10枚です"),
     )
     parser.add_argument(
-        "--selection-pool-size", type=int, default=200,
+        "--selection-pool-size", type=int, default=0,
         help=("各テクスチャクラスについて、最適化へ渡す上位/下位候補数。"
               "0なら評価済み全候補を使用（既定: 200）"),
     )
@@ -193,7 +196,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument('--background-clusters', type=int, default=BACKGROUND_CLUSTER_COUNT)
     parser.add_argument('--min-background-rank-gap', type=int, default=MIN_BACKGROUND_RANK_GAP)
     parser.add_argument('--background-only', action='store_true',
-                        help='背景の輝度・左右周波数分類と確認画像だけを保存し、モデル評価はしない')
+                        help='背景の左右周波数分類と確認画像だけを保存し、モデル評価はしない')
+    parser.add_argument('--no-laplacian-difference', action='store_true',
+                        help='背景のラプラシアン左右差をhigh/low候補制限に使わない')
+    parser.add_argument('--no-model-difference', action='store_true',
+                        help='視認性マップL2をhigh/low順位付けに使わず固定seedで選ぶ')
     args = parser.parse_args(argv)
     if args.background_clusters != 10:
         parser.error('low背景は10クラス各5枚（計50枚）に固定されています')
@@ -305,39 +312,39 @@ def sample_dtd_images_by_category(directory: Path) -> tuple[list[Path], dict[str
 
 
 def collect_image_candidate_paths(image_dirs, *, use_default_datasets, background_only):
-    """背景は常に全件。既定入力の前景だけMcGill全件＋DTD各カテゴリ10枚。"""
+    """既定入力は前景・背景ともMcGill全件＋DTD各カテゴリ10枚。"""
     def unique_sorted(paths):
         return sorted({path.resolve() for path in paths}, key=lambda path: str(path).casefold())
-    background_paths = unique_sorted([path for directory in image_dirs
-                                      for path in discover_images_recursive(directory)])
-    foreground_paths, sampled, category_counts = [], [], {}
-    sampling_applied = use_default_datasets and not background_only
+    sampled, category_counts = [], {}
     if use_default_datasets:
         mcgill_paths = discover_images_recursive(image_dirs[0])
         dtd_paths = discover_images_recursive(image_dirs[1])
-        if not background_only:
-            sampled, category_counts = sample_dtd_images_by_category(image_dirs[1])
-            foreground_paths = unique_sorted(mcgill_paths + sampled)
+        sampled, category_counts = sample_dtd_images_by_category(image_dirs[1])
+        common = unique_sorted(mcgill_paths + sampled)
+        background_paths = common
+        foreground_paths = [] if background_only else common.copy()
     else:
         mcgill_paths, dtd_paths = [], []
-        if not background_only:
-            foreground_paths = background_paths.copy()
+        background_paths = unique_sorted([path for directory in image_dirs
+                                          for path in discover_images_recursive(directory)])
+        foreground_paths = [] if background_only else background_paths.copy()
+    sampling_applied = use_default_datasets
     info = {
         'dataset_image_counts': {'foreground_pool': len(foreground_paths),
-            'background_all': len(background_paths), 'mcgill_all': len(mcgill_paths),
-            'dtd_all': len(dtd_paths), 'dtd_foreground_sampled': len(sampled)},
+            'background_pool': len(background_paths), 'mcgill_all': len(mcgill_paths),
+            'dtd_all': len(dtd_paths), 'dtd_sampled': len(sampled)},
         'dtd_sampling_applied': sampling_applied,
-        'dtd_sampling_scope': 'foreground_only' if sampling_applied else 'none',
+        'dtd_sampling_scope': 'foreground_and_background' if sampling_applied else 'none',
         'dtd_samples_per_category': FOREGROUND_DTD_SAMPLES_PER_CATEGORY if sampling_applied else None,
         'dtd_sampling_seed': FOREGROUND_DTD_SAMPLING_SEED if sampling_applied else None,
         'dtd_category_counts_before_sampling': category_counts,
+        'dtd_sample_paths': [str(path.resolve()) for path in sampled],
         'dtd_foreground_sample_paths': [str(path.resolve()) for path in sampled],
         'foreground_processing_performed': not background_only,
-        'background_dtd_sampling_applied': False,
-        'luminance_classification_scope': 'separate_foreground_pool_and_full_background_pool',
+        'background_dtd_sampling_applied': sampling_applied,
+        'luminance_classification_scope': 'diagnostic_only_no_exclusion',
     }
     return foreground_paths, background_paths, info
-
 
 def read_bgr(path: Path) -> np.ndarray:
     image = cv2.imread(str(path), cv2.IMREAD_COLOR)
@@ -372,71 +379,32 @@ def compute_laplacian_mad(bgr: np.ndarray, levels: int) -> np.ndarray:
 
 
 def classify_images(paths: list[Path], settings: RunSettings, *, luminance_items=None) -> list[ImageItem]:
-    """輝度を等数5分割し、最下位前景候補だけをテクスチャ10クラス化する。"""
-    if len(paths) < settings.luminance_class_count * settings.texture_class_count:
-        raise ValueError("画像数が少なすぎます")
-    try:
-        from sklearn.cluster import KMeans
-    except ImportError as exc:
-        raise RuntimeError('python -m pip install "scikit-learn" を実行してください') from exc
-
-    # 輝度を先に確定。ラプラシアン特徴は低輝度前景だけに計算する。
+    """輝度では除外せず、全前景をラプラシアン特徴10クラスへ分類する。"""
+    if len(paths) < settings.texture_class_count:
+        raise ValueError("前景画像数がテクスチャクラス数未満です")
+    from sklearn.cluster import KMeans
     base = classify_background_luminance(paths, settings) if luminance_items is None else luminance_items
-    if [item.path for item in base] != list(paths):
-        raise ValueError('共通の輝度分類と入力画像の順序が不一致です')
     measured = [(item.path, item.mean_relative_luminance,
-                 compute_laplacian_mad(read_bgr(item.path), settings.laplacian_levels)
-                 if item.luminance_class == 1 else np.empty(0, dtype=float))
+                 compute_laplacian_mad(read_bgr(item.path), settings.laplacian_levels))
                 for item in base]
-    luminance_classes = np.asarray([item.luminance_class for item in base], dtype=np.int32)
-
-    fg_indices = np.flatnonzero(luminance_classes == 1)
-    if len(fg_indices) < 2 * settings.texture_class_count:
-        raise ValueError(
-            f"各テクスチャクラスから異なる前景を2枚選ぶには、低輝度候補が最低"
-            f"{2 * settings.texture_class_count}枚必要です: {len(fg_indices)}枚"
-        )
-    x = np.vstack([measured[int(i)][2] for i in fg_indices])
-    model = KMeans(
-        n_clusters=settings.texture_class_count,
-        random_state=settings.kmeans_random_state,
-        n_init=10,
-    )
+    x = np.vstack([row[2] for row in measured])
+    model = KMeans(n_clusters=settings.texture_class_count,
+                   random_state=settings.kmeans_random_state, n_init=10)
     labels = model.fit_predict(x)
-    if len(np.unique(labels)) != settings.texture_class_count:
-        raise ValueError("前景候補を10個の異なるテクスチャクラスタへ分類できませんでした")
-    center_order = np.argsort(model.cluster_centers_.sum(axis=1), kind="stable")
-    rank_by_label = {int(label): rank for rank, label in enumerate(center_order, start=1)}
-    texture_info: dict[int, tuple[int, int, float]] = {}
-    for local_i, global_i in enumerate(fg_indices):
-        label = int(labels[local_i])
-        distance = float(np.linalg.norm(x[local_i] - model.cluster_centers_[label]))
-        texture_info[int(global_i)] = (label, rank_by_label[label], distance)
-
-    counts = {rank: 0 for rank in range(1, settings.texture_class_count + 1)}
-    for _, rank, _ in texture_info.values():
-        counts[rank] += 1
-    insufficient = {rank: count for rank, count in counts.items() if count < 2}
-    if insufficient:
-        raise ValueError(f"異なる前景をhigh/lowへ割り当てられないクラスがあります: {insufficient}")
-
-    items: list[ImageItem] = []
+    order = np.argsort(model.cluster_centers_.sum(axis=1), kind="stable")
+    rank_by_label = {int(label): rank for rank, label in enumerate(order, start=1)}
+    items = []
     for i, (path, luminance, features) in enumerate(measured):
-        lum_class = int(luminance_classes[i])
-        texture = texture_info.get(i)
+        label = int(labels[i]); rank = rank_by_label[label]
         items.append(ImageItem(
-            path=path,
-            mean_relative_luminance=luminance,
-            luminance_class=lum_class,
+            path=path, mean_relative_luminance=luminance,
+            luminance_class=base[i].luminance_class,
             laplacian_features=tuple(float(v) for v in features),
-            foreground_texture_label=None if texture is None else texture[0],
-            foreground_texture_class=None if texture is None else texture[1],
-            distance_to_texture_center=None if texture is None else texture[2],
-            foreground_candidate=lum_class == 1,
-            background_candidate=lum_class in (4, 5),
+            foreground_texture_label=label, foreground_texture_class=rank,
+            distance_to_texture_center=float(np.linalg.norm(x[i]-model.cluster_centers_[label])),
+            foreground_candidate=True, background_candidate=True,
         ))
     return items
-
 
 def prepare_foreground(path: Path, size: int) -> np.ndarray:
     return cv2.resize(read_bgr(path), (size, size), interpolation=cv2.INTER_AREA)
@@ -651,6 +619,8 @@ def evaluate_pair(
     right_score = float(right_map.mean())
     left_score = float(left_map.mean())
     signed = left_score - right_score
+    difference = left_map.astype(np.float64) - right_map.astype(np.float64)
+    map_l2 = float(np.linalg.norm(difference.ravel()))
     return PairResult(
         foreground_path=str(fg_item.path),
         background_path=str(bg_item.path),
@@ -661,6 +631,8 @@ def evaluate_pair(
         left_visibility_score=left_score,
         signed_score_difference=signed,
         absolute_score_difference=abs(signed),
+        visibility_map_l2=map_l2,
+        visibility_map_l2_rms=map_l2 / math.sqrt(difference.size),
         right_clip_ratio=right_clip,
         left_clip_ratio=left_clip,
         disparity_deg=settings.disparity_deg,
@@ -680,141 +652,71 @@ def _image_key(path: str) -> str:
 
 def select_high_low_pairs(
     results: list[PairResult], pool_size: int, max_clip_ratio: float,
-    *, min_background_rank_gap: int = MIN_BACKGROUND_RANK_GAP,
-) -> list[PairResult]:
-    """各クラスhigh/low各1組、前景・背景重複なしで20組をMILP選定する。"""
+    *, use_laplacian_difference: bool, use_model_difference: bool,
+) -> tuple[list[PairResult], tuple[float, float]]:
+    """右眼視認性3層×左右差high/low×3組を、画像重複なしで選ぶ。"""
     from scipy.optimize import Bounds, LinearConstraint, milp
     from scipy.sparse import coo_matrix
-
-    if pool_size < 0:
-        raise ValueError("--selection-pool-sizeは0以上にしてください")
-    if not 0 <= max_clip_ratio <= 1:
-        raise ValueError("--max-clip-ratioは0以上1以下にしてください")
-
-    for row in results:
-        if row.background_candidate_group not in {'high', 'low'}:
-            raise ValueError('high/low背景用途が未設定です')
-        gap = row.background_texture_rank_gap
-        right, left = row.background_right_texture_class, row.background_left_texture_class
-        if right is None or left is None or not (1 <= right <= 10 and 1 <= left <= 10) or gap != abs(right - left):
-            raise ValueError('背景クラスと順位差が不整合です')
-        if row.background_candidate_group == 'low' and (
-            gap != 0 or row.background_right_texture_class is None
-            or row.background_right_texture_class != row.background_left_texture_class):
-            raise ValueError('low候補に左右異クラスの背景があります')
-        if row.background_candidate_group == 'high' and (gap is None or gap < min_background_rank_gap):
-            raise ValueError('high候補に左右同クラスの背景があります')
-    valid = [
-        row for row in results
-        if math.isfinite(row.absolute_score_difference)
-        and max(row.right_clip_ratio, row.left_clip_ratio) <= max_clip_ratio
-    ]
-    by_class = {
-        texture_class: [r for r in valid if r.foreground_texture_class == texture_class]
-        for texture_class in range(1, TEXTURE_CLASS_COUNT + 1)
-    }
-    missing = [c for c, rows in by_class.items() if not rows]
-    if missing:
-        raise ValueError(f"クリップ率制約後に候補がないテクスチャクラス: {missing}")
-
-    # 全組合せは評価・CSV保存する。MILPの変数数だけを上位/下位候補へ制限する。
-    candidates: list[tuple[str, PairResult, float]] = []
-    for texture_class, rows in by_class.items():
-        ordered = sorted(rows, key=lambda r: r.absolute_score_difference)
-        low_rows = [r for r in ordered if r.background_candidate_group == 'low']
-        high_rows = [r for r in ordered if r.background_candidate_group == 'high']
-        if not low_rows or not high_rows:
-            raise ValueError(f'前景クラス{texture_class}にhigh/low専用候補が不足（クリップ率除外後）')
-        if pool_size:
-            low_rows = low_rows[:pool_size]
-            high_rows = high_rows[-pool_size:]
-        values = np.asarray([r.absolute_score_difference for r in ordered], dtype=float)
-        lo, hi = float(values.min()), float(values.max())
-        denominator = max(hi - lo, 1e-12)
-        for row in high_rows:
-            z = (row.absolute_score_difference - lo) / denominator
-            candidates.append(("high", row, float(z)))
-        for row in low_rows:
-            z = (row.absolute_score_difference - lo) / denominator
-            candidates.append(("low", row, float(1.0 - z)))
-
-    group_keys = [
-        (group, texture_class)
-        for group in ("high", "low")
-        for texture_class in range(1, TEXTURE_CLASS_COUNT + 1)
-    ]
-    group_index = {key: i for i, key in enumerate(group_keys)}
-    fg_keys = sorted({_image_key(row.foreground_path) for _, row, _ in candidates})
-    bg_keys = sorted({_image_key(row.background_path) for _, row, _ in candidates})
-    fg_index = {key: i + len(group_keys) for i, key in enumerate(fg_keys)}
-    bg_offset = len(group_keys) + len(fg_keys)
-    bg_index = {key: i + bg_offset for i, key in enumerate(bg_keys)}
-    row_count = len(group_keys) + len(fg_keys) + len(bg_keys)
-
-    rr: list[int] = []
-    cc: list[int] = []
-    for column, (group, row, _) in enumerate(candidates):
-        rr.extend((
-            group_index[(group, row.foreground_texture_class)],
-            fg_index[_image_key(row.foreground_path)],
-            bg_index[_image_key(row.background_path)],
-        ))
-        cc.extend((column, column, column))
-    matrix = coo_matrix(
-        (np.ones(len(rr)), (rr, cc)), shape=(row_count, len(candidates))
-    ).tocsc()
-    lower = np.r_[np.ones(len(group_keys)), np.zeros(len(fg_keys) + len(bg_keys))]
-    upper = np.r_[np.ones(len(group_keys)), np.ones(len(fg_keys) + len(bg_keys))]
-    utilities = np.asarray([utility for _, _, utility in candidates], dtype=float)
-    solution = milp(
-        c=-utilities,
-        integrality=np.ones(len(candidates)),
-        bounds=Bounds(0, 1),
-        constraints=LinearConstraint(matrix, lower, upper),
-        options={"mip_rel_gap": 0.0},
-    )
-    if solution.status == 2:
-        raise ValueError(
-            "現在の候補プールでは、各クラスhigh/low各1組かつ前景・背景重複なしを"
-            "満たせません。--selection-pool-sizeを増やすか0にしてください。"
-        )
-    if not solution.success or solution.x is None:
-        raise RuntimeError(f"20組を確定できませんでした: {solution.message}")
-
-    chosen: list[PairResult] = []
-    for (group, row, _), x in zip(candidates, solution.x):
-        if x > 0.5:
-            row.difference_group = group
-            chosen.append(row)
-    if len(chosen) != 20:
-        raise RuntimeError(f"選定組数が20ではありません: {len(chosen)}")
-
-    chosen.sort(key=lambda r: (
-        0 if r.difference_group == "high" else 1,
-        r.foreground_texture_class,
-    ))
-    for rank, row in enumerate(chosen, start=1):
-        row.rank = rank
-        same_group = [
-            r for r in chosen if r.difference_group == row.difference_group
-        ]
-        same_group.sort(
-            key=lambda r: r.absolute_score_difference,
-            reverse=row.difference_group == "high",
-        )
-        row.group_rank = same_group.index(row) + 1
-
-    if any(r.difference_group != r.background_candidate_group for r in chosen):
-        raise RuntimeError('high/low背景用途が最終群と一致しません')
+    valid = [r for r in results if math.isfinite(r.right_visibility_score)
+             and math.isfinite(r.visibility_map_l2)
+             and max(r.right_clip_ratio, r.left_clip_ratio) <= max_clip_ratio]
+    if not valid:
+        raise ValueError('有効な候補がありません')
+    q1, q2 = np.quantile([r.right_visibility_score for r in valid], [1/3, 2/3])
+    for r in valid:
+        r.visibility_level = ('low' if r.right_visibility_score <= q1 else
+                              'mid' if r.right_visibility_score <= q2 else 'high')
+    levels = ('low', 'mid', 'high')
+    candidates = []
     for group in ('high', 'low'):
-        if sorted(r.foreground_texture_class for r in chosen if r.difference_group == group) != list(range(1, 11)):
-            raise RuntimeError('各前景クラスhigh/low各1組の検証に失敗しました')
-    if len({_image_key(r.foreground_path) for r in chosen}) != 20:
-        raise RuntimeError("前景重複検証に失敗しました")
-    if len({_image_key(r.background_path) for r in chosen}) != 20:
-        raise RuntimeError("背景重複検証に失敗しました")
-    return chosen
-
+        for level in levels:
+            rows = [r for r in valid if r.visibility_level == level and
+                    (not use_laplacian_difference or r.background_candidate_group == group)]
+            if use_model_difference:
+                rows.sort(key=lambda r: r.visibility_map_l2,
+                          reverse=(group == 'high'))
+            else:
+                rows.sort(key=lambda r: hashlib.sha256(
+                    f'{group}|{level}|{r.foreground_path}|{r.background_path}'.encode()
+                ).hexdigest())
+            if pool_size:
+                rows = rows[:pool_size]
+            if len(rows) < 3:
+                raise ValueError(f'{group}/{level}候補が3組未満です: {len(rows)}')
+            for rank, row in enumerate(rows):
+                utility = (len(rows)-rank) / len(rows)
+                candidates.append((group, level, row, utility))
+    strata = [(g,l) for g in ('high','low') for l in levels]
+    fg = sorted({_image_key(r.foreground_path) for _,_,r,_ in candidates})
+    bg = sorted({_image_key(r.background_path) for _,_,r,_ in candidates})
+    row_index = {('s',*key): i for i,key in enumerate(strata)}
+    offset=len(strata); row_index.update({('f',key):offset+i for i,key in enumerate(fg)})
+    offset+=len(fg); row_index.update({('b',key):offset+i for i,key in enumerate(bg)})
+    rr=[]; cc=[]
+    for col,(g,l,r,_) in enumerate(candidates):
+        for key in (('s',g,l),('f',_image_key(r.foreground_path)),('b',_image_key(r.background_path))):
+            rr.append(row_index[key]); cc.append(col)
+    matrix=coo_matrix((np.ones(len(rr)),(rr,cc)),shape=(len(row_index),len(candidates))).tocsc()
+    lower=np.r_[np.full(len(strata),3),np.zeros(len(fg)+len(bg))]
+    upper=np.r_[np.full(len(strata),3),np.ones(len(fg)+len(bg))]
+    solution=milp(c=-np.asarray([u for *_,u in candidates]),integrality=np.ones(len(candidates)),
+                  bounds=Bounds(0,1),constraints=LinearConstraint(matrix,lower,upper),
+                  options={'mip_rel_gap':0.0})
+    if not solution.success or solution.x is None:
+        raise ValueError('18組を重複なしで選定できません。候補数またはpool sizeを増やしてください')
+    chosen=[]
+    for (g,l,r,_),x in zip(candidates,solution.x):
+        if x>.5: r.difference_group=g; chosen.append(r)
+    level_order={v:i for i,v in enumerate(levels)}
+    chosen.sort(key=lambda r:(0 if r.difference_group=='high' else 1,
+                              level_order[r.visibility_level],
+                              -r.visibility_map_l2 if r.difference_group=='high' else r.visibility_map_l2))
+    for i,r in enumerate(chosen,1): r.rank=i
+    for group in ('high','low'):
+        group_rows=[r for r in chosen if r.difference_group==group]
+        for i,r in enumerate(group_rows,1): r.group_rank=i
+    if len(chosen)!=18: raise RuntimeError(f'選定組数が18ではありません: {len(chosen)}')
+    return chosen,(float(q1),float(q2))
 
 def write_csv(path: Path, rows: list[PairResult]) -> None:
     if not rows:
@@ -860,11 +762,11 @@ def save_selected_pair(
             f"difference_groupはhighまたはlowにしてください: "
             f"{result.difference_group!r}"
         )
-    if result.difference_group != result.background_candidate_group:
+    if result.background_candidate_group not in {result.difference_group, 'both'}:
         raise ValueError('保存群と背景候補用途が不一致です')
     if result.group_rank is None:
         raise ValueError("group_rankが設定されていません")
-    group_dir = output_dir / f"{result.difference_group}10"
+    group_dir = output_dir / f"{result.difference_group}9"
     pair_dir = group_dir / f"rank_{result.group_rank:02d}"
     pair_dir.mkdir(parents=True, exist_ok=False)
     right_bg, left_bg = (
@@ -958,7 +860,7 @@ def classify_background_luminance(paths, settings, *, mean_luminances=None):
     for rank, indices in enumerate(np.array_split(order, settings.luminance_class_count), start=1):
         classes[indices] = rank
     return [ImageItem(path, lum, int(classes[i]), (), None, None, None,
-                      False, int(classes[i]) >= settings.luminance_class_count - 1)
+                      False, True)
             for i, (path, lum) in enumerate(measured)]
 
 
@@ -1243,9 +1145,11 @@ def main() -> None:
         'image_count': len(paths), 'background_source_count': len(background_paths),
         **dataset_info,
         'foreground_candidate_count': len(fg_items),
-        'background_bright_count': sum(item.background_candidate for item in bg_luminance_items),
+        'background_bright_count': len(bg_luminance_items),
         'selection_pool_size': args.selection_pool_size, 'max_clip_ratio': args.max_clip_ratio,
-        'selection_rule': 'FG McGill all plus DTD sample10 per category; BG all; separate luminance quantiles first; high BG gap>=threshold; low BG same class sample5 per cluster; high/low per FG class; no duplicate FG/BG',
+        'selection_rule': 'no luminance exclusion; right visibility terciles; high/low 3 pairs per level; no duplicate FG/BG',
+        'use_laplacian_difference': not args.no_laplacian_difference,
+        'use_model_difference': not args.no_model_difference,
         'display_dir': str(image_config.display_dir), 'visibility_repo': str(VISIBILITY_REPO)}
     def save_config():
         (output_dir / 'config.json').write_text(json.dumps(config, ensure_ascii=False, indent=2, allow_nan=False), encoding='utf-8')
@@ -1279,6 +1183,10 @@ def main() -> None:
             f'WARN: low背景が各クラス5枚に満たないクラスは実枚数全件を使用します: {insufficient}',
             flush=True,
         )
+    if args.no_laplacian_difference:
+        for record in records:
+            if record.right_rank is not None:
+                record.accepted = True; record.candidate_group = 'both'; record.reason = 'laplacian_filter_off'
     accepted = {record.background_path: record for record in records if record.accepted}
     bg_items = [item for item in bg_luminance_items if str(item.path) in accepted]
     config.update(background_candidate_count=len(bg_items),
@@ -1290,8 +1198,8 @@ def main() -> None:
         config.update(complete=True, model_evaluation_performed=False)
         save_config(); print(f'Background reports saved: {output_dir}', flush=True)
         return
-    if len(fg_items) < 20 or config['high_background_candidate_count'] < 10:
-        raise ValueError(f'重複なし選定に候補が不足。FG={len(fg_items)}, high_BG={config["high_background_candidate_count"]} (minimum 10)。low_BG={config["low_background_candidate_count"]}。条件は緩和しません')
+    if len(fg_items) < 18 or len(bg_items) < 18:
+        raise ValueError(f'重複なし18組の候補が不足。FG={len(fg_items)}, BG={len(bg_items)}')
     device = torch.device(settings.device)
     model = load_visibility_model(settings.model, device)
     fg_cache = {item.path: prepare_foreground(item.path, settings.image_size_px) for item in fg_items}
@@ -1339,32 +1247,18 @@ def main() -> None:
         row.foreground_texture_class, -row.absolute_score_difference
     ))
     write_csv(output_dir / "all_pairs.csv", results)
-    selected = select_high_low_pairs(
+    selected, visibility_thresholds = select_high_low_pairs(
         results, args.selection_pool_size, args.max_clip_ratio,
-        min_background_rank_gap=settings.min_background_rank_gap,
+        use_laplacian_difference=not args.no_laplacian_difference,
+        use_model_difference=not args.no_model_difference,
     )
-    write_csv(output_dir / "top20.csv", selected)
-
-    high_results = sorted(
-        (row for row in selected if row.difference_group == "high"),
-        key=lambda row: row.group_rank if row.group_rank is not None else math.inf,
-    )
-    low_results = sorted(
-        (row for row in selected if row.difference_group == "low"),
-        key=lambda row: row.group_rank if row.group_rank is not None else math.inf,
-    )
-    if len(high_results) != TEXTURE_CLASS_COUNT:
-        raise RuntimeError(
-            f"highの選定数が{TEXTURE_CLASS_COUNT}ではありません: "
-            f"{len(high_results)}"
-        )
-    if len(low_results) != TEXTURE_CLASS_COUNT:
-        raise RuntimeError(
-            f"lowの選定数が{TEXTURE_CLASS_COUNT}ではありません: "
-            f"{len(low_results)}"
-        )
-    write_csv(output_dir / "high10.csv", high_results)
-    write_csv(output_dir / "low10.csv", low_results)
+    write_csv(output_dir / "selected_pairs.csv", selected)
+    high_results = sorted((r for r in selected if r.difference_group == 'high'), key=lambda r:r.group_rank)
+    low_results = sorted((r for r in selected if r.difference_group == 'low'), key=lambda r:r.group_rank)
+    write_csv(output_dir / "high9.csv", high_results)
+    write_csv(output_dir / "low9.csv", low_results)
+    config.update(visibility_level_thresholds={'low_mid': visibility_thresholds[0],
+                  'mid_high': visibility_thresholds[1]}, selected_per_stratum=3)
 
     for result in selected:
         fg_path = Path(result.foreground_path)
@@ -1374,10 +1268,10 @@ def main() -> None:
         panorama, eyes = get_background(bg_path)
         save_selected_pair(output_dir, result, fg_cache[fg_path], panorama,
                            calibration, model, settings, device, eye_backgrounds=eyes)
-    config.update(complete=True, model_evaluation_performed=True, selected_pair_count=len(selected))
+    config.update(complete=True, model_evaluation_performed=True, selected_pair_count=len(selected),
+                  luminance_filter_applied=False)
     save_config()
     print(f"Saved: {output_dir}")
-
 
 if __name__ == "__main__":
     main()
