@@ -3,9 +3,14 @@ from pathlib import Path
 from dataclasses import asdict
 import csv, json, os, random
 import tempfile
+from dataclasses import replace
 from .results import RESULT_FIELDS, _trial_metadata, _jsonable
+from .stimuli import build_trials
 
-EXTRA_FIELDS=['Task_Mode','Reference_Observed_Eye','Alignment_Eye','Initial_Gain',
+# up: 低ゲインから上昇、down: 高ゲインから下降。
+MATCHING_INITIAL_GAINS={'up':0.3,'down':1.0}
+
+EXTRA_FIELDS=['Task_Mode','Matching_Direction','Reference_Observed_Eye','Alignment_Eye','Initial_Gain',
  'Final_Gain','Matched_Gain','Original_FG_Y_cd_m2','Reference_Gain',
  'Reference_Target_Y_cd_m2','Reference_Quantized_Y_cd_m2',
  'Test_Target_FG_Y_cd_m2','Test_Quantized_FG_Y_cd_m2','Match_Status',
@@ -45,19 +50,26 @@ def atomic_json(path,value):
     finally:
         if tmp.exists(): tmp.unlink()
 
-def initial_gain_plan(trials,seed):
-    """試行順とは独立した乱数で、各条件・high/lowごとに両端を均衡化。"""
-    rng=random.Random(seed ^ 0x45A771);groups={};result={}
-    for t in trials: groups.setdefault((t.condition_id,t.pair.difference_group),[]).append(t)
-    for key,group in sorted(groups.items()):
-        values=[0.]* (len(group)//2)+[1.]*(len(group)-len(group)//2);rng.shuffle(values)
-        result.update({t.trial_order:v for t,v in zip(group,values)})
-    return result
+def build_direction_trials(pairs,condition_order,rng):
+    """条件順は維持し、各条件内でup/downブロック順をランダム化する。"""
+    trials=[];directions={};block_id=0
+    for condition_id in condition_order:
+        for direction in rng.sample(list(MATCHING_INITIAL_GAINS),2):
+            block_id+=1
+            for trial in build_trials(pairs,(condition_id,),rng):
+                order=len(trials)+1
+                trials.append(replace(trial,trial_order=order,block_id=block_id))
+                directions[order]=direction
+    return trials,directions
+
+def initial_gain_plan(directions):
+    return {order:MATCHING_INITIAL_GAINS[d] for order,d in directions.items()}
 
 def trial_base(app,trial):
     row=_trial_metadata(trial,dominant_eye=app.participant_dominance.get(),
                        selection_dir=app.selected_pairs_dir,participant_seed=app.participant_seed)
-    row.update({'Task_Mode':'matching','Initial_Gain':app.initial_gains[trial.trial_order],
+    row.update({'Task_Mode':'matching','Matching_Direction':app.matching_directions[trial.trial_order],
+      'Initial_Gain':app.initial_gains[trial.trial_order],
       'Reference_Observed_Eye':row['Observed_Eye'],
       'Reference_Center_Deg':app.session_config.reference_center_deg,
       'Test_Center_Deg':app.session_config.test_center_deg,

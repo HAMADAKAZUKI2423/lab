@@ -78,10 +78,10 @@ CONDITION_ENABLED: dict[ConditionId, bool] = {
     "DP_BINOCULAR":       True,   # DP両眼
     "DP_MONO_DOM":        True,   # DP利き眼のみ
     "DP_MONO_NONDOM":     True,   # DP非利き眼のみ
-    "SP_NO_DEFOCUS":      False,  # SP：defocusなし
+    "SP_NO_DEFOCUS":      True,  # SP：defocusなし
     "SP_DEFOCUS_SIMPLE":  False,   # SP：defocus＋左右眼像融合
-    "SP_REPRO_LEFT_EYE":  True,  # SP：左眼像を再現、両眼観察
-    "SP_REPRO_RIGHT_EYE": True,  # SP：右眼像を再現、両眼観察
+    "SP_REPRO_LEFT_EYE":  True, # SP：左眼像を再現、両眼観察
+    "SP_REPRO_RIGHT_EYE": True, # SP：右眼像を再現、両眼観察
 }
 
 

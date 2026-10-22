@@ -44,8 +44,19 @@ def resolve_target(argument=None):
     return path
 
 
-def load_results(target):
+def load_results(target, direction='all'):
     frame = pd.read_csv(target / 'image_matching.csv', encoding='utf-8-sig', dtype=str)
+    keys = ['Condition', 'Pair_ID']
+    if direction != 'all':
+        if 'Matching_Direction' not in frame:
+            raise ValueError('Matching_Direction column is required')
+        frame['Matching_Direction'] = frame['Matching_Direction'].fillna('').str.strip().str.lower()
+        if direction in {'up', 'down'}:
+            frame = frame.loc[frame['Matching_Direction'].eq(direction)].copy()
+        elif direction == 'mean':
+            keys = keys + ['Matching_Direction']
+        else:
+            raise ValueError(f'Unknown direction: {direction}')
     required = ['ID', 'Condition', *PAIR_COLUMNS, 'Dominance', 'Match_Status', 'Matched_Gain']
     missing = set(required) - set(frame.columns)
     if frame.empty or missing:
@@ -67,7 +78,7 @@ def load_results(target):
     allowed = ['matched', 'above_range', 'below_range', 'cannot_judge']
     if not frame['Match_Status'].isin(allowed).all():
         raise ValueError('Unknown/incomplete Match_Status')
-    if frame.duplicated(['Condition', 'Pair_ID']).any():
+    if frame.duplicated(keys).any():
         raise ValueError('Duplicate Condition/Pair_ID')
     frame['Difference_Group'] = frame['Difference_Group'].str.lower()
     frame['Group_Rank'] = pd.to_numeric(frame['Group_Rank'], errors='raise')
@@ -91,7 +102,19 @@ def load_results(target):
         raise ValueError('Matched_Gain must be finite and in [0,1] for matched trials')
     # 範囲外・判断不能は一致値として平均しない。Final_Gainへの代替もしない。
     frame.loc[~matched, 'Gain'] = np.nan
-    print('Response counts:\n', pd.crosstab(frame['Condition'], frame['Match_Status']))
+    print(f'[{direction}] Response counts:\n', pd.crosstab(frame['Condition'], frame['Match_Status']))
+    if direction == 'mean':
+        if not frame['Matching_Direction'].isin(['up', 'down']).all():
+            raise ValueError('Matching_Direction must be up/down')
+        counts = frame.groupby(['Condition', 'Pair_ID'])['Matching_Direction'].nunique()
+        if not counts.eq(2).all():
+            raise ValueError('Both up and down trials are required for mean')
+        # up/down両方がmatchedの組だけ算術平均。片方欠損はNaN。
+        gains = frame.groupby(['Condition', 'Pair_ID'])['Gain'].agg(lambda s: s.mean() if s.notna().all() else np.nan)
+        frame = frame.drop_duplicates(['Condition', 'Pair_ID']).set_index(['Condition', 'Pair_ID'])
+        frame['Gain'] = gains
+        frame['Match_Status'] = np.where(frame['Gain'].notna(), 'matched', 'mean_excluded')
+        frame = frame.reset_index()
     metadata = metadata.assign(_order=metadata['Difference_Group'].map({'high': 0, 'low': 1}))
     metadata = metadata.sort_values(['_order', 'Group_Rank']).drop(columns='_order')
     return frame, metadata
@@ -113,7 +136,7 @@ def build_dp_pairs(frame, metadata):
     return paired
 
 
-def save_dp_msd_csv(frame, paired, target):
+def save_dp_msd_csv(frame, paired, target, subdir='matching_analysis'):
     """high/low別の平均二乗差mean((Left-Right)**2)。平方根は取らない。"""
     rows = []
     for group_name in ('high', 'low'):
@@ -135,7 +158,7 @@ def save_dp_msd_csv(frame, paired, target):
             'Metric_Definition': 'mean((Left_Gain - Right_Gain)**2)',
             'Unit': 'normalized_gain_squared',
         })
-    output = target / 'matching_analysis' / 'dp_eye_mean_squared_difference.csv'
+    output = target / subdir / 'dp_eye_mean_squared_difference.csv'
     output.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(rows).to_csv(output, index=False, encoding='utf-8-sig', na_rep='')
     print(f'Saved high/low mean squared differences: {output}')
@@ -258,10 +281,14 @@ def main():
     parser.add_argument('target_dir', nargs='?', help='Session directory or image_matching.csv')
     args = parser.parse_args()
     target = resolve_target(args.target_dir)
-    frame, metadata = load_results(target)
-    paired = build_dp_pairs(frame, metadata)
-    save_dp_msd_csv(frame, paired, target)
-    save_figures(frame, paired, FIGURE_ROOT / target.name / 'matching_analysis')
+    columns = pd.read_csv(target / 'image_matching.csv', encoding='utf-8-sig', nrows=0).columns
+    directions = ('up', 'down', 'mean') if 'Matching_Direction' in columns else ('all',)
+    for direction in directions:
+        frame, metadata = load_results(target, direction)
+        paired = build_dp_pairs(frame, metadata)
+        name = 'matching_analysis' if direction == 'all' else f'matching_analysis/{direction}'
+        save_dp_msd_csv(frame, paired, target, name)
+        save_figures(frame, paired, FIGURE_ROOT / target.name / name)
 
 
 if __name__ == '__main__':

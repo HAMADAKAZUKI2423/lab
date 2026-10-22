@@ -121,7 +121,9 @@ class ImageSessionConfig:
 
     @property
     def expected_trial_count(self) -> int:
-        return len(self.conditions) * self.trials_per_condition
+        # matchingは各条件をup/downの2ブロックで実施する。
+        directions = 2 if self.task_mode == "matching" else 1
+        return len(self.conditions) * self.trials_per_condition * directions
 
     @property
     def background_visual_angle_width_deg(self) -> float:
