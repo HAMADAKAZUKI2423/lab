@@ -310,7 +310,7 @@ class ImageExperimentApp(ExperimentBaseUI):
             self.distance2, self.session_config.visual_angle_deg
         )
         background_width = geometry.get_size_for_visual_angle(
-            self.distance2, self.session_config.visual_angle_deg * 2.0
+            self.distance2, self.session_config.background_visual_angle_width_deg
         )
         for width in (background_width, background_height):
             markers.draw_image_corner_brackets(

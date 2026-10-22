@@ -109,7 +109,7 @@ class ImageMatchingApp(ImageExperimentApp):
         self.canvas1.delete('calib');self.canvas2.delete('calib')
         layout=self.layout_for_current_eye()
         for name in ('background','background_square'):
-            draw_brackets(self.canvas1,layout[name],WIN1_MARKER_COLOR,7.0)
+            draw_brackets(self.canvas1,layout[name],WIN1_MARKER_COLOR,7.5)
         draw_brackets(self.canvas2,layout['test'],WIN2_MARKER_COLOR)
         x,y=layout['test'].center
         self.canvas2.create_line(x-12,y,x+12,y,fill=WIN2_MARKER_COLOR,tags='calib')
@@ -191,7 +191,7 @@ class ImageMatchingApp(ImageExperimentApp):
             rb=self.current_layout['reference_singleplane']
             self.canvas2.create_image(rb.x0,rb.y0,
                 image=self.photo_reference,anchor='nw',tags='matching')
-            # Referenceの背景経路はXYZ加算画像に含める。背景面上段には描画しない。
+            # Referenceは前景7:背景3のαブレンド画像。背景面上段には描画しない。
             if self.matching_prepared.physical_background is not None:
                 self.photo_background=ImageTk.PhotoImage(self.matching_prepared.physical_background)
                 b=self.current_layout['background'];self.canvas1.create_image(b.x0,b.y0,image=self.photo_background,anchor='nw',tags='matching')
