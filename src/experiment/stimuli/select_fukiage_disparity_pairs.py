@@ -77,7 +77,7 @@ BACKGROUND_CLUSTER_COUNT = 10
 MIN_BACKGROUND_RANK_GAP = 3
 LOW_BACKGROUNDS_PER_CLASS = 5
 LOW_BACKGROUND_RANDOM_SEED = 42
-FOREGROUND_DTD_SAMPLES_PER_CATEGORY = 10
+FOREGROUND_DTD_SAMPLES_PER_CATEGORY = 20
 FOREGROUND_DTD_SAMPLING_SEED = 42
 
 
@@ -111,6 +111,9 @@ class RunSettings:
     min_background_rank_gap: int = MIN_BACKGROUND_RANK_GAP
     low_backgrounds_per_class: int = LOW_BACKGROUNDS_PER_CLASS
     low_background_random_seed: int = LOW_BACKGROUND_RANDOM_SEED
+    background_width_ratio: float = 2.2
+    background_width_scale: float = 1.1
+    global_difference_lambda: float = 2.0
 
     @property
     def eye_boundary_mode(self) -> str:
@@ -162,6 +165,10 @@ class PairResult:
     visibility_level: str = ""
     visibility_map_l2: float = 0.0
     visibility_map_l2_rms: float = 0.0
+    visibility_local_std: float = float("nan")
+    visibility_global_mean_abs: float = float("nan")
+    visibility_combined_score: float = float("nan")
+    global_difference_lambda: float = 2.0
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -185,7 +192,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
               "ディレクトリ群を前景・背景とも全件使用します。既定入力は前景のみDTD各カテゴリ10枚です"),
     )
     parser.add_argument(
-        "--selection-pool-size", type=int, default=0,
+        "--selection-pool-size", type=int, default=200,
         help=("各テクスチャクラスについて、最適化へ渡す上位/下位候補数。"
               "0なら評価済み全候補を使用（既定: 200）"),
     )
@@ -200,7 +207,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument('--no-laplacian-difference', action='store_true',
                         help='背景のラプラシアン左右差をhigh/low候補制限に使わない')
     parser.add_argument('--no-model-difference', action='store_true',
-                        help='視認性マップL2をhigh/low順位付けに使わず固定seedで選ぶ')
+                        help='局所差＋平均差の総合指標をhigh/low順位付けに使わず固定seedで選ぶ')
     args = parser.parse_args(argv)
     if args.background_clusters != 10:
         parser.error('low背景は10クラス各5枚（計50枚）に固定されています')
@@ -281,6 +288,10 @@ def load_settings(args: argparse.Namespace) -> RunSettings:
         blur_sigma_px=sigma_px,
         background_cluster_count=args.background_clusters,
         min_background_rank_gap=args.min_background_rank_gap,
+        background_width_ratio=(math.tan(math.radians(image_config.background_visual_angle_width_deg/2))
+                                / math.tan(math.radians(angle/2))),
+        background_width_scale=image_config.background_width_scale,
+        global_difference_lambda=2.0,
     )
 
 
@@ -410,10 +421,12 @@ def prepare_foreground(path: Path, size: int) -> np.ndarray:
     return cv2.resize(read_bgr(path), (size, size), interpolation=cv2.INTER_AREA)
 
 
-def prepare_background_panorama(path: Path, size: int) -> np.ndarray:
+def prepare_background_panorama(path: Path, size: int, width_ratio: float = 2.0) -> np.ndarray:
     square = cv2.resize(read_bgr(path), (512, 512), interpolation=cv2.INTER_AREA)
     strip = square[128:384, :, :]
-    return cv2.resize(strip, (size * 2, size), interpolation=cv2.INTER_AREA)
+    if not math.isfinite(width_ratio) or width_ratio < 1:
+        raise ValueError("背景幅比は1以上の有限値が必要です")
+    return cv2.resize(strip, (round(size * width_ratio), size), interpolation=cv2.INTER_AREA)
 
 
 def crop_with_black(panorama: np.ndarray, start_x: int, width: int) -> np.ndarray:
@@ -621,6 +634,9 @@ def evaluate_pair(
     signed = left_score - right_score
     difference = left_map.astype(np.float64) - right_map.astype(np.float64)
     map_l2 = float(np.linalg.norm(difference.ravel()))
+    local_std = float(np.std(difference, ddof=0))
+    global_mean_abs = abs(float(np.mean(difference)))
+    combined = math.sqrt(local_std**2 + settings.global_difference_lambda*global_mean_abs**2)
     return PairResult(
         foreground_path=str(fg_item.path),
         background_path=str(bg_item.path),
@@ -633,6 +649,10 @@ def evaluate_pair(
         absolute_score_difference=abs(signed),
         visibility_map_l2=map_l2,
         visibility_map_l2_rms=map_l2 / math.sqrt(difference.size),
+        visibility_local_std=local_std,
+        visibility_global_mean_abs=global_mean_abs,
+        visibility_combined_score=combined,
+        global_difference_lambda=settings.global_difference_lambda,
         right_clip_ratio=right_clip,
         left_clip_ratio=left_clip,
         disparity_deg=settings.disparity_deg,
@@ -658,7 +678,7 @@ def select_high_low_pairs(
     from scipy.optimize import Bounds, LinearConstraint, milp
     from scipy.sparse import coo_matrix
     valid = [r for r in results if math.isfinite(r.right_visibility_score)
-             and math.isfinite(r.visibility_map_l2)
+             and math.isfinite(r.visibility_combined_score)
              and max(r.right_clip_ratio, r.left_clip_ratio) <= max_clip_ratio]
     if not valid:
         raise ValueError('有効な候補がありません')
@@ -673,7 +693,7 @@ def select_high_low_pairs(
             rows = [r for r in valid if r.visibility_level == level and
                     (not use_laplacian_difference or r.background_candidate_group == group)]
             if use_model_difference:
-                rows.sort(key=lambda r: r.visibility_map_l2,
+                rows.sort(key=lambda r: r.visibility_combined_score,
                           reverse=(group == 'high'))
             else:
                 rows.sort(key=lambda r: hashlib.sha256(
@@ -710,7 +730,7 @@ def select_high_low_pairs(
     level_order={v:i for i,v in enumerate(levels)}
     chosen.sort(key=lambda r:(0 if r.difference_group=='high' else 1,
                               level_order[r.visibility_level],
-                              -r.visibility_map_l2 if r.difference_group=='high' else r.visibility_map_l2))
+                              -r.visibility_combined_score if r.difference_group=='high' else r.visibility_combined_score))
     for i,r in enumerate(chosen,1): r.rank=i
     for group in ('high','low'):
         group_rows=[r for r in chosen if r.difference_group==group]
@@ -784,6 +804,11 @@ def save_selected_pair(
     ):
         if not math.isclose(actual, expected, rel_tol=1e-5, abs_tol=1e-6):
             raise RuntimeError(f"保存時の{eye}スコアが評価時と不一致: {actual} != {expected}")
+    difference = left_map.astype(np.float64) - right_map.astype(np.float64)
+    actual_combined = math.sqrt(float(np.var(difference))
+                                + settings.global_difference_lambda*float(np.mean(difference))**2)
+    if not math.isclose(actual_combined, result.visibility_combined_score, rel_tol=1e-5, abs_tol=1e-6):
+        raise RuntimeError("保存時の総合左右差が評価時と不一致です")
     right_composite, _ = optical_addition_bgr(foreground, right_bg, calibration)
     left_composite, _ = optical_addition_bgr(foreground, left_bg, calibration)
     right_unblurred, left_unblurred = make_eye_backgrounds(
@@ -809,6 +834,9 @@ def save_selected_pair(
     with (pair_dir / "pair_metadata.json").open("w", encoding="utf-8") as file:
         json.dump({
             **asdict(result),
+            "background_width_ratio": settings.background_width_ratio,
+            "background_width_scale": settings.background_width_scale,
+            "selection_metric": "sqrt(var(L-R)+2*mean(L-R)**2)",
             "blur_method": "gaussian_linear_rgb" if settings.apply_defocus else "none",
             "blur_boundary_mode": "reflect101" if settings.apply_defocus else "none",
             "blur_scale_factor": settings.blur_scale_factor,
@@ -916,7 +944,7 @@ def classify_background_eyes(items, settings, calibration):
         if not item.background_candidate:
             continue
         record.source_sha256 = source_hash(item.path)
-        panorama = prepare_background_panorama(item.path, settings.image_size_px)
+        panorama = prepare_background_panorama(item.path, settings.image_size_px, settings.background_width_ratio)
         eyes = prepare_scoring_backgrounds(panorama, calibration, settings)
         if source_hash(item.path) != record.source_sha256:
             raise RuntimeError(f'背景読み込み中に元画像が変更されました: {item.path}')
@@ -1066,7 +1094,7 @@ def write_background_reports(output, records, centers, frequency, ranks, setting
         _, r, eye = min(candidates, key=lambda row: row[0])
         if source_hash(Path(r.background_path)) != r.source_sha256:
             raise RuntimeError('代表画像保存前に背景が変更されました')
-        views = prepare_scoring_backgrounds(prepare_background_panorama(Path(r.background_path), settings.image_size_px), calibration, settings)
+        views = prepare_scoring_backgrounds(prepare_background_panorama(Path(r.background_path), settings.image_size_px, settings.background_width_ratio), calibration, settings)
         tile = cv2.resize(views[0 if eye == 'right' else 1], (160, 160))
         tile = np.clip(tile * 255, 0, 255).astype(np.uint8)
         tile = cv2.copyMakeBorder(tile, 24, 0, 0, 0, cv2.BORDER_CONSTANT)
@@ -1078,7 +1106,7 @@ def write_background_reports(output, records, centers, frequency, ranks, setting
         for r in sorted((r for r in records if r.candidate_group == group), key=lambda r: (-r.rank_gap, r.background_path))[:20]:
             if source_hash(Path(r.background_path)) != r.source_sha256:
                 raise RuntimeError('左右比較保存前に背景が変更されました')
-            eyes = prepare_scoring_backgrounds(prepare_background_panorama(Path(r.background_path), settings.image_size_px), calibration, settings)
+            eyes = prepare_scoring_backgrounds(prepare_background_panorama(Path(r.background_path), settings.image_size_px, settings.background_width_ratio), calibration, settings)
             tile = np.concatenate([cv2.resize(view, (128,128)) for view in eyes], axis=1)
             tile = cv2.copyMakeBorder(np.clip(tile * 255,0,255).astype(np.uint8),24,0,0,0,cv2.BORDER_CONSTANT)
             cv2.putText(tile, f'R={r.right_rank} L={r.left_rank} gap={r.rank_gap}',(4,17),cv2.FONT_HERSHEY_SIMPLEX,.45,(255,255,255),1)
@@ -1136,6 +1164,9 @@ def main() -> None:
     require_calibration(calibration)
     config = {**asdict(settings), 'complete': False,
         'mode': 'background_only' if args.background_only else 'full_selection',
+        'selection_metric': 'sqrt(var(L-R)+2*mean(L-R)**2)',
+        'background_geometry_version': 'projected_width_scale_1.1_v1',
+        'background_visual_angle_width_deg': image_config.background_visual_angle_width_deg,
         'pixels_per_degree': settings.image_size_px / settings.visual_angle_deg,
         'blur_method': 'gaussian_linear_rgb' if settings.apply_defocus else 'none',
         'blur_boundary_mode': 'reflect101' if settings.apply_defocus else 'none',
@@ -1209,7 +1240,7 @@ def main() -> None:
         record = accepted[str(path)]
         if source_hash(path) != record.source_sha256:
             raise RuntimeError(f'分類後に背景が変更されました: {path}')
-        panorama = prepare_background_panorama(path, settings.image_size_px)
+        panorama = prepare_background_panorama(path, settings.image_size_px, settings.background_width_ratio)
         eyes = prepare_scoring_backgrounds(panorama, calibration, settings)
         if source_hash(path) != record.source_sha256:
             raise RuntimeError(f'背景処理中に画像が変更されました: {path}')

@@ -1,0 +1,1067 @@
+﻿path,mean_relative_luminance,luminance_class,laplacian_features,foreground_texture_label,foreground_texture_class,distance_to_texture_center,foreground_candidate,background_candidate
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0013.jpg,0.7199434366129915,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0016.jpg,0.5891775140771229,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0024.jpg,0.320713827941111,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0037.jpg,0.028004322357313816,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0069.jpg,0.7773106081976457,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0081.jpg,0.8482697942035461,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0086.jpg,0.5416157560943892,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0088.jpg,0.16772388721945578,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0097.jpg,0.3068017225767449,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0105.jpg,0.47093478967611163,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0108.jpg,0.11622969608655173,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0112.jpg,0.7476619597296282,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0113.jpg,0.20432872486661435,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0116.jpg,0.07930200115511644,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0121.jpg,0.3051456340509061,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0131.jpg,0.4545004064792109,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0137.jpg,0.42922502224338044,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0139.jpg,0.37016788752416746,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0142.jpg,0.2031267812250982,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\banded\banded_0150.jpg,0.45434225596152433,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0017.jpg,0.31811308208914946,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0019.jpg,0.0706952485955564,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0032.jpg,0.5907960948148484,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0034.jpg,0.2605677261352936,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0038.jpg,0.20944263583803682,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0056.jpg,0.17347450104439746,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0060.jpg,0.17409146348726334,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0067.jpg,0.7836513055475798,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0072.jpg,0.3012392400149531,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0077.jpg,0.022450658897063627,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0084.jpg,0.13264021681919808,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0085.jpg,0.3594497767118151,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0093.jpg,0.2619120797719534,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0096.jpg,0.45602039924890503,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0100.jpg,0.5926833073693343,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0107.jpg,0.30863597942141424,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0108.jpg,0.22819618380598844,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0111.jpg,0.14258656140632722,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0119.jpg,0.1367083553274292,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\blotchy\blotchy_0125.jpg,0.45306496679648367,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0061.jpg,0.37075631648679525,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0075.jpg,0.2609572345508402,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0106.jpg,0.21457210218367476,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0112.jpg,0.2999565784974241,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0122.jpg,0.40879891242169025,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0123.jpg,0.22813871733522476,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0127.jpg,0.27820555597938,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0135.jpg,0.1894025367865884,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0145.jpg,0.09711718929554822,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0146.jpg,0.24525675583592643,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0153.jpg,0.026443486426831947,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0159.jpg,0.3686559386737828,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0163.jpg,0.09314384687132415,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0166.jpg,0.44431984100693495,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0169.jpg,0.2831585736567069,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0171.jpg,0.12881706369684745,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0174.jpg,0.49612759539089646,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0183.jpg,0.1092388759764138,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0192.jpg,0.3314331496028012,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\braided\braided_0195.jpg,0.1799933283190789,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0050.jpg,0.22386691708169384,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0052.jpg,0.23928756839166268,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0053.jpg,0.2642126804270513,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0056.jpg,0.25250439769716193,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0073.jpg,0.15327887564463,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0086.jpg,0.18314754807105446,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0097.jpg,0.19802376937826086,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0104.jpg,0.5429176389212457,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0115.jpg,0.20390450340638777,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0117.jpg,0.1346727871684137,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0118.jpg,0.2352301553408437,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0119.jpg,0.18735492687666125,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0123.jpg,0.4862118740881705,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0124.jpg,0.26156444745902435,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0125.jpg,0.4053438422423815,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0126.jpg,0.14829869736739132,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0138.jpg,0.031619008204559824,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0146.jpg,0.5773047810615196,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0147.jpg,0.18346306832559275,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bubbly\bubbly_0167.jpg,0.3500026563836493,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0024.jpg,0.2369936593884262,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0077.jpg,0.18493130660154206,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0080.jpg,0.3795822205550958,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0102.jpg,0.2776593208878501,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0119.jpg,0.15245836890315523,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0121.jpg,0.08709076376031306,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0127.jpg,0.2557843420643732,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0129.jpg,0.19835517893685517,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0136.jpg,0.24171902432016515,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0139.jpg,0.22239834126012892,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0140.jpg,0.4063206518696409,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0154.jpg,0.41021037769905916,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0165.jpg,0.2842727988087095,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0166.jpg,0.23731425748566634,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0169.jpg,0.217924760510407,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0173.jpg,0.36460651913538433,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0174.jpg,0.07737027182867764,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0188.jpg,0.2216514959079063,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0191.jpg,0.3623275648557087,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\bumpy\bumpy_0198.jpg,0.2839647287317678,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0050.jpg,0.5774917634992124,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0054.jpg,0.41296184829032523,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0100.jpg,0.5344308515677727,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0101.jpg,0.3596087945565216,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0107.jpg,0.12809229577432948,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0108.jpg,0.3048595278026711,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0112.jpg,0.18663214763198965,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0129.jpg,0.3106631012985394,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0132.jpg,0.30805743298622934,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0172.jpg,0.3044592119520232,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0179.jpg,0.33448131140651877,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0181.jpg,0.3483866510026084,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0184.jpg,0.09575424801296503,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0185.jpg,0.5592831698145678,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0189.jpg,0.2662027883720746,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0193.jpg,0.1334925891378264,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0196.jpg,0.4245355376616297,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0205.jpg,0.04386180186313785,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0211.jpg,0.27262428302593616,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\chequered\chequered_0214.jpg,0.28345911750678787,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0045.jpg,0.012019972197606298,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0050.jpg,0.04763699263732761,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0051.jpg,0.13784009150740803,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0056.jpg,0.301130235235909,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0061.jpg,0.20196126657431496,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0063.jpg,0.16033745408264408,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0074.jpg,0.1155665365628637,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0081.jpg,0.07964891378960064,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0086.jpg,0.03490195073513092,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0089.jpg,0.1016385548098984,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0091.jpg,0.06843066216472962,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0100.jpg,0.24405358704783592,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0105.jpg,0.16417849852307378,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0108.jpg,0.1877051000075079,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0110.jpg,0.04079481323389496,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0111.jpg,0.26931518665917725,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0113.jpg,0.26213861887614737,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0115.jpg,0.13507752249116844,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0127.jpg,0.05278334622729935,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cobwebbed\cobwebbed_0132.jpg,0.21287270497272906,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0051.jpg,0.11610145261373844,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0053.jpg,0.28370962255673393,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0064.jpg,0.5225928488309831,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0075.jpg,0.28201578173284597,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0077.jpg,0.2616274566896565,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0089.jpg,0.44149785288119586,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0095.jpg,0.0816164915935614,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0097.jpg,0.3033048062467371,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0101.jpg,0.4198141451605104,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0102.jpg,0.1873740525051541,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0103.jpg,0.44825350631803224,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0110.jpg,0.30667312877432684,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0113.jpg,0.3298675117224964,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0121.jpg,0.1714343894512123,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0130.jpg,0.16619314571644897,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0143.jpg,0.21402917280856806,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0144.jpg,0.1898606118240739,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0153.jpg,0.25455693562261955,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0159.jpg,0.24179517913920318,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\cracked\cracked_0162.jpg,0.22481101744498103,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0033.jpg,0.204475330785415,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0049.jpg,0.07724225815059671,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0050.jpg,0.2257257122537535,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0054.jpg,0.6150134209965418,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0069.jpg,0.34640641584905174,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0071.jpg,0.5010470893844019,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0072.jpg,0.3774097290613646,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0073.jpg,0.08935650477751737,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0082.jpg,0.2270785782303087,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0097.jpg,0.17164848745225764,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0118.jpg,0.08759869347723392,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0121.jpg,0.4390286326457746,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0129.jpg,0.22482070910525923,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0130.jpg,0.09342125953141082,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0136.jpg,0.09637118364563843,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0153.jpg,0.4147683992376662,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0155.jpg,0.04514239738502478,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0163.jpg,0.2337063811782417,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0165.jpg,0.44435273295961825,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crosshatched\crosshatched_0171.jpg,0.4967857978441718,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0103.jpg,0.1915891095710912,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0105.jpg,0.31887026866443413,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0110.jpg,0.3501712716902434,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0114.jpg,0.18176136620986977,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0117.jpg,0.22662260008569052,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0126.jpg,0.19683433941325904,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0131.jpg,0.10346213083501594,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0137.jpg,0.12944355683608713,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0141.jpg,0.48960577097274316,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0145.jpg,0.31473068162546386,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0155.jpg,0.06864739039285571,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0160.jpg,0.29102751458204407,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0182.jpg,0.3595617450853969,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0192.jpg,0.37604562073828074,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0194.jpg,0.3184994859165534,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0196.jpg,0.33680932299123134,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0199.jpg,0.1705758481406641,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0201.jpg,0.2811125938870578,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0205.jpg,0.279533889765348,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\crystalline\crystalline_0213.jpg,0.25769566599113786,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0038.jpg,0.5765008841006313,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0053.jpg,0.5537788501717071,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0093.jpg,0.11303723797581819,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0097.jpg,0.7253012075673079,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0102.jpg,0.30536895779695616,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0111.jpg,0.2964189039262614,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0115.jpg,0.0791663185026262,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0117.jpg,0.42260722790691174,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0118.jpg,0.5437975785489887,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0131.jpg,0.5604198639906788,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0138.jpg,0.34430621121031335,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0139.jpg,0.36451601095536473,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0143.jpg,0.16523374463526788,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0158.jpg,0.744244060302618,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0172.jpg,0.43990834446883603,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0179.jpg,0.05857462705004615,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0191.jpg,0.26636627829059306,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0198.jpg,0.5710927599270134,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0199.jpg,0.04731176567453741,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\dotted\dotted_0202.jpg,0.19170510006488595,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0104.jpg,0.22385235437736398,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0110.jpg,0.2460100849487434,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0112.jpg,0.17189005991533027,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0131.jpg,0.27459873641571736,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0134.jpg,0.16752155856464335,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0141.jpg,0.3628612323850247,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0142.jpg,0.302460069275365,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0153.jpg,0.32653045009109305,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0155.jpg,0.14549935524008578,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0158.jpg,0.07128068229142831,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0159.jpg,0.3627425669759495,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0169.jpg,0.12628360946471498,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0173.jpg,0.2396768748849966,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0174.jpg,0.0871478743277,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0182.jpg,0.026783008317219293,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0198.jpg,0.2502727418006541,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0203.jpg,0.15214963762827963,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0205.jpg,0.24431000030835565,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0206.jpg,0.28813418927141915,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\fibrous\fibrous_0210.jpg,0.14335156602075586,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0041.jpg,0.36129469864032104,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0055.jpg,0.4044598661092001,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0062.jpg,0.24277540851901624,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0071.jpg,0.6171219474171847,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0074.jpg,0.09884305261083344,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0078.jpg,0.3028995590038511,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0087.jpg,0.11252067459258508,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0094.jpg,0.4175808597950062,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0099.jpg,0.20559635677582574,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0104.jpg,0.015639290206706288,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0113.jpg,0.04146488546352368,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0117.jpg,0.4993806737495128,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0123.jpg,0.03238444999387697,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0126.jpg,0.19160518141323213,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0133.jpg,0.1670539540831146,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0134.jpg,0.09820527794898766,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0142.jpg,0.21445051069297077,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0144.jpg,0.2394309627461063,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0145.jpg,0.16458277083598252,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\flecked\flecked_0165.jpg,0.21189723141399097,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0054.jpg,0.11585463954196369,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0060.jpg,0.2672606052765732,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0066.jpg,0.14352092744975573,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0076.jpg,0.2529605790221929,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0079.jpg,0.4965797665822231,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0080.jpg,0.29978310731987495,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0084.jpg,0.2255158748743971,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0094.jpg,0.21468209808750324,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0095.jpg,0.3394684121006146,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0099.jpg,0.2605632609551922,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0112.jpg,0.2780927387660356,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0126.jpg,0.0876966210204689,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0137.jpg,0.3497146964033285,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0146.jpg,0.428793498612191,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0148.jpg,0.16003113231887084,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0155.jpg,0.21907250387037805,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0162.jpg,0.19254471608603826,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0166.jpg,0.10651077104713765,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0169.jpg,0.2152604519582851,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\freckled\freckled_0175.jpg,0.3904204711333394,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0006.jpg,0.35285378629104563,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0022.jpg,0.19848850314300182,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0030.jpg,0.07483127604379183,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0036.jpg,0.24476154792488364,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0043.jpg,0.39029031536630615,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0045.jpg,0.054245792364417594,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0055.jpg,0.5746079223702795,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0057.jpg,0.10457884657992574,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0059.jpg,0.2993834585817974,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0062.jpg,0.2655774820435113,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0063.jpg,0.3833772718670337,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0072.jpg,0.3782504896030609,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0083.jpg,0.17061975267286883,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0087.jpg,0.1600826129491257,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0092.jpg,0.24985363861171095,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0093.jpg,0.419993610956157,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0104.jpg,0.4262334417918451,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0105.jpg,0.15463081084312533,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0112.jpg,0.5017017804127487,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\frilly\frilly_0114.jpg,0.2723895329397115,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0090.jpg,0.18962717087103886,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0099.jpg,0.3214632616264277,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0109.jpg,0.653187109563675,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0119.jpg,0.15875517847342388,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0148.jpg,0.3204367841310597,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0154.jpg,0.5760895599786411,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0155.jpg,0.47961884718812325,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0157.jpg,0.22293958472055314,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0168.jpg,0.37488949489402645,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0171.jpg,0.48816906971936674,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0172.jpg,0.4234486164973072,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0173.jpg,0.5678988275529728,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0175.jpg,0.4991002055575585,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0177.jpg,0.20988075320797606,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0180.jpg,0.5878370343113213,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0183.jpg,0.36065256027200315,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0190.jpg,0.10505948504764111,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0196.jpg,0.4938190667037543,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0199.jpg,0.339968856982024,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\gauzy\gauzy_0201.jpg,0.3335789297075305,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0029.jpg,0.48823119844778873,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0032.jpg,0.2619378282115741,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0035.jpg,0.22703859921111832,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0045.jpg,0.8595836917835746,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0046.jpg,0.20591419039334283,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0047.jpg,0.901195739059325,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0050.jpg,0.3288468175566669,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0053.jpg,0.8893272753594009,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0060.jpg,0.920778949825081,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0066.jpg,0.12239983509275865,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0070.jpg,0.19456752853256098,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0074.jpg,0.68153172048061,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0091.jpg,0.12111862001952431,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0093.jpg,0.14934092085575382,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0107.jpg,0.13665571637737806,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0117.jpg,0.32769838213719904,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0121.jpg,0.6604368772598468,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0124.jpg,0.19614979631608906,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0126.jpg,0.08691472268931925,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grid\grid_0132.jpg,0.1571370966123048,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0054.jpg,0.1059156467988574,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0055.jpg,0.2146314820036237,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0059.jpg,0.3629863247011712,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0061.jpg,0.4870130042420114,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0065.jpg,0.09555493932926465,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0102.jpg,0.3949295791961439,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0110.jpg,0.35726387427514295,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0116.jpg,0.12568427710464736,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0119.jpg,0.42547049258446135,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0121.jpg,0.11726756612062188,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0132.jpg,0.03124985179326409,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0135.jpg,0.2145288336487152,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0140.jpg,0.3229505761605429,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0147.jpg,0.24990053250556568,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0152.jpg,0.13901235227011827,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0159.jpg,0.1939405786540082,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0161.jpg,0.6644750333467492,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0163.jpg,0.10107667985726883,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0165.jpg,0.11749020139252361,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\grooved\grooved_0169.jpg,0.20400853489336726,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0003.jpg,0.15683208375319932,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0053.jpg,0.39234545098346335,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0059.jpg,0.16950793576573242,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0061.jpg,0.5371433790553967,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0078.jpg,0.6011484315792612,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0106.jpg,0.25107711300363206,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0113.jpg,0.32434828049993397,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0114.jpg,0.14450047648284475,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0115.jpg,0.22746979019181587,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0116.jpg,0.21455078021476093,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0126.jpg,0.23416934111404097,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0130.jpg,0.4314932457923014,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0136.jpg,0.22865328829123746,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0141.jpg,0.40330327964476187,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0147.jpg,0.05958809531603164,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0159.jpg,0.2679811937164518,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0163.jpg,0.4824073461015213,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0167.jpg,0.11791422597007625,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0171.jpg,0.15030344170691165,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\honeycombed\honeycombed_0174.jpg,0.04555447110881028,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0060.jpg,0.24864928785254095,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0082.jpg,0.3052168871635972,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0087.jpg,0.7430017108241704,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0093.jpg,0.13777049128584748,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0102.jpg,0.26844727578679245,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0108.jpg,0.23382190997327398,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0115.jpg,0.17957019619847442,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0120.jpg,0.30440854780574844,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0126.jpg,0.16519743562535938,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0132.jpg,0.20927461346989373,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0138.jpg,0.27137766038656114,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0145.jpg,0.23464148067598103,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0146.jpg,0.26796047369270004,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0159.jpg,0.19455049656686832,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0164.jpg,0.40215600136526075,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0167.jpg,0.24367330015432945,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0168.jpg,0.25028277113889513,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0187.jpg,0.3414587969557393,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0189.jpg,0.15867647556369016,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\interlaced\interlaced_0194.jpg,0.1143267271558254,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0072.jpg,0.20808076026600428,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0075.jpg,0.21568959894748702,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0091.jpg,0.17690464401694905,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0093.jpg,0.7118788507649565,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0118.jpg,0.405212410531961,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0121.jpg,0.17621038160775157,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0133.jpg,0.040585955895344306,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0134.jpg,0.24643420255250148,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0137.jpg,0.4063729990748564,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0138.jpg,0.05355030175436207,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0143.jpg,0.06912429237625638,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0146.jpg,0.027531399065422388,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0148.jpg,0.06253022968168812,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0158.jpg,0.5217850155843726,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0165.jpg,0.10893036977625957,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0172.jpg,0.2666770650064885,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0178.jpg,0.17903545218434697,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0188.jpg,0.08026285335380626,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0196.jpg,0.227939319116701,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\knitted\knitted_0198.jpg,0.2114128773113203,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0002.jpg,0.1276449840100526,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0003.jpg,0.26200341077007183,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0004.jpg,0.45442881528970924,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0010.jpg,0.21134280370437836,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0015.jpg,0.29659968564750405,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0017.jpg,0.32955922193388415,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0024.jpg,0.5774881214998481,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0028.jpg,0.381418854841858,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0052.jpg,0.7243161471136516,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0067.jpg,0.15019473207163372,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0069.jpg,0.2673377533017284,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0074.jpg,0.6380126163176992,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0092.jpg,0.315845223188034,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0096.jpg,0.20621384182534735,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0097.jpg,0.04985861085357241,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0099.jpg,0.22993438868351715,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0101.jpg,0.6281756676714607,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0102.jpg,0.4072233771704648,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0106.jpg,0.17019067702122664,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lacelike\lacelike_0114.jpg,0.15889514738904792,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0024.jpg,0.6336173579208574,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0038.jpg,0.5960850290746605,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0039.jpg,0.4482409270857321,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0041.jpg,0.3653388568782031,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0059.jpg,0.8668437774859341,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0103.jpg,0.1507489532088222,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0105.jpg,0.11958836815146917,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0114.jpg,0.0743160827109,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0119.jpg,0.04170071452153631,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0122.jpg,0.31509207795450267,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0130.jpg,0.09563062709765503,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0136.jpg,0.43992509760403825,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0146.jpg,0.5338606617549502,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0147.jpg,0.39648302684536463,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0150.jpg,0.48170394953063667,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0154.jpg,0.19589099230629192,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0157.jpg,0.41548468078005496,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0163.jpg,0.41981018427617744,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0174.jpg,0.5417231890018531,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\lined\lined_0177.jpg,0.2798617717481129,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0035.jpg,0.0630120887919798,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0075.jpg,0.7056764777407313,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0076.jpg,0.7898759427933112,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0079.jpg,0.22480954629109057,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0082.jpg,0.3006130721765798,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0093.jpg,0.8197654812848698,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0095.jpg,0.5054195214960227,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0097.jpg,0.371792167329935,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0115.jpg,0.428560206946516,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0117.jpg,0.3265586856702973,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0119.jpg,0.5068864685356331,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0123.jpg,0.23738908864852457,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0129.jpg,0.11107226640250635,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0138.jpg,0.13078371259090046,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0140.jpg,0.5463019346404574,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0144.jpg,0.3260459979842232,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0152.jpg,0.3335869264224317,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0162.jpg,0.14274816403090118,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0169.jpg,0.12727207947653937,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\marbled\marbled_0189.jpg,0.08520925756538966,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0038.jpg,0.2657610030761728,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0042.jpg,0.09288962178236254,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0044.jpg,0.0953956383441594,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0046.jpg,0.129249373055367,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0070.jpg,0.22748054774258014,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0074.jpg,0.30549842086231893,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0083.jpg,0.34496250235575016,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0089.jpg,0.2944234022149387,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0092.jpg,0.20262873184905356,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0093.jpg,0.0956090819624735,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0097.jpg,0.12631469362492764,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0118.jpg,0.14849589319114123,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0119.jpg,0.33110802667174755,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0120.jpg,0.22667526958101256,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0140.jpg,0.15752287878057145,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0144.jpg,0.24931406486125804,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0148.jpg,0.16945189829992283,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0154.jpg,0.31842669970134835,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0155.jpg,0.2805348069443948,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\matted\matted_0158.jpg,0.26478590335496244,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0039.jpg,0.07473629556240331,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0074.jpg,0.7458525804993532,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0076.jpg,0.20787245463332496,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0099.jpg,0.0728480990321037,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0106.jpg,0.33867145753855493,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0107.jpg,0.14590777150048712,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0110.jpg,0.07624433927130518,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0122.jpg,0.17424024148978542,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0129.jpg,0.12723956462309816,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0130.jpg,0.16281769142764213,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0133.jpg,0.16781973070988587,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0134.jpg,0.17109861903114865,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0135.jpg,0.24895914374036107,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0140.jpg,0.2686608879054271,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0141.jpg,0.2285371613664336,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0143.jpg,0.1771139003476929,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0146.jpg,0.32764391583358865,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0161.jpg,0.1441733274298792,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0179.jpg,0.2445696311265053,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\meshed\meshed_0188.jpg,0.23177427874057846,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0005.jpg,0.531044186617326,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0006.jpg,0.4345870006876656,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0007.jpg,0.5184788724336711,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0008.jpg,0.551227649549659,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0009.jpg,0.33940330594424634,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0014.jpg,0.2980086209289932,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0022.jpg,0.13467867857220076,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0035.jpg,0.3126207041254753,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0042.jpg,0.17560818247367121,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0043.jpg,0.09701078349542665,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0044.jpg,0.08772435569799918,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0058.jpg,0.4690645410699193,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0059.jpg,0.7135301939583768,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0065.jpg,0.24018773629177562,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0074.jpg,0.2399800093383627,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0097.jpg,0.2650889299382449,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0098.jpg,0.27834739364847283,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0103.jpg,0.27691898240909835,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0104.jpg,0.5042741043156286,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\paisley\paisley_0106.jpg,0.37752251169281587,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0003.jpg,0.2677822284015365,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0016.jpg,0.3145773635468833,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0036.jpg,0.15774775073987957,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0045.jpg,0.28534585632270903,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0066.jpg,0.2483807689949766,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0077.jpg,0.3226745568839054,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0087.jpg,0.1552460000727072,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0088.jpg,0.2347261877079276,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0090.jpg,0.24933086906181315,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0126.jpg,0.0436433133700604,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0127.jpg,0.32277347164757964,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0131.jpg,0.4125497043740711,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0132.jpg,0.3259865684682274,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0134.jpg,0.7176521904889932,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0136.jpg,0.6422288704131555,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0137.jpg,0.09385022509920063,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0143.jpg,0.20964159322348228,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0149.jpg,0.46424521621497167,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0155.jpg,0.49889576104200123,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\perforated\perforated_0158.jpg,0.24179511699915182,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0005.jpg,0.07295682611078576,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0006.jpg,0.3743808800772308,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0009.jpg,0.07703240125339096,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0031.jpg,0.27216110466536003,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0037.jpg,0.7357173955638429,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0051.jpg,0.09797981414983371,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0052.jpg,0.1803661723048882,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0060.jpg,0.33429858752441294,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0061.jpg,0.12109890994418941,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0071.jpg,0.32534065093859477,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0077.jpg,0.06602724419451496,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0084.jpg,0.28756898291034194,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0089.jpg,0.7321306288946243,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0118.jpg,0.4283987641856989,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0123.jpg,0.14739822527950505,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0128.jpg,0.20919398037699974,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0130.jpg,0.08718426135980936,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0145.jpg,0.15718326715024614,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0148.jpg,0.12037729448255312,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pitted\pitted_0153.jpg,0.33050513215496735,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0050.jpg,0.06183035895192267,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0089.jpg,0.2293398970150956,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0092.jpg,0.09594905412032573,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0098.jpg,0.29943148912561235,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0109.jpg,0.3703952133276469,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0112.jpg,0.27586774812787296,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0115.jpg,0.4938539953001425,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0117.jpg,0.12283157498334296,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0121.jpg,0.22130129572641583,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0130.jpg,0.2557118538108497,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0132.jpg,0.2483822294341773,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0134.jpg,0.2224392563410538,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0135.jpg,0.24156446684821564,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0143.jpg,0.24958857268246262,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0149.jpg,0.19584437820363068,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0150.jpg,0.5121880871591411,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0155.jpg,0.43849521281705467,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0158.jpg,0.2543344613943389,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0167.jpg,0.3090699687643813,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\pleated\pleated_0171.jpg,0.32952969198032794,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0032.jpg,0.596838917943338,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0068.jpg,0.1850865549959009,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0105.jpg,0.34371623425197084,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0107.jpg,0.10264120859936965,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0109.jpg,0.190624432935757,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0120.jpg,0.34448247110427577,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0125.jpg,0.3212727478095029,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0127.jpg,0.5273326507873473,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0132.jpg,0.3112200165005361,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0141.jpg,0.10727388429952035,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0144.jpg,0.2963694362888265,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0161.jpg,0.28773506394758475,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0162.jpg,0.22730352695316955,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0169.jpg,0.0735284833562925,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0174.jpg,0.10496390617473061,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0184.jpg,0.1981735465091681,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0213.jpg,0.271405792511651,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0228.jpg,0.37227885335259336,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0231.jpg,0.36749165114208737,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\polka-dotted\polka-dotted_0232.jpg,0.5771106832137797,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0052.jpg,0.12659360903427863,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0059.jpg,0.33043135845034705,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0069.jpg,0.23558953758302958,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0104.jpg,0.27599398568462247,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0105.jpg,0.5139530914659411,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0111.jpg,0.1277919411573155,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0119.jpg,0.3371975651655793,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0120.jpg,0.22551417854273512,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0129.jpg,0.33545610426702877,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0132.jpg,0.37435293221445276,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0136.jpg,0.0510023047925957,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0137.jpg,0.42087109747995216,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0146.jpg,0.43666756797085476,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0148.jpg,0.42609393279188795,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0154.jpg,0.19347742810671853,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0166.jpg,0.13295917656528736,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0170.jpg,0.36557349293747393,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0172.jpg,0.22783539930007923,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0174.jpg,0.18916987793319098,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\porous\porous_0175.jpg,0.1784301477931307,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0044.jpg,0.1934923762109856,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0046.jpg,0.25573336388149015,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0047.jpg,0.19101821838541286,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0049.jpg,0.15888972175643384,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0069.jpg,0.2263792326180807,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0073.jpg,0.2249197178633092,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0076.jpg,0.20386646976433173,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0078.jpg,0.30549149073370596,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0092.jpg,0.17445950311313385,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0096.jpg,0.3744708923078728,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0103.jpg,0.1973816012760603,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0111.jpg,0.28124969439558717,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0113.jpg,0.26730215199627966,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0121.jpg,0.1185634241485443,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0136.jpg,0.2595278479290257,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0141.jpg,0.28018080104097004,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0147.jpg,0.2841601323331845,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0151.jpg,0.2983302988286161,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0157.jpg,0.20223762428817757,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\potholed\potholed_0160.jpg,0.31467123208877346,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0081.jpg,0.21266238859242587,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0107.jpg,0.019736087381260876,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0115.jpg,0.22673490591109755,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0128.jpg,0.16174997991574386,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0129.jpg,0.14302936626782595,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0133.jpg,0.08902401822719391,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0135.jpg,0.45827459157734013,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0151.jpg,0.2597821048073029,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0152.jpg,0.11754039789121573,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0161.jpg,0.25371669584040296,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0164.jpg,0.41995282682453705,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0169.jpg,0.18154167724893364,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0177.jpg,0.14328604611170936,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0180.jpg,0.2690646115129298,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0184.jpg,0.037997285145317444,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0186.jpg,0.27024800399137533,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0191.jpg,0.6228182527097595,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0196.jpg,0.3292398980292207,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0208.jpg,0.28321564280427397,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\scaly\scaly_0210.jpg,0.13333965035494683,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0027.jpg,0.17633980523544704,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0032.jpg,0.2960602617157599,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0034.jpg,0.3097063732573144,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0042.jpg,0.09734066152440535,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0055.jpg,0.0824458874370135,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0057.jpg,0.2468775238962548,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0070.jpg,0.21044800301886665,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0072.jpg,0.18230659593618012,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0073.jpg,0.04657147924838092,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0086.jpg,0.2973919499005492,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0090.jpg,0.12401219861817749,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0096.jpg,0.22600046029321688,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0097.jpg,0.4223977790492802,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0099.jpg,0.2347353375882056,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0100.jpg,0.12042965623168042,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0107.jpg,0.1441745698017494,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0118.jpg,0.0671829089395699,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0140.jpg,0.49320594261250944,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0143.jpg,0.21100409758029678,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\smeared\smeared_0150.jpg,0.425202349792359,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0009.jpg,0.14119515136112049,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0042.jpg,0.14384518626677611,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0045.jpg,0.17173450105224933,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0048.jpg,0.2975844832136004,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0054.jpg,0.2004778768056699,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0060.jpg,0.1904853028131986,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0062.jpg,0.10545670836061942,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0066.jpg,0.17888257198774174,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0075.jpg,0.20844623096867573,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0081.jpg,0.19056719258056187,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0085.jpg,0.15381815061360915,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0105.jpg,0.07695396417841308,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0114.jpg,0.03549836625860307,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0118.jpg,0.8334921161154654,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0121.jpg,0.19844720414462644,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0127.jpg,0.20284879747923637,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0128.jpg,0.08749836963376097,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0134.jpg,0.4692575841397746,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0139.jpg,0.28809146412858566,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\spiralled\spiralled_0140.jpg,0.21958812450771173,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0005.jpg,0.7458035080807723,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0016.jpg,0.3939781096432164,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0034.jpg,0.5356267989455898,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0036.jpg,0.3629117210034806,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0046.jpg,0.3868441422440095,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0049.jpg,0.38889919016878105,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0055.jpg,0.12198953611847173,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0069.jpg,0.3579478593976426,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0076.jpg,0.9056138600420799,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0082.jpg,0.8592169092839227,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0088.jpg,0.21885439991814773,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0095.jpg,0.410593006117287,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0096.jpg,0.14323600466728612,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0105.jpg,0.24102057154454468,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0112.jpg,0.1692454720622362,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0115.jpg,0.20661774876610686,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0124.jpg,0.19579367216424362,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0136.jpg,0.46994046006910173,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0141.jpg,0.2301819827725112,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\sprinkled\sprinkled_0142.jpg,0.24502774019068993,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0024.jpg,0.1623770038238029,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0025.jpg,0.12418617144949225,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0026.jpg,0.10491135855969153,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0028.jpg,0.14182766522822896,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0032.jpg,0.2596224169860926,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0035.jpg,0.11410258801794587,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0048.jpg,0.2930295998010565,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0051.jpg,0.38709133651354233,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0052.jpg,0.3608015741168426,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0058.jpg,0.29152664846572673,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0064.jpg,0.28823138591283104,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0073.jpg,0.15885166327347008,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0081.jpg,0.7430264545939749,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0085.jpg,0.4943932850703303,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0099.jpg,0.1662171529179244,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0114.jpg,0.22630633497399016,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0118.jpg,0.38468703570844,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0121.jpg,0.46742037108684603,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0133.jpg,0.7537239328416041,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stained\stained_0140.jpg,0.3239082725335761,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0027.jpg,0.2295580199168997,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0045.jpg,0.2870025970093121,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0054.jpg,0.03631120383958983,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0063.jpg,0.21023643285757357,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0078.jpg,0.21292907413595774,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0083.jpg,0.6439845311208041,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0090.jpg,0.2301240368189415,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0097.jpg,0.10211757123607332,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0101.jpg,0.2940921735122666,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0104.jpg,0.14232588059532048,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0108.jpg,0.12071204246833138,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0109.jpg,0.1505541625053072,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0118.jpg,0.14896093897044366,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0144.jpg,0.26480457127429596,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0145.jpg,0.057975760018896566,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0154.jpg,0.05076638162922287,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0161.jpg,0.31415486902730344,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0163.jpg,0.2843846853880384,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0171.jpg,0.16610206755285434,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\stratified\stratified_0173.jpg,0.22348875814489388,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0002.jpg,0.11905678617295835,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0003.jpg,0.3828273770548661,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0004.jpg,0.2458558009618407,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0005.jpg,0.3778036469992749,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0012.jpg,0.2589219044960677,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0015.jpg,0.1525620300773023,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0017.jpg,0.15286361924019773,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0019.jpg,0.0890990572519426,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0021.jpg,0.20242637969622204,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0023.jpg,0.28835726293796626,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0025.jpg,0.29315237177368947,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0037.jpg,0.23862760003908107,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0063.jpg,0.29132447439695724,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0068.jpg,0.43062011736946554,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0077.jpg,0.17719537976603555,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0079.jpg,0.11274056749667459,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0089.jpg,0.1811693880748025,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0099.jpg,0.20237110758543397,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0106.jpg,0.11003646356635224,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\striped\striped_0110.jpg,0.2068036772827974,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0054.jpg,0.11545533568702926,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0072.jpg,0.07593776132180798,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0101.jpg,0.12598562335481017,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0110.jpg,0.4032601037962954,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0115.jpg,0.0920573254822759,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0126.jpg,0.0651569996098047,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0132.jpg,0.09522386033232844,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0141.jpg,0.15249469159126192,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0154.jpg,0.14078764015780387,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0161.jpg,0.05830153810227862,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0162.jpg,0.018767198170855034,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0169.jpg,0.08916927823683805,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0180.jpg,0.29423860711896577,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0190.jpg,0.09072947624039275,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0192.jpg,0.05897942452735694,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0193.jpg,0.09166285633709056,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0197.jpg,0.01808872932592406,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0200.jpg,0.24030504185037138,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0201.jpg,0.1713799902635419,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\studded\studded_0206.jpg,0.068218393362978,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0061.jpg,0.07938020434163882,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0068.jpg,0.16190610913607423,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0069.jpg,0.25395784016091466,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0070.jpg,0.10715772888066685,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0071.jpg,0.13777119286383344,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0075.jpg,0.551533671417246,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0080.jpg,0.5976722030202045,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0085.jpg,0.06898371843873757,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0088.jpg,0.5348424655715036,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0119.jpg,0.3097996525999125,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0123.jpg,0.2721414159880076,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0130.jpg,0.29685106550027307,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0135.jpg,0.2668875924950212,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0138.jpg,0.2974925631154131,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0144.jpg,0.1577282441899088,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0145.jpg,0.3313404869237855,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0152.jpg,0.30834234659843907,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0154.jpg,0.3800953998415405,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0169.jpg,0.49955821425177616,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\swirly\swirly_0172.jpg,0.4202457079414867,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0066.jpg,0.4148377961024721,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0069.jpg,0.03186725609733792,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0081.jpg,0.35059416758965595,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0087.jpg,0.1292773794458053,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0090.jpg,0.085229720750906,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0097.jpg,0.13807993576045247,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0101.jpg,0.20628679598612956,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0107.jpg,0.25902503131845844,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0116.jpg,0.28340118027280986,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0133.jpg,0.11405965392541717,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0139.jpg,0.22878880611675068,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0142.jpg,0.28484634464043285,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0144.jpg,0.23222446331067714,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0163.jpg,0.24572893643233967,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0170.jpg,0.34319951999983267,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0174.jpg,0.22579741948016943,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0178.jpg,0.26038797163988026,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0184.jpg,0.2500024265088099,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0186.jpg,0.12293567966848065,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\veined\veined_0187.jpg,0.3925671099438778,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0051.jpg,0.3042684962860449,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0054.jpg,0.2853821041064189,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0063.jpg,0.23075453199237642,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0090.jpg,0.522608851954268,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0116.jpg,0.3279864828115562,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0121.jpg,0.25349076691305933,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0124.jpg,0.4836744819955962,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0125.jpg,0.23008950433598988,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0126.jpg,0.19157895069027558,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0132.jpg,0.24600897481056894,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0135.jpg,0.1151615753608591,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0156.jpg,0.11998001138381521,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0161.jpg,0.4509883904032387,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0165.jpg,0.19786005959310496,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0168.jpg,0.14056585669455215,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0174.jpg,0.2252746970305324,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0178.jpg,0.37198589205161076,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0182.jpg,0.23660732989933134,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0185.jpg,0.22910202981609343,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\waffled\waffled_0204.jpg,0.555212411088568,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0011.jpg,0.6597578006028784,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0013.jpg,0.34096012055802316,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0044.jpg,0.08119942302223106,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0048.jpg,0.11907408536782238,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0056.jpg,0.1566718618590819,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0060.jpg,0.15877258899287455,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0065.jpg,0.44524102442702945,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0070.jpg,0.32277848305701745,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0072.jpg,0.019791162323651953,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0077.jpg,0.10045202904705725,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0087.jpg,0.42101702989308226,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0092.jpg,0.4512074019210292,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0098.jpg,0.025140241746390853,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0101.jpg,0.04177184819768871,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0107.jpg,0.38268134465715886,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0114.jpg,0.19060628718468126,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0116.jpg,0.07441782780036323,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0117.jpg,0.17154561861934053,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0119.jpg,0.22682832320081878,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\woven\woven_0130.jpg,0.24558025577970188,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0012.jpg,0.11073806509617475,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0021.jpg,0.4947864831005067,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0039.jpg,0.27931276677894074,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0050.jpg,0.0803998158988994,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0053.jpg,0.06368670481208102,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0057.jpg,0.31186236419606617,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0058.jpg,0.3493178370789265,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0060.jpg,0.17279860202507574,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0062.jpg,0.22024976390205558,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0063.jpg,0.4345471479150538,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0065.jpg,0.6073755076375775,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0072.jpg,0.7470716463958739,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0077.jpg,0.39861516525799207,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0080.jpg,0.045290948901140195,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0084.jpg,0.2765970277794902,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0085.jpg,0.5580209437844686,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0086.jpg,0.4332492436581425,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0088.jpg,0.46714189759386404,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0118.jpg,0.2973453374810646,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\wrinkled\wrinkled_0129.jpg,0.301913848860808,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0008.jpg,0.39165872939271423,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0016.jpg,0.41289776733980144,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0017.jpg,0.6920223091797921,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0021.jpg,0.5136461994838076,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0025.jpg,0.3719567867412224,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0032.jpg,0.23924632728076423,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0034.jpg,0.5354367998239354,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0042.jpg,0.3619898290748126,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0062.jpg,0.5992812268202383,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0063.jpg,0.4961542032385641,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0064.jpg,0.5122459641903621,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0068.jpg,0.4911228042321326,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0069.jpg,0.590293479058263,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0073.jpg,0.6807406521344991,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0090.jpg,0.4992375580769913,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0094.jpg,0.7727803009456308,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0114.jpg,0.42939685512779385,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0121.jpg,0.18738203577193271,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0125.jpg,0.41072686711243184,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\Describable Textures Dataset\images\zigzagged\zigzagged_0130.jpg,0.4539272939853612,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_flor0019.tif,0.21011348622476658,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_italy0171.tif,0.29559859829654855,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mexico0067.tif,0.27398185294628274,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mexico0118.tif,0.14599158682189572,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mexico0121.tif,0.13611491028027256,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mexico0122.tif,0.2507637865199863,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mexico0123.tif,0.26980293905407765,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mexico0140.tif,0.2043486029016551,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mexico0154.tif,0.16586383141068772,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mexico0219.tif,0.18242522937867167,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_001.tif,0.255431448234964,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_003.tif,0.22006388472179483,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_005.tif,0.00414150245979611,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_008.tif,0.12993952054127816,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_009.tif,0.2128940153401693,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_012.tif,0.2788426073110781,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_019.tif,0.23899506603251422,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_021.tif,0.2024742946062624,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_022.tif,0.22296620518904967,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_023.tif,0.2764514160919657,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_025.tif,0.1834406588683434,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_033.tif,0.25786329827431126,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_034.tif,0.20070750366611687,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_037.tif,0.23184594636049383,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_041.tif,0.2068088493751377,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_mtl07_053.tif,0.24361462929846772,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_win07_009.tif,0.22309000379606592,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\merry_win07_012.tif,0.22633276755197945,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin0063.tif,0.2815798321168921,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin0178.tif,0.38926698784543834,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin0223.tif,0.2464150217232054,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin0224.tif,0.3256687332567499,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin0225.tif,0.2800591522959636,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin0226.tif,0.2668915012353872,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin0275.tif,0.20233568732532461,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_adirondacks0013.tif,0.23617425713312842,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_adirondacks0025.tif,0.17764160954944053,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Biodome030.tif,0.25259155876022166,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Biodome044.tif,0.23900799299270228,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_jtalon0015.tif,0.3902098629696487,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_jtalon0016.tif,0.22320601805096033,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_jtalon0022.tif,0.22351050853638513,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_jtalon0032.tif,0.30551047016646893,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Mex07_011.tif,0.0486039752413009,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_ParcSafari005.tif,0.22733339372177805,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_ParcSafari048.tif,0.23436931547940834,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_ParcSafari050.tif,0.20165228711810632,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0010.tif,0.24541723903410023,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0019.tif,0.22211861430096883,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0035.tif,0.05820117361531873,1,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0037.tif,0.27345781902297733,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0038.tif,0.2312246263180965,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0039.tif,0.2117926723527605,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0040.tif,0.2666440720234017,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0042.tif,0.296572258716867,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0043.tif,0.23342342847389302,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0044.tif,0.2100563008655652,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0047.tif,0.22585607715913592,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0048.tif,0.24742193879779006,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0049.tif,0.24998193533213425,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0050.tif,0.2826636917256564,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0051.tif,0.20818177438448712,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0052.tif,0.22656109798854177,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0054.tif,0.26241809008595635,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0055.tif,0.24549415049201034,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0058.tif,0.2881275726920891,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0059.tif,0.29435380301587516,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_park0060.tif,0.23138324316088135,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Peel013.tif,0.23342893618889007,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Peel018.tif,0.38214207547706247,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Peel037.tif,0.3845234533850886,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Peel043.tif,0.22357550353395955,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Peel065.tif,0.2514714299318407,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Peel069.tif,0.32321939523020604,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Peel071.tif,0.2754197230827806,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Peel095.tif,0.28779521450800066,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Peel096.tif,0.28953923170119805,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Peel097.tif,0.2043216432626363,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_Peel109.tif,0.35710098147658614,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RS_YachtClub006.tif,0.22433431819365057,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RS_YachtClub007.tif,0.3558654565397487,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RS_YachtClub016.tif,0.39059025307852613,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RS_YachtClub019.tif,0.2289674018735146,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RS_YachtClub023.tif,0.23343361070230365,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RS_YachtClub026.tif,0.23051148156036738,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RS_YachtClub030.tif,0.380399155222523,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RS_YachtClub047.tif,0.34209411632691994,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RS_YachtClub055.tif,0.24015830028916685,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture001.tif,0.2174129415586173,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture002.tif,0.29892649584971887,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture003.tif,0.2242721474882172,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture004.tif,0.21875019051263805,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture005.tif,0.23949185347216317,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture006.tif,0.2723411394414479,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture007.tif,0.24730734159696338,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture008.tif,0.23591903864924502,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture009.tif,0.24162786181661342,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture010.tif,0.2445257912956101,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture011.tif,0.38264906918592534,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture012.tif,0.2717496221524032,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture013.tif,0.23906493430460826,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture014.tif,0.3319534680975373,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture015.tif,0.3939098134828115,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture016.tif,0.22588311344916182,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture017.tif,0.3594674957143996,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture018.tif,0.34506355896558705,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture019.tif,0.25129361176729265,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture020.tif,0.3087934378723572,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture021.tif,0.2926551903796374,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture022.tif,0.3369830355754605,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture023.tif,0.18708788630866793,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture024.tif,0.21955879454685354,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture025.tif,0.20874434294212313,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_RVHtexture026.tif,0.23523034219247563,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_spring0003.tif,0.2610465058304958,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_spring0006.tif,0.2394735162988291,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_UniStrt005.tif,0.23355898021229318,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_UniStrt010.tif,0.23352937639666407,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_UniStrt012.tif,0.31880225999432005,4,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_UniStrt013.tif,0.2626554796057352,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_UniStrt020.tif,0.22276244646077928,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_UniStrt021.tif,0.2557580199812196,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_UniStrt022.tif,0.4018388202806242,5,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_UniStrt024.tif,0.19748402683965785,2,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_UniStrt028.tif,0.2318611028945281,3,[],,,,False,True
+C:\Users\Hamada.MSI\Desktop\Hamada\lab\data\raw\images\McGill Calibrated Color Image Database\Textures\Textures\pippin_UniStrt029.tif,0.33035847760591885,4,[],,,,False,True

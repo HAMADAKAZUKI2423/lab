@@ -1,0 +1,20 @@
+{
+  "complete": true,
+  "same_class_counts": {
+    "1": 82,
+    "2": 97,
+    "3": 88,
+    "4": 50,
+    "5": 77,
+    "6": 91,
+    "7": 80,
+    "8": 55,
+    "9": 26,
+    "10": 11
+  },
+  "insufficient_classes": {},
+  "low_sampling_seed": 42,
+  "low_sampling_policy": "uniform_without_replacement_before_model_evaluation",
+  "high_count": 11,
+  "low_count": 50
+}

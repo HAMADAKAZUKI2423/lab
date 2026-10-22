@@ -40,6 +40,7 @@ class ImageSessionConfig:
     random_seed: int = 20260928
     visual_angle_deg: float = IMAGE_VISUAL_ANGLE_DEG
     background_width_factor: float = 2.0
+    background_width_scale: float = 1.1
     trials_per_condition: int = 18
     trials_before_break: int = 10
     time_foreground_only_ms: int = 500
@@ -58,7 +59,8 @@ class ImageSessionConfig:
             raise ValueError("task_mode must be matching or rating")
         for value in (self.visual_angle_deg, self.distance_fg_cm, self.distance_bg_cm,
                       self.foreground_pixels_per_cm, self.background_pixels_per_cm,
-                      self.gain_step, self.gain_fine_step):
+                      self.gain_step, self.gain_fine_step, self.background_width_scale,
+                      self.background_width_factor):
             if not math.isfinite(value) or value <= 0:
                 raise ValueError("Angles, distances, pixel density and steps must be finite and positive")
         if not 0 < self.distance_fg_cm < self.distance_bg_cm:
@@ -124,7 +126,10 @@ class ImageSessionConfig:
     @property
     def background_visual_angle_width_deg(self) -> float:
         """DP・SPで共通化する背景の水平視角を返す。"""
-        return self.visual_angle_deg * self.background_width_factor
+        # 投影後の実幅を従来の1.1倍にする（画素丸めを除く）。
+        base_angle = self.visual_angle_deg * self.background_width_factor
+        return math.degrees(2.0 * math.atan(
+            self.background_width_scale * math.tan(math.radians(base_angle / 2.0))))
 
 
 def create_image_config(
