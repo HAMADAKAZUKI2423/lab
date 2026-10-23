@@ -31,6 +31,7 @@ class ImageTrial:
     within_block_order: int
     condition_id: str
     pair: SelectedPair
+    repetition: int = 2
 
 
 @dataclass

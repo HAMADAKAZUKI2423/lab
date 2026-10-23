@@ -1,4 +1,4 @@
-"""校正済み前景の線形光量だけを変更。SP背景・referenceは固定する。"""
+"""共通光学加算Referenceに対し、testの前景ゲインまたはαを調整する。"""
 from dataclasses import dataclass
 from pathlib import Path
 import hashlib, math
@@ -59,9 +59,13 @@ class MatchingStimulus:
     fg_slice: tuple
     baseline_display_y: float
     reference_background: Image.Image | None = None
+    control_kind: str = "gain"
 
     def raw_test_linear(self,gain):
         if not math.isfinite(gain) or not 0<=gain<=1: raise ValueError("Gain must be finite and in [0,1]")
+        if self.control_kind == 'alpha':
+            background = self.background_xyz @ self.calibration.r_prime_inv.T
+            return gain*self.foreground_linear + (1.0-gain)*background
         if self.background_xyz is None: return gain*self.foreground_linear
         return (self.background_xyz+gain*(self.foreground_linear @ self.calibration.r_prime.T)) @ self.calibration.r_prime_inv.T
 
@@ -80,6 +84,9 @@ class MatchingStimulus:
                  'Test_Target_FG_Y_cd_m2':gain*self.metadata['Original_FG_Y_cd_m2'],
                  'Test_Quantized_FG_Y_cd_m2':mean_y(shown,self.calibration.r_prime)-self.baseline_display_y,
                  'SinglePlane_OutOfGamut_Ratio':ratio}
+        if self.control_kind == 'alpha':
+            metrics.update({'Displayed_Gain':'', 'Displayed_Alpha':float(gain),
+                            'Test_Target_FG_Y_cd_m2':'', 'Test_Quantized_FG_Y_cd_m2':''})
         return image.transpose(Image.Transpose.FLIP_LEFT_RIGHT),metrics
 
 def prepare_matching_stimulus(trial,config,*,layout,calibration,dominant_eye,left_pupil_mm,right_pupil_mm,ipd_mm):
@@ -96,14 +103,12 @@ def prepare_matching_stimulus(trial,config,*,layout,calibration,dominant_eye,lef
     if config.reference_gain != 0.5:
         raise ValueError("Image matching reference_gain must be 0.5")
     ref=encode(0.5*fg,calibration.gamma_fg)
-    # 全条件で同じ元ペアを使う。refは視差・defocus適用前の背景と
-    # 輝度半減前景を、共通の校正済み線形RGB領域で7:3にαブレンドする。
-    # T'/R'による光学加算再現やノイズ背景はreferenceには使用しない。
-    alpha=0.7
+    # Referenceは全条件でSP_NO_DEFOCUS：右眼基準・ぼかしなしの光学加算。
+    # 前景ゲインは従来同様0.5固定。testの操作・観察眼には依存しない。
     rw,rh=layout['reference_singleplane'].size
     reference_background=sp_bg.resize((rw,rh),RESAMPLE)
     bg_linear=decode(reference_background,calibration.gamma_bg)
-    bg_on_fg=bg_linear @ calibration.color_matrix.T
+    reference_bg_xyz=bg_linear @ calibration.t_prime.T
     ref_fg_linear=decode(ref,calibration.gamma_fg)
     fw,fh=ref.size
     if fw>rw or fh>rh:
@@ -111,18 +116,18 @@ def prepare_matching_stimulus(trial,config,*,layout,calibration,dominant_eye,lef
     x=(rw-fw)//2; y=(rh-fh)//2
     reference_layer=np.zeros((rh,rw,3))
     reference_layer[y:y+fh,x:x+fw]=ref_fg_linear
-    reference_linear=alpha*reference_layer+(1.0-alpha)*bg_on_fg
-    reference_xyz=reference_linear @ calibration.r_prime.T
+    reference_xyz=reference_bg_xyz + reference_layer @ calibration.r_prime.T
+    reference_linear=reference_xyz @ calibration.r_prime_inv.T
     if not np.isfinite(reference_linear).all():
-        raise ValueError("Non-finite reference alpha-blend RGB")
+        raise ValueError("Non-finite reference optical-addition RGB")
     reference_gamut=float(np.mean(np.any(
         (reference_linear < -config.gamut_tolerance)
         | (reference_linear > 1+config.gamut_tolerance),axis=-1)))
     reference_composite=encode(reference_linear,calibration.gamma_fg)
     if reference_gamut:
-        print(f"WARN: reference alpha blend out-of-gamut ratio={reference_gamut:.6f}; clipping linear RGB to [0,1].",flush=True)
+        print(f"WARN: reference optical addition out-of-gamut ratio={reference_gamut:.6f}; clipping linear RGB to [0,1].",flush=True)
     meta={'Task_Mode':'matching','Plane_Mode':spec.plane_mode,'Viewing_Mode':spec.viewing_mode,
-          'Reference_Observed_Eye':resolve_observed_eye(spec,dominant_eye),
+          'Reference_Observed_Eye':'Right',
           'Reproduced_Eye':spec.reproduced_eye,'Defocus_Mode':spec.defocus_mode,
           'Disparity_Mode':spec.disparity_mode,'Disparity_Px':0,
           'Original_FG_Y_cd_m2':original_y,'Reference_Gain':config.reference_gain,
@@ -132,16 +137,17 @@ def prepare_matching_stimulus(trial,config,*,layout,calibration,dominant_eye,lef
           'Reference_Center_Deg':config.reference_center_deg,'Test_Center_Deg':config.test_center_deg,
           'Visual_Angle_Deg':config.visual_angle_deg,
           'Gamut_Policy':'clip_linear_rgb_0_1',
-          'Reference_Plane_Mode':'single_alpha_blend',
-          'Reference_Reproduction_Method':'alpha_blend_calibrated_linear_RGB_FG_0.7_BG_0.3',
+          'Reference_Plane_Mode':'SP_NO_DEFOCUS',
+          'Reference_Reproduction_Method':'calibrated_XYZ_optical_addition_right_no_defocus',
           'Reference_OutOfGamut_Ratio':reference_gamut,
           'Reference_Total_Target_Y_cd_m2':float(np.mean(reference_xyz[...,1])),
           'Reference_Total_Quantized_Y_cd_m2':mean_y(
               decode(reference_composite,calibration.gamma_fg),calibration.r_prime),
           'Reference_BG_Type':'selected_pair_background_no_defocus_no_disparity',
-          'Reference_FG_Alpha':0.7,'Reference_BG_Alpha':0.3,
-          'Reference_Blend_Space':'calibrated_linear_RGB',
-          'Reference_FG_Weighted_Target_Y_cd_m2':0.7*config.reference_gain*original_y}
+          'Reference_FG_Alpha':'','Reference_BG_Alpha':'',
+          'Reference_Blend_Space':'calibrated_XYZ_addition',
+          'Reference_FG_Weighted_Target_Y_cd_m2':config.reference_gain*original_y,
+          'Control_Kind':'alpha' if trial.condition_id=='SP_ALPHA_BLEND' else 'gain'}
     background_xyz=None; physical=None; fg_slice=(slice(None),slice(None))
     if spec.plane_mode=='dual':
         physical=physical_bg.resize(layout['background'].size,RESAMPLE)
@@ -171,7 +177,7 @@ def prepare_matching_stimulus(trial,config,*,layout,calibration,dominant_eye,lef
     stim=MatchingStimulus(fg,background_xyz,physical,
                          reference_composite.transpose(Image.Transpose.FLIP_LEFT_RIGHT),config.reference_gain,
                          calibration,meta,config.gamut_tolerance,fg_slice,0.,
-                         reference_background=None)
+                         reference_background=None, control_kind=meta['Control_Kind'])
     # 両端の色域外比率を記録する。色域外でも背景・ゲイン上限は変更せず続行。
     low,high=stim.gamut_ratio(0),stim.gamut_ratio(1)
     meta.update({'Gamut_Ratio_At_Zero':low,'Gamut_Ratio_At_One':high})

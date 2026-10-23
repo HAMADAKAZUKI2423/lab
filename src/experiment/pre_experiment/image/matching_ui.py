@@ -8,6 +8,8 @@ class MatchingControls:
         trial=app.current_trial
         tk.Label(self.frame,text=f"Trial {trial.trial_order}/{len(app.trial_list)}",bg='black',fg='gray').pack()
         tk.Label(self.frame,text='下の前景の見えやすさを、上と同じに調整\n背景の見えやすさではありません。',bg='black',fg='white').pack(pady=4)
+        label='Alpha (0=background, 1=foreground)' if trial.condition_id=='SP_ALPHA_BLEND' else 'Foreground gain'
+        tk.Label(self.frame,text=label,bg='black',fg='gray').pack()
         self.value=tk.DoubleVar(value=app.desired_gain)
         self.suppress=False
         self.slider=tk.Scale(self.frame,from_=0,to=1,resolution=app.session_config.gain_fine_step,

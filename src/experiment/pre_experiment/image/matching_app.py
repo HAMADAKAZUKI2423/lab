@@ -10,7 +10,7 @@ from .conditions import get_condition
 from .stimuli import participant_seed, condition_order_for_participant, build_trials
 from .matching_layout import (Box,make_layout,validate_layout,layout_metadata,draw_brackets)
 from .matching_stimuli import (calibration_files_metadata,validate_calibration,prepare_matching_stimulus)
-from .matching_results import (initial_gain_plan,save_matching_manifest,save_matching_session,build_matching_row)
+from .matching_results import (build_matching_trials,initial_gain_plan,save_matching_manifest,save_matching_session,build_matching_row)
 from .matching_ui import MatchingControls
 
 class ImageMatchingApp(ImageExperimentApp):
@@ -136,7 +136,7 @@ class ImageMatchingApp(ImageExperimentApp):
         self._destroy_frame('ctrl_frame');self.clear_key_bindings()
         self.participant_seed=participant_seed(self.session_config.random_seed,self.participant_id.get().strip())
         self.condition_order=condition_order_for_participant(self.session_config.conditions,self.participant_id.get(),self.session_config.random_seed)
-        self.trial_list=build_trials(self.selected_pairs,self.condition_order,random.Random(self.participant_seed))
+        self.trial_list=build_matching_trials(self.selected_pairs,self.condition_order,random.Random(self.participant_seed),self.session_config.repetitions_per_pair)
         if len(self.trial_list)!=self.session_config.expected_trial_count: raise RuntimeError('Trial count mismatch')
         self.initial_gains=initial_gain_plan(self.trial_list,self.participant_seed)
         self.frozen_viewports=self.viewports();self.preflight_index=0
@@ -191,7 +191,7 @@ class ImageMatchingApp(ImageExperimentApp):
             rb=self.current_layout['reference_singleplane']
             self.canvas2.create_image(rb.x0,rb.y0,
                 image=self.photo_reference,anchor='nw',tags='matching')
-            # Referenceは前景7:背景3のαブレンド画像。背景面上段には描画しない。
+            # Referenceは右眼基準・defocusなし光学加算。背景面上段には描画しない。
             if self.matching_prepared.physical_background is not None:
                 self.photo_background=ImageTk.PhotoImage(self.matching_prepared.physical_background)
                 b=self.current_layout['background'];self.canvas1.create_image(b.x0,b.y0,image=self.photo_background,anchor='nw',tags='matching')
@@ -218,10 +218,14 @@ class ImageMatchingApp(ImageExperimentApp):
 
     def log_adjustment(self,event):
         trial=self.current_trial
-        self.adjustment_history.append({'ID':self.participant_id.get(),'Trial_ID':trial.trial_order,
+        alpha=trial.condition_id=='SP_ALPHA_BLEND'
+        self.adjustment_history.append({'Control_Kind':'alpha' if alpha else 'gain',
+          'Repetition':trial.repetition,'Requested_Alpha':self.desired_gain if alpha else '',
+          'Displayed_Alpha':self.rendered_gain if alpha else '',
+          'ID':self.participant_id.get(),'Trial_ID':trial.trial_order,
           'Condition':trial.condition_id,'Pair_ID':trial.pair.pair_id,
           'Elapsed_s':0. if self.trial_started is None else time.monotonic()-self.trial_started,
-          'Requested_Gain':self.desired_gain,'Displayed_Gain':self.rendered_gain,'Event':event})
+          'Requested_Gain':'' if alpha else self.desired_gain,'Displayed_Gain':'' if alpha else self.rendered_gain,'Event':event})
 
     def request_gain(self,gain):
         if self.matching_state!='adjusting': return

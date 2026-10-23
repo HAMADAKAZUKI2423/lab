@@ -18,6 +18,7 @@ CONDITIONS = {
     'DP_BINOCULAR': 'DP binocular',
     'DP_MONO_DOM': 'DP dominant',
     'DP_MONO_NONDOM': 'DP non-dominant',
+    'SP_ALPHA_BLEND': 'SP alpha blend',
     'SP_NO_DEFOCUS': 'SP no defocus',
     'SP_DEFOCUS_SIMPLE': 'SP fused',
     'SP_REPRO_LEFT_EYE': 'SP reproduce Left',
@@ -44,8 +45,13 @@ def resolve_target(argument=None):
     return path
 
 
-def load_results(target, direction='all'):
+def load_results(target, direction='all', control='gain'):
     frame = pd.read_csv(target / 'image_matching.csv', encoding='utf-8-sig', dtype=str)
+    alpha_rows=frame['Condition'].eq('SP_ALPHA_BLEND')
+    frame=frame.loc[alpha_rows if control=='alpha' else ~alpha_rows].copy()
+    value_column='Matched_Alpha' if control=='alpha' else 'Matched_Gain'
+    if control=='alpha':
+        frame['Matched_Gain']=frame[value_column]  # 内部作業列のみ。gain結果へは混在させない。
     keys = ['Condition', 'Pair_ID']
     if direction != 'all':
         if 'Matching_Direction' not in frame:
@@ -73,11 +79,16 @@ def load_results(target, direction='all'):
         raise ValueError('Dominance must be one consistent Left/Right value')
     if not frame['Condition'].isin(CONDITIONS).all():
         raise ValueError('Unknown matching condition')
-    if not set(DP_EYES).issubset(set(frame['Condition'])):
+    if control=='gain' and not set(DP_EYES).issubset(set(frame['Condition'])):
         raise ValueError('Both DP_MONO_DOM and DP_MONO_NONDOM are required for the 3 figures')
     allowed = ['matched', 'above_range', 'below_range', 'cannot_judge']
     if not frame['Match_Status'].isin(allowed).all():
         raise ValueError('Unknown/incomplete Match_Status')
+    if 'Repetition' in frame:
+        frame['Repetition']=pd.to_numeric(frame['Repetition'],errors='raise')
+        if not (frame['Repetition'].ge(1) & frame['Repetition'].mod(1).eq(0)).all():
+            raise ValueError('Invalid repetition index')
+        keys=keys+['Repetition']
     if frame.duplicated(keys).any():
         raise ValueError('Duplicate Condition/Pair_ID')
     frame['Difference_Group'] = frame['Difference_Group'].str.lower()
@@ -102,6 +113,15 @@ def load_results(target, direction='all'):
         raise ValueError('Matched_Gain must be finite and in [0,1] for matched trials')
     # 範囲外・判断不能は一致値として平均しない。Final_Gainへの代替もしない。
     frame.loc[~matched, 'Gain'] = np.nan
+    if 'Repetition' in frame:
+        grouping=['ID','Condition','Pair_ID']
+        if direction!='all': grouping+=['Matching_Direction']
+        # 有効な一致回答のみを画像組単位で平均。全反復無効ならNaN。
+        summary=frame.groupby(grouping,sort=False,dropna=False)['Gain'].agg(['mean','count'])
+        frame=frame.drop_duplicates(grouping).set_index(grouping)
+        frame['Gain']=summary['mean'];frame['Valid_Repetitions']=summary['count']
+        frame['Match_Status']=np.where(frame['Gain'].notna(),'matched','cannot_judge')
+        frame=frame.reset_index()
     print(f'[{direction}] Response counts:\n', pd.crosstab(frame['Condition'], frame['Match_Status']))
     if direction == 'mean':
         if not frame['Matching_Direction'].isin(['up', 'down']).all():
@@ -276,12 +296,33 @@ def save_figures(frame, paired, output):
     print(f'Saved 6 figures (no CI, no tests): {output}')
 
 
+def save_alpha_analysis(target):
+    frame,metadata=load_results(target,control='alpha')
+    output=FIGURE_ROOT/target.name/'matching_analysis'/'alpha'
+    output.mkdir(parents=True,exist_ok=True)
+    table=target/'matching_analysis'/'alpha';table.mkdir(parents=True,exist_ok=True)
+    frame.rename(columns={'Gain':'Mean_Matched_Alpha'}).drop(
+        columns=['Matched_Gain'],errors='ignore').to_csv(
+            table/'alpha_pair_means.csv',index=False,encoding='utf-8-sig')
+    for group in ('all','high','low'):
+        part=frame if group=='all' else frame.loc[frame['Difference_Group'].eq(group)]
+        fig,ax=plt.subplots(figsize=(10,4))
+        ax.bar(part['Pair_ID'],part['Gain']);ax.set_ylim(0,1)
+        ax.set_ylabel('Matched alpha (not foreground gain)')
+        ax.set_title(f'Alpha matching / {group} / repetition means')
+        ax.tick_params(axis='x',labelrotation=90)
+        fig.tight_layout();fig.savefig(output/f'alpha_{group}.png',dpi=300);plt.close(fig)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('target_dir', nargs='?', help='Session directory or image_matching.csv')
     args = parser.parse_args()
     target = resolve_target(args.target_dir)
     columns = pd.read_csv(target / 'image_matching.csv', encoding='utf-8-sig', nrows=0).columns
+    conditions=pd.read_csv(target/'image_matching.csv',encoding='utf-8-sig',usecols=['Condition'])['Condition']
+    if conditions.eq('SP_ALPHA_BLEND').any(): save_alpha_analysis(target)
+    if conditions.eq('SP_ALPHA_BLEND').all(): return
     directions = ('up', 'down', 'mean') if 'Matching_Direction' in columns else ('all',)
     for direction in directions:
         frame, metadata = load_results(target, direction)

@@ -1,11 +1,12 @@
 """ratingと混同しないマッチングCSV・設定・調整履歴を原子的に保存する。"""
 from pathlib import Path
-from dataclasses import asdict
+from dataclasses import asdict, replace
+from .stimuli import build_trials
 import csv, json, os, random
 import tempfile
 from .results import RESULT_FIELDS, _trial_metadata, _jsonable
 
-EXTRA_FIELDS=['Task_Mode','Reference_Observed_Eye','Alignment_Eye','Initial_Gain',
+EXTRA_FIELDS=['Control_Kind','Repetition','Initial_Alpha','Final_Alpha','Matched_Alpha','Displayed_Alpha','Task_Mode','Reference_Observed_Eye','Alignment_Eye','Initial_Gain',
  'Final_Gain','Matched_Gain','Original_FG_Y_cd_m2','Reference_Gain',
  'Reference_Target_Y_cd_m2','Reference_Quantized_Y_cd_m2',
  'Test_Target_FG_Y_cd_m2','Test_Quantized_FG_Y_cd_m2','Match_Status',
@@ -20,7 +21,7 @@ EXTRA_FIELDS=['Task_Mode','Reference_Observed_Eye','Alignment_Eye','Initial_Gain
  'Reference_FG_Alpha','Reference_BG_Alpha','Reference_Blend_Space',
  'Reference_FG_Weighted_Target_Y_cd_m2']
 MATCHING_FIELDS=[f for f in RESULT_FIELDS if f!='Score']+EXTRA_FIELDS
-HISTORY_FIELDS=['ID','Trial_ID','Condition','Pair_ID','Elapsed_s','Requested_Gain','Displayed_Gain','Event']
+HISTORY_FIELDS=['Control_Kind','Repetition','Requested_Alpha','Displayed_Alpha','ID','Trial_ID','Condition','Pair_ID','Elapsed_s','Requested_Gain','Displayed_Gain','Event']
 
 
 def atomic_csv(path,fields,rows):
@@ -45,6 +46,16 @@ def atomic_json(path,value):
     finally:
         if tmp.exists(): tmp.unlink()
 
+def build_matching_trials(pairs,condition_order,rng,repetitions):
+    trials=[]
+    for block_id,condition in enumerate(condition_order,1):
+        for repetition in range(1,repetitions+1):
+            for trial in build_trials(pairs,(condition,),rng):
+                trials.append(replace(trial, trial_order=len(trials)+1, block_id=block_id,
+                    within_block_order=(repetition-1)*len(pairs)+trial.within_block_order,
+                    repetition=repetition))
+    return trials
+
 def initial_gain_plan(trials,seed):
     """試行順とは独立した乱数で、各条件・high/lowごとに両端を均衡化。"""
     rng=random.Random(seed ^ 0x45A771);groups={};result={}
@@ -57,8 +68,12 @@ def initial_gain_plan(trials,seed):
 def trial_base(app,trial):
     row=_trial_metadata(trial,dominant_eye=app.participant_dominance.get(),
                        selection_dir=app.selected_pairs_dir,participant_seed=app.participant_seed)
-    row.update({'Task_Mode':'matching','Initial_Gain':app.initial_gains[trial.trial_order],
-      'Reference_Observed_Eye':row['Observed_Eye'],
+    alpha=trial.condition_id=='SP_ALPHA_BLEND'
+    initial=app.initial_gains[trial.trial_order]
+    row.update({'Control_Kind':'alpha' if alpha else 'gain','Repetition':trial.repetition,
+      'Initial_Alpha':initial if alpha else '',
+      'Task_Mode':'matching','Initial_Gain':'' if alpha else initial,
+      'Reference_Observed_Eye':'Right',
       'Reference_Center_Deg':app.session_config.reference_center_deg,
       'Test_Center_Deg':app.session_config.test_center_deg,
       'Reference_Gain':app.session_config.reference_gain})
@@ -79,10 +94,14 @@ def build_matching_row(app,status,elapsed):
       'Match_Status':status,'Adjustment_Time_s':elapsed,'Adjustment_Count':app.adjustment_count,
       'Layout_JSON':json.dumps(app.current_layout_metadata,ensure_ascii=False)})
     row.update(app.matching_prepared.metadata);row.update(app.render_metrics)
+    if row['Control_Kind']=='alpha':
+        row.update({'Final_Alpha':app.rendered_gain,
+                    'Matched_Alpha':app.rendered_gain if status=='matched' else '',
+                    'Final_Gain':'','Matched_Gain':''})
     return {k:row.get(k,'') for k in MATCHING_FIELDS}
 
 def save_matching_manifest(app,output_dir=None):
-    fields=[k for k in MATCHING_FIELDS if k not in {'Match_Status','Matched_Gain','Final_Gain',
+    fields=[k for k in MATCHING_FIELDS if k not in {'Match_Status','Matched_Gain','Final_Gain','Matched_Alpha','Final_Alpha','Displayed_Alpha',
             'Adjustment_Time_s','Adjustment_Count'}]
     directory=app.result_dir if output_dir is None else Path(output_dir)
     atomic_csv(directory/'trial_manifest.csv',fields,[trial_base(app,t) for t in app.trial_list])

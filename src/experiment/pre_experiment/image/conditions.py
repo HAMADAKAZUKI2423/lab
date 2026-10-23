@@ -9,6 +9,7 @@ ConditionId = Literal[
     "DP_MONO_DOM",
     "DP_MONO_NONDOM",
     "SP_NO_DEFOCUS",
+    "SP_ALPHA_BLEND",
     "SP_DEFOCUS_SIMPLE",
     "SP_REPRO_LEFT_EYE",
     "SP_REPRO_RIGHT_EYE",
@@ -67,21 +68,26 @@ ALL_CONDITION_SPECS: tuple[ImageConditionSpec, ...] = (
         "single", "binocular", "both", "matched_simulation", "simple", "Right",
     ),
 )
+ALL_CONDITION_SPECS += (
+    ImageConditionSpec("SP_ALPHA_BLEND", "Single Plane / alpha blend",
+                       "single", "binocular", "both", "none", "none"),
+)
 CONDITION_BY_ID = {spec.condition_id: spec for spec in ALL_CONDITION_SPECS}
 
 # ===== 条件スイッチ：通常はこのTrue / Falseだけを編集する =====
 # ファイル保存後、実験を再起動する。起動済みセッションの設定は変更しない。
-# 今回：DP両眼・DP利き眼・DP非利き眼の3条件×18組、計54試行（方向別反復なし）。
+# matching：DP3条件＋SP_ALPHA_BLEND、18組×反復数（既定1）、計72×n試行。
 # SP_DEFOCUS_SIMPLEは、defocus＋単純視差で作った左右眼像を融合して両眼観察。
 # SP_REPRO_LEFT/RIGHT_EYEも観察は両眼。再現する眼像だけが異なる。
 CONDITION_ENABLED: dict[ConditionId, bool] = {
     "DP_BINOCULAR":       True,   # DP両眼
     "DP_MONO_DOM":        True,   # DP利き眼のみ
     "DP_MONO_NONDOM":     True,   # DP非利き眼のみ
+    "SP_ALPHA_BLEND":     True,  # matchingのみ：α値を調整
     "SP_NO_DEFOCUS":      False,  # SP：defocusなし
-    "SP_DEFOCUS_SIMPLE":  True,   # SP：defocus＋左右眼像融合
-    "SP_REPRO_LEFT_EYE":  True, # SP：左眼像を再現、両眼観察
-    "SP_REPRO_RIGHT_EYE": True, # SP：右眼像を再現、両眼観察
+    "SP_DEFOCUS_SIMPLE":  False,   # SP：defocus＋左右眼像融合
+    "SP_REPRO_LEFT_EYE":  False, # SP：左眼像を再現、両眼観察
+    "SP_REPRO_RIGHT_EYE": False, # SP：右眼像を再現、両眼観察
 }
 
 
