@@ -77,7 +77,7 @@ BACKGROUND_CLUSTER_COUNT = 10
 MIN_BACKGROUND_RANK_GAP = 3
 LOW_BACKGROUNDS_PER_CLASS = 5
 LOW_BACKGROUND_RANDOM_SEED = 42
-FOREGROUND_DTD_SAMPLES_PER_CATEGORY = 20
+FOREGROUND_DTD_SAMPLES_PER_CATEGORY = 10
 FOREGROUND_DTD_SAMPLING_SEED = 42
 
 
@@ -111,8 +111,8 @@ class RunSettings:
     min_background_rank_gap: int = MIN_BACKGROUND_RANK_GAP
     low_backgrounds_per_class: int = LOW_BACKGROUNDS_PER_CLASS
     low_background_random_seed: int = LOW_BACKGROUND_RANDOM_SEED
-    background_width_ratio: float = 2.2
-    background_width_scale: float = 1.1
+    background_width_ratio: float = 2.4
+    background_width_scale: float = 1.2
     global_difference_lambda: float = 2.0
 
     @property
@@ -673,8 +673,8 @@ def _image_key(path: str) -> str:
 def select_high_low_pairs(
     results: list[PairResult], pool_size: int, max_clip_ratio: float,
     *, use_laplacian_difference: bool, use_model_difference: bool,
-) -> tuple[list[PairResult], tuple[float, float]]:
-    """右眼視認性3層×左右差high/low×3組を、画像重複なしで選ぶ。"""
+) -> tuple[list[PairResult], tuple[float, float, float, float]]:
+    """共通5分位のbottom/topを除外し、中央3層×左右差high/low×3組を選ぶ。"""
     from scipy.optimize import Bounds, LinearConstraint, milp
     from scipy.sparse import coo_matrix
     valid = [r for r in results if math.isfinite(r.right_visibility_score)
@@ -682,10 +682,14 @@ def select_high_low_pairs(
              and max(r.right_clip_ratio, r.left_clip_ratio) <= max_clip_ratio]
     if not valid:
         raise ValueError('有効な候補がありません')
-    q1, q2 = np.quantile([r.right_visibility_score for r in valid], [1/3, 2/3])
+    q1, q2, q3, q4 = np.quantile(
+        [r.right_visibility_score for r in valid], [0.2, 0.4, 0.6, 0.8])
+    # 同値は分割せず低い側へ。層不足時も境界・制約を緩和しない。
     for r in valid:
-        r.visibility_level = ('low' if r.right_visibility_score <= q1 else
-                              'mid' if r.right_visibility_score <= q2 else 'high')
+        r.visibility_level = ('bottom' if r.right_visibility_score <= q1 else
+                              'low' if r.right_visibility_score <= q2 else
+                              'mid' if r.right_visibility_score <= q3 else
+                              'high' if r.right_visibility_score <= q4 else 'top')
     levels = ('low', 'mid', 'high')
     candidates = []
     for group in ('high', 'low'):
@@ -736,7 +740,7 @@ def select_high_low_pairs(
         group_rows=[r for r in chosen if r.difference_group==group]
         for i,r in enumerate(group_rows,1): r.group_rank=i
     if len(chosen)!=18: raise RuntimeError(f'選定組数が18ではありません: {len(chosen)}')
-    return chosen,(float(q1),float(q2))
+    return chosen,tuple(float(q) for q in (q1,q2,q3,q4))
 
 def write_csv(path: Path, rows: list[PairResult]) -> None:
     if not rows:
@@ -1165,7 +1169,7 @@ def main() -> None:
     config = {**asdict(settings), 'complete': False,
         'mode': 'background_only' if args.background_only else 'full_selection',
         'selection_metric': 'sqrt(var(L-R)+2*mean(L-R)**2)',
-        'background_geometry_version': 'projected_width_scale_1.1_v1',
+        'background_geometry_version': 'projected_width_scale_1.2_v1',
         'background_visual_angle_width_deg': image_config.background_visual_angle_width_deg,
         'pixels_per_degree': settings.image_size_px / settings.visual_angle_deg,
         'blur_method': 'gaussian_linear_rgb' if settings.apply_defocus else 'none',
@@ -1178,7 +1182,10 @@ def main() -> None:
         'foreground_candidate_count': len(fg_items),
         'background_bright_count': len(bg_luminance_items),
         'selection_pool_size': args.selection_pool_size, 'max_clip_ratio': args.max_clip_ratio,
-        'selection_rule': 'no luminance exclusion; right visibility terciles; high/low 3 pairs per level; no duplicate FG/BG',
+        'selection_rule': 'no luminance exclusion; common right visibility quintiles; exclude bottom/top; high/low 3 pairs per retained level; no duplicate FG/BG',
+        'visibility_partition': 'common_valid_candidate_quintiles',
+        'visibility_quantile_probabilities': [0.2, 0.4, 0.6, 0.8],
+        'visibility_excluded_levels': ['bottom', 'top'],
         'use_laplacian_difference': not args.no_laplacian_difference,
         'use_model_difference': not args.no_model_difference,
         'display_dir': str(image_config.display_dir), 'visibility_repo': str(VISIBILITY_REPO)}
@@ -1288,8 +1295,13 @@ def main() -> None:
     low_results = sorted((r for r in selected if r.difference_group == 'low'), key=lambda r:r.group_rank)
     write_csv(output_dir / "high9.csv", high_results)
     write_csv(output_dir / "low9.csv", low_results)
-    config.update(visibility_level_thresholds={'low_mid': visibility_thresholds[0],
-                  'mid_high': visibility_thresholds[1]}, selected_per_stratum=3)
+    config.update(visibility_level_thresholds=dict(zip(
+        ('bottom_low', 'low_mid', 'mid_high', 'high_top'), visibility_thresholds)),
+        selected_per_stratum=3,
+        visibility_exclusion_counts={level: sum(r.visibility_level == level for r in results)
+                                     for level in ('bottom', 'top')})
+    # 全候補CSVにも5分位分類を残す（未分類行は他の有効性制約による除外）。
+    write_csv(output_dir / "all_pairs.csv", results)
 
     for result in selected:
         fg_path = Path(result.foreground_path)

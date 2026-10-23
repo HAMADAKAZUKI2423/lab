@@ -10,7 +10,7 @@ from .conditions import get_condition
 from .stimuli import participant_seed, condition_order_for_participant, build_trials
 from .matching_layout import (Box,make_layout,validate_layout,layout_metadata,draw_brackets)
 from .matching_stimuli import (calibration_files_metadata,validate_calibration,prepare_matching_stimulus)
-from .matching_results import (build_direction_trials,initial_gain_plan,save_matching_manifest,save_matching_session,build_matching_row)
+from .matching_results import (initial_gain_plan,save_matching_manifest,save_matching_session,build_matching_row)
 from .matching_ui import MatchingControls
 
 class ImageMatchingApp(ImageExperimentApp):
@@ -136,9 +136,9 @@ class ImageMatchingApp(ImageExperimentApp):
         self._destroy_frame('ctrl_frame');self.clear_key_bindings()
         self.participant_seed=participant_seed(self.session_config.random_seed,self.participant_id.get().strip())
         self.condition_order=condition_order_for_participant(self.session_config.conditions,self.participant_id.get(),self.session_config.random_seed)
-        self.trial_list,self.matching_directions=build_direction_trials(self.selected_pairs,self.condition_order,random.Random(self.participant_seed))
+        self.trial_list=build_trials(self.selected_pairs,self.condition_order,random.Random(self.participant_seed))
         if len(self.trial_list)!=self.session_config.expected_trial_count: raise RuntimeError('Trial count mismatch')
-        self.initial_gains=initial_gain_plan(self.matching_directions)
+        self.initial_gains=initial_gain_plan(self.trial_list,self.participant_seed)
         self.frozen_viewports=self.viewports();self.preflight_index=0
         self.canvas1.delete('all');self.canvas2.delete('all')
         self.ctrl_frame=tk.Frame(self.root,bg='gray');self.ctrl_frame.place(relx=.5,rely=.5,anchor='center')

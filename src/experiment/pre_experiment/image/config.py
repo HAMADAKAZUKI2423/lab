@@ -40,7 +40,7 @@ class ImageSessionConfig:
     random_seed: int = 20260928
     visual_angle_deg: float = IMAGE_VISUAL_ANGLE_DEG
     background_width_factor: float = 2.0
-    background_width_scale: float = 1.1
+    background_width_scale: float = 1.2
     trials_per_condition: int = 18
     trials_before_break: int = 10
     time_foreground_only_ms: int = 500
@@ -121,14 +121,12 @@ class ImageSessionConfig:
 
     @property
     def expected_trial_count(self) -> int:
-        # matchingは各条件をup/downの2ブロックで実施する。
-        directions = 2 if self.task_mode == "matching" else 1
-        return len(self.conditions) * self.trials_per_condition * directions
+        return len(self.conditions) * self.trials_per_condition
 
     @property
     def background_visual_angle_width_deg(self) -> float:
         """DP・SPで共通化する背景の水平視角を返す。"""
-        # 投影後の実幅を従来の1.1倍にする（画素丸めを除く）。
+        # 投影後の実幅を基準幅の1.2倍にする（画素丸めを除く）。
         base_angle = self.visual_angle_deg * self.background_width_factor
         return math.degrees(2.0 * math.atan(
             self.background_width_scale * math.tan(math.radians(base_angle / 2.0))))
