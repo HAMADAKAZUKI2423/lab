@@ -1,366 +1,203 @@
-"""20画像ペア×有効条件の試行生成と、条件別の表示画像生成。"""
+"""Image evaluation予備実験の有効条件・入力・保存先を一元管理する。"""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-import hashlib
-import random
+from typing import Any
+import math
 
-import numpy as np
-from PIL import Image
+from experiment import experiment_config
 
-from experiment.common import geometry, optics, photometry
-
-from .calibration import DisplayCalibration
-from .conditions import get_condition, resolve_reference_eye
-from .config import ImageSessionConfig
-from .disparity import (
-    fuse_eye_views,
-    make_constant_eye_views,
-    right_aligned_disparity_px,
-)
-from .selected_pairs import SelectedPair
+from .conditions import ALL_CONDITION_SPECS, get_condition, get_enabled_condition_ids
 
 
-RESAMPLE = Image.Resampling.LANCZOS
+EXPERIMENT_DIR = Path(__file__).resolve().parents[2]
+LAB_ROOT = EXPERIMENT_DIR.parents[1]
+RUNTIME_CONFIG: dict[str, Any] = experiment_config.get_config() or {}
+
+# 条件T/Fとは独立。旧ratingへ戻す場合は "rating"、または --task-mode rating。
+IMAGE_TASK_MODE = "matching"
+
+# Image実験専用。共通VISUAL_ANGLE_DEG（他実験/selector）には影響させない。
+IMAGE_VISUAL_ANGLE_DEG = 7.5
 
 
 @dataclass(frozen=True)
-class ImageTrial:
-    trial_order: int
-    block_id: int
-    within_block_order: int
-    condition_id: str
-    pair: SelectedPair
-    repetition: int = 2
+class ImageSessionConfig:
+    result_root: Path
+    participant_data_dir: Path
+    selected_pairs_root: Path
+    selected_pairs_dir: Path | None
+    display_dir: Path
+    conditions: tuple[str, ...] = field(default_factory=get_enabled_condition_ids)
+    task_mode: str = IMAGE_TASK_MODE
+    reference_gain: float = 0.5
+    gain_step: float = 0.01
+    gain_fine_step: float = 0.001
+    render_interval_ms: int = 33
+    foreground_pixels_per_cm: float = 1.0 / 0.02331
+    background_pixels_per_cm: float = 1.0 / 0.02331
+    gamut_tolerance: float = 1e-9
+    random_seed: int = 20260928
+    visual_angle_deg: float = IMAGE_VISUAL_ANGLE_DEG
+    background_width_factor: float = 2.0
+    background_width_scale: float = 1.2
+    trials_per_condition: int = 18
+    repetitions_per_pair: int = 1  # matching：全画像組を各条件でn回（正の整数）
+    trials_before_break: int = 10
+    time_foreground_only_ms: int = 500
+    time_isi_ms: int = 1000
+    time_both_ms: int = 500
+    distance_fg_cm: float = 50.0
+    distance_bg_cm: float = 125.0
+    background_color: str = "black"
+    initial_pupil_diameter_mm: float = 4.0
+    defocus_cpd: float = 4.0
+    defocus_repetitions: int = 5
+    binocular_fusion_dominant_weight: float = 0.5
+
+    def __post_init__(self) -> None:
+        if self.task_mode not in {"matching", "rating"}:
+            raise ValueError("task_mode must be matching or rating")
+        for value in (self.visual_angle_deg, self.distance_fg_cm, self.distance_bg_cm,
+                      self.foreground_pixels_per_cm, self.background_pixels_per_cm,
+                      self.gain_step, self.gain_fine_step, self.background_width_scale,
+                      self.background_width_factor):
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError("Angles, distances, pixel density and steps must be finite and positive")
+        if not 0 < self.distance_fg_cm < self.distance_bg_cm:
+            raise ValueError("DISTANCE_FG must be smaller than DISTANCE_BG")
+        if self.visual_angle_deg >= 80 or not 0 < self.reference_gain < 1:
+            raise ValueError("Invalid visual angle or reference gain")
+        if (not math.isfinite(self.reference_gain) or not math.isfinite(self.gamut_tolerance)
+                or self.render_interval_ms < 1 or self.gamut_tolerance < 0):
+            raise ValueError("Invalid update interval or gamut tolerance")
+        if self.task_mode == "matching" and self.background_color.lower() != "black":
+            raise ValueError("Matching requires black blank regions")
+        # 有効条件をセッション生成時にtupleへ固定し、開始後の変更を防ぐ。
+        if type(self.repetitions_per_pair) is not int or self.repetitions_per_pair < 1:
+            raise ValueError("repetitions_per_pair must be a positive integer")
+        conditions = tuple(self.conditions)
+        if self.task_mode != "matching":
+            conditions = tuple(c for c in conditions if c != "SP_ALPHA_BLEND")
+        object.__setattr__(self, "conditions", conditions)
+        if not self.conditions:
+            raise ValueError("At least one image condition must be enabled")
+        if len(set(self.conditions)) != len(self.conditions):
+            raise ValueError("Image condition IDs must be unique")
+        for condition_id in self.conditions:
+            get_condition(condition_id)
+
+    @property
+    def condition_count(self) -> int:
+        return len(self.conditions)
+
+    @property
+    def condition_enabled(self) -> dict[str, bool]:
+        """グローバル変数ではなく、実際のセッション条件から保存用T/Fを生成。"""
+        enabled = set(self.conditions)
+        return {
+            spec.condition_id: spec.condition_id in enabled
+            for spec in ALL_CONDITION_SPECS
+        }
+
+    @property
+    def experiment_start_message(self) -> str:
+        labels = "\n".join(
+            f"{index}. {get_condition(condition_id).label}"
+            for index, condition_id in enumerate(self.conditions, start=1)
+        )
+        return (
+            f"Image {self.task_mode}: {self.condition_count} conditions\n"
+            f"{self.expected_trial_count} trials: "
+            f"{self.trials_per_condition} selected pairs per condition; "
+            f"{self.repetitions_per_pair if self.task_mode == 'matching' else 1} repetitions.\n\n"
+            f"{labels}\n\nPress Enter to start."
+        )
+
+    @property
+    def reference_center_deg(self) -> float:
+        return self.visual_angle_deg / 2.0
+
+    @property
+    def test_center_deg(self) -> float:
+        return -self.visual_angle_deg / 2.0
+
+    @property
+    def defocus_result_filename(self) -> str:
+        return "defocus_matching.csv"
+
+    @property
+    def expected_trial_count(self) -> int:
+        repeats = self.repetitions_per_pair if self.task_mode == "matching" else 1
+        return len(self.conditions) * self.trials_per_condition * repeats
+
+    @property
+    def background_visual_angle_width_deg(self) -> float:
+        """DP・SPで共通化する背景の水平視角を返す。"""
+        # 投影後の実幅を基準幅の1.2倍にする（画素丸めを除く）。
+        base_angle = self.visual_angle_deg * self.background_width_factor
+        return math.degrees(2.0 * math.atan(
+            self.background_width_scale * math.tan(math.radians(base_angle / 2.0))))
 
 
-@dataclass
-class PreparedImageStimulus:
-    window1_both: Image.Image | None
-    window2_foreground_only: Image.Image
-    window2_both: Image.Image
-    metadata: dict[str, object]
-
-
-def participant_seed(base_seed: int, participant_id: str) -> int:
-    digest = hashlib.sha256(
-        f"{base_seed}:{participant_id.strip()}".encode("utf-8")
-    ).digest()
-    return int.from_bytes(digest[:4], "big")
-
-
-def condition_order_for_participant(
-    condition_ids: tuple[str, ...],
-    participant_id: str,
-    base_seed: int,
-) -> tuple[str, ...]:
-    """奇数・偶数条件に対応した均衡順序を参加者IDから決定する。"""
-    count = len(condition_ids)
-    if count == 0:
+def create_image_config(
+    selected_pairs_dir: Path | None = None,
+    random_seed: int | None = None,
+    task_mode: str | None = None,
+) -> ImageSessionConfig:
+    mode = IMAGE_TASK_MODE if task_mode is None else task_mode
+    config = ImageSessionConfig(
+        task_mode=mode,
+        foreground_pixels_per_cm=float(RUNTIME_CONFIG.get("IMAGE_FG_PIXELS_PER_CM", 1.0 / 0.02331)),
+        background_pixels_per_cm=float(RUNTIME_CONFIG.get("IMAGE_BG_PIXELS_PER_CM", 1.0 / 0.02331)),
+        result_root=(
+            LAB_ROOT / "results" / "tables" / (
+                "pre-experiment-image-matching" if mode == "matching"
+                else "pre-experiment-image"
+            )
+        ),
+        participant_data_dir=(
+            LAB_ROOT / "data" / "processed" / "tables"
+            / "pre-experiment-image"
+        ),
+        selected_pairs_root=(
+            LAB_ROOT / "results" / "fukiage-disparity-selection"
+        ),
+        selected_pairs_dir=(
+            selected_pairs_dir.expanduser().resolve()
+            if selected_pairs_dir is not None else None
+        ),
+        display_dir=(
+            LAB_ROOT / "results" / "tables" / "DisplayBrightness"
+        ),
+        random_seed=(
+            int(random_seed)
+            if random_seed is not None
+            else int(RUNTIME_CONFIG.get("IMAGE_EXPERIMENT_SEED", 20260928))
+        ),
+        visual_angle_deg=float(RUNTIME_CONFIG.get("IMAGE_VISUAL_ANGLE_DEG", IMAGE_VISUAL_ANGLE_DEG)),
+        background_width_factor=float(
+            RUNTIME_CONFIG.get("IMAGE_BACKGROUND_WIDTH_FACTOR", 2.0)
+        ),
+        distance_fg_cm=float(RUNTIME_CONFIG.get("DISTANCE_FG", 50.0)),
+        distance_bg_cm=float(RUNTIME_CONFIG.get("DISTANCE_BG", 125.0)),
+        background_color=str(RUNTIME_CONFIG.get("BG_COLOR", "black")),
+    )
+    if not 0 < config.distance_fg_cm < config.distance_bg_cm:
+        raise ValueError("DISTANCE_FG must be positive and smaller than DISTANCE_BG")
+    if config.trials_per_condition not in {18, 20}:
+        raise ValueError("Image experiment requires 18 new-format or 20 legacy pairs")
+    if config.background_width_factor <= 0:
+        raise ValueError("background_width_factor must be positive")
+    if not config.conditions:
         raise ValueError("At least one image condition must be enabled")
-    if len(set(condition_ids)) != count:
+    if len(set(config.conditions)) != len(config.conditions):
         raise ValueError("Image condition IDs must be unique")
-    for condition_id in condition_ids:
+    for condition_id in config.conditions:
         get_condition(condition_id)
-    if count == 1:
-        return tuple(condition_ids)
-    first_row = [0]
-    low, high = 1, count - 1
-    while len(first_row) < count:
-        first_row.append(low)
-        low += 1
-        if len(first_row) < count:
-            first_row.append(high)
-            high -= 1
-
-    base_rows = [
-        [((index + shift) % count) for index in first_row]
-        for shift in range(count)
-    ]
-    # 奇数条件では逆順行も加え、直前条件の方向を均衡させる。
-    design_rows = (
-        base_rows
-        if count % 2 == 0
-        else base_rows + [list(reversed(row)) for row in base_rows]
-    )
-    row_index = (
-        participant_seed(base_seed, participant_id) % len(design_rows)
-    )
-    return tuple(condition_ids[index] for index in design_rows[row_index])
-
-
-def _stratified_pair_order(pairs: list[SelectedPair], rng: random.Random) -> list[SelectedPair]:
-    """新形式はhigh/low×視認性3層を均等化。旧20組も従来どおり均衡化。"""
-    if any(pair.visibility_level for pair in pairs):
-        groups={(difference,level):[p for p in pairs if p.difference_group==difference and p.visibility_level==level]
-                for difference in ('high','low') for level in ('low','mid','high')}
-        if any(len(rows)!=3 for rows in groups.values()): raise ValueError('Each high/low × visibility level requires 3 pairs')
-        for rows in groups.values(): rng.shuffle(rows)
-        order=[]
-        for index in range(3):
-            block=[groups[key][index] for key in groups]; rng.shuffle(block); order.extend(block)
-        return order
-    high=[p for p in pairs if p.difference_group=='high']; low=[p for p in pairs if p.difference_group=='low']
-    if len(high)!=10 or len(low)!=10: raise ValueError('Legacy format requires high 10 and low 10')
-    rng.shuffle(high); rng.shuffle(low); first=high[:5]+low[:5]; second=high[5:]+low[5:]; rng.shuffle(first); rng.shuffle(second)
-    return first+second
-
-def build_trials(
-    pairs: list[SelectedPair],
-    condition_order: tuple[str, ...],
-    rng: random.Random,
-) -> list[ImageTrial]:
-    if not condition_order or len(set(condition_order)) != len(condition_order):
-        raise ValueError("Condition order must contain nonempty, unique IDs")
-    trials: list[ImageTrial] = []
-    trial_order = 1
-    for block_id, condition_id in enumerate(condition_order, start=1):
-        get_condition(condition_id)
-        for within_block_order, pair in enumerate(
-            _stratified_pair_order(pairs, rng), start=1
-        ):
-            trials.append(ImageTrial(
-                trial_order=trial_order,
-                block_id=block_id,
-                within_block_order=within_block_order,
-                condition_id=condition_id,
-                pair=pair,
-            ))
-            trial_order += 1
-    expected_trial_count = len(condition_order) * len(pairs)
-    if len(trials) != expected_trial_count:
-        raise RuntimeError(
-            f"Expected {expected_trial_count} trials, generated {len(trials)}"
-        )
-    return trials
-
-
-def _read_rgb(path: Path) -> Image.Image:
-    with Image.open(path) as source:
-        return source.convert("RGB").copy()
-
-
-def _prepare_sources(
-    pair: SelectedPair,
-    config: ImageSessionConfig,
-) -> tuple[Image.Image, Image.Image, Image.Image]:
-    foreground_size = geometry.get_size_for_visual_angle(
-        config.distance_fg_cm, config.visual_angle_deg
-    )
-    background_height = geometry.get_size_for_visual_angle(
-        config.distance_bg_cm, config.visual_angle_deg
-    )
-    background_width = geometry.get_size_for_visual_angle(
-        config.distance_bg_cm, config.background_visual_angle_width_deg
-    )
-    singleplane_background_height = geometry.get_size_for_visual_angle(
-        config.distance_fg_cm, config.visual_angle_deg
-    )
-    singleplane_background_width = geometry.get_size_for_visual_angle(
-        config.distance_fg_cm, config.background_visual_angle_width_deg
-    )
-
-    foreground = _read_rgb(pair.foreground_path).resize(
-        (foreground_size, foreground_size), RESAMPLE
-    )
-    background_square = _read_rgb(pair.background_path).resize(
-        (512, 512), RESAMPLE
-    )
-    background_strip = background_square.crop((0, 128, 512, 384))
-    physical_background = background_strip.resize(
-        (background_width, background_height), RESAMPLE
-    )
-    singleplane_background = background_strip.resize(
-        (singleplane_background_width, singleplane_background_height),
-        RESAMPLE,
-    )
-    return foreground, physical_background, singleplane_background
-
-
-def _apply_channel_gamma(
-    values: np.ndarray,
-    gamma: dict[str, float],
-    *,
-    inverse: bool,
-) -> np.ndarray:
-    output = np.empty_like(values, dtype=np.float64)
-    for index, channel in enumerate("RGB"):
-        exponent = float(gamma[channel])
-        if exponent <= 0:
-            raise ValueError(f"Invalid gamma for {channel}: {exponent}")
-        power = 1.0 / exponent if inverse else exponent
-        output[..., index] = np.clip(values[..., index], 0.0, 1.0) ** power
-    return output
-
-
-def _color_correct_foreground(
-    foreground: Image.Image,
-    calibration: DisplayCalibration,
-) -> Image.Image:
-    if calibration.gamma_bg is None or calibration.gamma_fg is None:
-        raise RuntimeError("gamma_bg.csv and gamma_fg.csv are required")
-    encoded = np.asarray(foreground.convert("RGB"), dtype=np.float64) / 255.0
-    linear_background_reference = _apply_channel_gamma(
-        encoded, calibration.gamma_bg, inverse=False
-    )
-    linear_foreground = np.clip(
-        linear_background_reference @ calibration.color_matrix.T,
-        0.0,
-        None,
-    )
-    output = _apply_channel_gamma(
-        linear_foreground, calibration.gamma_fg, inverse=True
-    )
-    return Image.fromarray(
-        np.clip(output * 255.0, 0, 255).astype(np.uint8), "RGB"
-    )
-
-
-def _blur_eye_background(
-    image: Image.Image,
-    *,
-    pupil_mm: float,
-    config: ImageSessionConfig,
-    pixels_per_degree: float,
-) -> Image.Image:
-    distance_fg_m = config.distance_fg_cm / 100.0
-    distance_bg_m = config.distance_bg_cm / 100.0
-    diopter_difference = abs(1.0 / distance_fg_m - 1.0 / distance_bg_m)
-    pupil = (
-        pupil_mm
-        if pupil_mm > 0 else config.initial_pupil_diameter_mm
-    )
-    return optics.apply_defocus_blur_to_image(
-        image,
-        diopter_difference,
-        pupil,
-        pixels_per_degree,
-    )
-
-
-def prepare_trial_stimulus(
-    trial: ImageTrial,
-    config: ImageSessionConfig,
-    *,
-    calibration: DisplayCalibration,
-    dominant_eye: str,
-    left_pupil_mm: float,
-    right_pupil_mm: float,
-    ipd_mm: float,
-) -> PreparedImageStimulus:
-    spec = get_condition(trial.condition_id)
-    (
-        foreground_source,
-        physical_background,
-        singleplane_background,
-    ) = _prepare_sources(trial.pair, config)
-    corrected_foreground = _color_correct_foreground(
-        foreground_source, calibration
-    )
-    foreground_display = corrected_foreground.transpose(
-        Image.Transpose.FLIP_LEFT_RIGHT
-    )
-
-    base_metadata: dict[str, object] = {
-        "Plane_Mode": spec.plane_mode,
-        "Viewing_Mode": spec.viewing_mode,
-        "Reference_Eye": resolve_reference_eye(spec, dominant_eye),
-        "Defocus_Mode": spec.defocus_mode,
-        "Disparity_Mode": spec.disparity_mode,
-        "Reproduced_Eye": spec.reproduced_eye,
-        "Disparity_Px": 0,
-        "Disparity_Map_Path": "",
-        "SinglePlane_OutOfGamut_Ratio": 0.0,
-    }
-    if spec.plane_mode == "dual":
-        return PreparedImageStimulus(
-            window1_both=physical_background,
-            window2_foreground_only=foreground_display,
-            window2_both=foreground_display,
-            metadata=base_metadata,
-        )
-
-    pixels_per_degree = foreground_source.width / config.visual_angle_deg
-    if spec.disparity_mode == "simple":
-        disparity_px = right_aligned_disparity_px(
-            ipd_mm=ipd_mm,
-            distance_fg_cm=config.distance_fg_cm,
-            distance_bg_cm=config.distance_bg_cm,
-            pixels_per_degree=pixels_per_degree,
-        )
-        right_background, left_background = make_constant_eye_views(
-            singleplane_background, disparity_px
-        )
-    else:
-        disparity_px = 0
-        right_background = singleplane_background.copy()
-        left_background = singleplane_background.copy()
-
-    if spec.defocus_mode == "matched_simulation":
-        right_background = _blur_eye_background(
-            right_background,
-            pupil_mm=right_pupil_mm,
-            config=config,
-            pixels_per_degree=pixels_per_degree,
-        )
-        left_background = _blur_eye_background(
-            left_background,
-            pupil_mm=left_pupil_mm,
-            config=config,
-            pixels_per_degree=pixels_per_degree,
-        )
-
-    if spec.reproduced_eye == "Left":
-        reproduced_background = left_background
-    elif spec.reproduced_eye == "Right":
-        reproduced_background = right_background
-    elif spec.reproduced_eye == "Both":
-        reproduced_background = fuse_eye_views(
-            right_background,
-            left_background,
-            dominant_eye=dominant_eye,
-            dominant_weight=config.binocular_fusion_dominant_weight,
-        )
-    else:
-        reproduced_background = singleplane_background
-
-    if (
-        corrected_foreground.width > reproduced_background.width
-        or corrected_foreground.height > reproduced_background.height
-    ):
-        raise ValueError(
-            "Foreground image does not fit inside the Single Plane background"
-        )
-    foreground_layer = Image.new(
-        "RGB", reproduced_background.size, (0, 0, 0)
-    )
-    foreground_position = (
-        (reproduced_background.width - corrected_foreground.width) // 2,
-        (reproduced_background.height - corrected_foreground.height) // 2,
-    )
-    foreground_layer.paste(corrected_foreground, foreground_position)
-
-    singleplane, out_of_gamut_ratio = (
-        photometry.rgb_paths_to_matrix_singleplane_image(
-            reproduced_background,
-            foreground_layer,
-            calibration.t_prime,
-            calibration.r_prime,
-            calibration.r_prime_inv,
-            calibration.gamma_bg,
-            calibration.gamma_fg,
-        )
-    )
-    singleplane_display = singleplane.transpose(
-        Image.Transpose.FLIP_LEFT_RIGHT
-    )
-    base_metadata.update({
-        "Disparity_Px": disparity_px,
-        "SinglePlane_OutOfGamut_Ratio": out_of_gamut_ratio,
-    })
-    return PreparedImageStimulus(
-        window1_both=None,
-        window2_foreground_only=foreground_display,
-        window2_both=singleplane_display,
-        metadata=base_metadata,
-    )
+    if not 0.0 <= config.binocular_fusion_dominant_weight <= 1.0:
+        raise ValueError("binocular_fusion_dominant_weight must be in [0, 1]")
+    config.result_root.mkdir(parents=True, exist_ok=True)
+    config.participant_data_dir.mkdir(parents=True, exist_ok=True)
+    config.selected_pairs_root.mkdir(parents=True, exist_ok=True)
+    return config
