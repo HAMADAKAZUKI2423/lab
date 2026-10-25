@@ -69,11 +69,11 @@ DTD_IMAGE_DIR = (
 )
 SUPPORTED_EXTENSIONS = {".png", ".jpg", ".jpeg", ".bmp", ".tif", ".tiff"}
 LUMINANCE_CLASS_COUNT = 5
-TEXTURE_CLASS_COUNT = 10
+TEXTURE_CLASS_COUNT = 7
 LAPLACIAN_LEVELS = 3
 KMEANS_RANDOM_STATE = 42
 GAUSSIAN_TRUNCATE = 4.0
-BACKGROUND_CLUSTER_COUNT = 10
+BACKGROUND_CLUSTER_COUNT = 7
 MIN_BACKGROUND_RANK_GAP = 3
 LOW_BACKGROUNDS_PER_CLASS = 5
 LOW_BACKGROUND_RANDOM_SEED = 42
@@ -189,7 +189,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--image-dir", type=Path, action="append", dest="image_dirs",
         help=("任意の入力画像ルート。複数回指定できます。指定した場合は、その"
-              "ディレクトリ群を前景・背景とも全件使用します。既定入力は前景のみDTD各カテゴリ10枚です"),
+              "ディレクトリ群を前景・背景とも全件使用します。既定入力は前景のみDTD各カテゴリ7枚です"),
     )
     parser.add_argument(
         "--selection-pool-size", type=int, default=200,
@@ -209,8 +209,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument('--no-model-difference', action='store_true',
                         help='局所差＋平均差の総合指標をhigh/low順位付けに使わず固定seedで選ぶ')
     args = parser.parse_args(argv)
-    if args.background_clusters != 10:
-        parser.error('low背景は10クラス各5枚（計50枚）に固定されています')
+    if args.background_clusters != 7:
+        parser.error('low背景は7クラス各5枚（計35枚）に固定されています')
     if not 1 <= args.min_background_rank_gap < args.background_clusters:
         parser.error('背景の順位差は1以上、背景クラスタ数未満にしてください')
     if not args.no_defocus and args.pupil_diameter_mm is None:
@@ -323,36 +323,38 @@ def sample_dtd_images_by_category(directory: Path) -> tuple[list[Path], dict[str
 
 
 def collect_image_candidate_paths(image_dirs, *, use_default_datasets, background_only):
-    """既定入力は前景・背景ともMcGill全件＋DTD各カテゴリ10枚。"""
+    """既定入力：前景はMcGill全件＋DTD各カテゴリ10枚、背景は両データセット全件。"""
     def unique_sorted(paths):
         return sorted({path.resolve() for path in paths}, key=lambda path: str(path).casefold())
     sampled, category_counts = [], {}
     if use_default_datasets:
         mcgill_paths = discover_images_recursive(image_dirs[0])
         dtd_paths = discover_images_recursive(image_dirs[1])
-        sampled, category_counts = sample_dtd_images_by_category(image_dirs[1])
-        common = unique_sorted(mcgill_paths + sampled)
-        background_paths = common
-        foreground_paths = [] if background_only else common.copy()
+        background_paths = unique_sorted(mcgill_paths + dtd_paths)
+        if background_only:
+            foreground_paths = []
+        else:
+            sampled, category_counts = sample_dtd_images_by_category(image_dirs[1])
+            foreground_paths = unique_sorted(mcgill_paths + sampled)
     else:
         mcgill_paths, dtd_paths = [], []
         background_paths = unique_sorted([path for directory in image_dirs
                                           for path in discover_images_recursive(directory)])
         foreground_paths = [] if background_only else background_paths.copy()
-    sampling_applied = use_default_datasets
+    sampling_applied = use_default_datasets and not background_only
     info = {
         'dataset_image_counts': {'foreground_pool': len(foreground_paths),
             'background_pool': len(background_paths), 'mcgill_all': len(mcgill_paths),
             'dtd_all': len(dtd_paths), 'dtd_sampled': len(sampled)},
         'dtd_sampling_applied': sampling_applied,
-        'dtd_sampling_scope': 'foreground_and_background' if sampling_applied else 'none',
+        'dtd_sampling_scope': 'foreground_only' if sampling_applied else 'none',
         'dtd_samples_per_category': FOREGROUND_DTD_SAMPLES_PER_CATEGORY if sampling_applied else None,
         'dtd_sampling_seed': FOREGROUND_DTD_SAMPLING_SEED if sampling_applied else None,
         'dtd_category_counts_before_sampling': category_counts,
         'dtd_sample_paths': [str(path.resolve()) for path in sampled],
         'dtd_foreground_sample_paths': [str(path.resolve()) for path in sampled],
         'foreground_processing_performed': not background_only,
-        'background_dtd_sampling_applied': sampling_applied,
+        'background_dtd_sampling_applied': False,
         'luminance_classification_scope': 'diagnostic_only_no_exclusion',
     }
     return foreground_paths, background_paths, info
@@ -897,7 +899,7 @@ def classify_background_luminance(paths, settings, *, mean_luminances=None):
 
 
 def background_frequency_features(bgr, calibration, levels):
-    """校正線形Yの各帯域MADをL1正規化。強度ではなく周波数の構成比。"""
+    """校正線形Yの帯域MAD構成比に、左右眼像それぞれの平均Yを追加。"""
     linear = apply_gamma(bgr[..., ::-1], calibration.gamma_bg)
     gray = linear @ np.asarray(calibration.t_prime)[1, :]
     if not np.isfinite(gray).all() or np.min(gray) < -1e-9:
@@ -916,7 +918,7 @@ def background_frequency_features(bgr, calibration, levels):
     values = np.asarray(features, dtype=np.float64)
     if values.sum() <= 1e-10:
         return None  # 一様画像の周波数傾向は定義しない。
-    return values / values.sum()
+    return np.r_[values / values.sum(), float(np.mean(gray))]
 
 
 def fit_background_frequency_classes(features, settings):
@@ -925,13 +927,17 @@ def fit_background_frequency_classes(features, settings):
     k = settings.background_cluster_count
     if len(x) < k or len(np.unique(x, axis=0)) < k:
         raise ValueError(f'背景左右像を{k}個の異なるクラスタへ分けられません。valid eye views={len(x)}')
+    from sklearn.preprocessing import StandardScaler
+    # 左右眼共通の標準化＋KMeans。平均Yも各帯域と同じ1次元として扱う。
+    scaler = StandardScaler()
+    scaled = scaler.fit_transform(x)
     model = KMeans(n_clusters=k, random_state=settings.kmeans_random_state, n_init=10)
-    labels = model.fit_predict(x)
+    labels = model.fit_predict(scaled)
     if len(np.unique(labels)) != k:
         raise ValueError('背景クラスタ数が指定数に達しませんでした')
-    centers = model.cluster_centers_
-    # 特徴量順は高周波→低周波→残差。Fは実測cpdではなく相対指標。
-    frequency = centers @ np.arange(settings.laplacian_levels, -1, -1, dtype=float)
+    centers = scaler.inverse_transform(model.cluster_centers_)
+    # 最後の平均Yは所属判定に使用。順位差の意味は従来どおり周波数に保つ。
+    frequency = centers[:, :-1] @ np.arange(settings.laplacian_levels, -1, -1, dtype=float)
     order = np.argsort(frequency, kind='stable')
     if np.any(np.diff(frequency[order]) <= 1e-9):
         raise ValueError('周波数指標が同じ背景クラスタがあり、意味のある順位を定義できません')
@@ -940,7 +946,7 @@ def fit_background_frequency_classes(features, settings):
 
 
 def classify_background_eyes(items, settings, calibration):
-    """輝度通過背景のみ逐次処理し、左右2N特徴を同じKMeansへ投入する。"""
+    """全入力候補の左右像から周波数構成比＋平均Yを抽出し、共通KMeansへ投入。"""
     records, features, owners = [], [], []
     for index, item in enumerate(items, start=1):
         record = BackgroundEyeClass(str(item.path), item.luminance_class, item.mean_relative_luminance)
@@ -980,8 +986,8 @@ def assign_background_pools(records, settings):
 
     lowは各クラス最大5枚を抽出し、不足クラスは実枚数全件を使用する。
     """
-    if settings.background_cluster_count != 10:
-        raise ValueError('low用背景には共通10クラスが必要です')
+    if settings.background_cluster_count != 7:
+        raise ValueError('low用背景には共通7クラスが必要です')
     if settings.low_backgrounds_per_class != 5:
         raise ValueError('low用背景は各クラス5枚に固定されています')
     by_class = {rank: [] for rank in range(1, settings.background_cluster_count + 1)}
@@ -1061,9 +1067,14 @@ def write_background_reports(output, records, centers, frequency, ranks, setting
     details = {'background_cluster_count': settings.background_cluster_count,
         'min_background_rank_gap': settings.min_background_rank_gap,
         'laplacian_levels': settings.laplacian_levels, 'random_state': settings.kmeans_random_state,
-        'n_init': 10, 'feature': 'calibrated_linear_Y_band_MAD_L1_normalized',
+        'n_init': 10, 'feature': 'calibrated_linear_Y_band_MAD_L1_normalized_plus_mean_Y',
+        'feature_scaling': 'StandardScaler_each_dimension_fit_on_both_eyes',
+        'feature_order': 'high_to_low_band_MAD_ratios_then_residual_ratio_then_mean_Y',
+        'cluster_centers_units': 'original_features_inverse_transformed',
+        'foreground_clustering': 'band_MAD_only_no_luminance_feature',
+        'luminance_prefilter': False,
         'frequency_weights': list(range(settings.laplacian_levels, -1, -1)),
-        'frequency_index_is_cpd': False, 'fit_scope': 'both_eyes_of_bright_backgrounds',
+        'frequency_index_is_cpd': False, 'fit_scope': 'both_eyes_of_all_input_background_candidates',
         'flat_pair_policy': 'exclude_pair_from_fit_and_selection',
         'centers': centers.tolist(), 'label_to_rank': ranks,
         'run_settings': asdict(settings), 'source_count': len(records),
@@ -1117,6 +1128,46 @@ def write_background_reports(output, records, centers, frequency, ranks, setting
             comparisons.append(tile)
         if comparisons:
             cv2.imwrite(str(output / f'background_{group}_examples_first20.png'), np.concatenate(comparisons,axis=0))
+
+    # モデル評価・最終ペア選定前にhigh背景候補全件を1枚へまとめる。
+    # 各タイルは左=右眼像、右=左眼像（選別時と同じdefocus・視差）。
+    from PIL import Image, ImageDraw
+    high_records = sorted((r for r in records if r.high_candidate),
+                          key=lambda r: (r.right_rank, -r.rank_gap, r.background_path))
+    columns = min(8, max(1, len(high_records)))
+    tile_width, tile_height = 256, 152
+    rows = max(1, math.ceil(len(high_records) / columns))
+    montage = Image.new('RGB', (columns * tile_width, rows * tile_height), 'black')
+    draw = ImageDraw.Draw(montage)
+    index_rows = []
+    if not high_records:
+        draw.text((4, 4), 'No high background candidates', fill='white')
+    for index, record in enumerate(high_records, start=1):
+        path = Path(record.background_path)
+        if source_hash(path) != record.source_sha256:
+            raise RuntimeError('high一覧保存前に背景が変更されました')
+        views = prepare_scoring_backgrounds(
+            prepare_background_panorama(path, settings.image_size_px,
+                                        settings.background_width_ratio),
+            calibration, settings)
+        x = ((index - 1) % columns) * tile_width
+        y = ((index - 1) // columns) * tile_height
+        draw.text((x + 4, y + 4),
+                  f'#{index} R={record.right_rank} L={record.left_rank} gap={record.rank_gap}',
+                  fill='white')
+        for eye_index, view in enumerate(views):
+            pixels = np.clip(cv2.resize(view, (128, 128)) * 255, 0, 255).astype(np.uint8)
+            montage.paste(Image.fromarray(pixels[..., ::-1]), (x + 128 * eye_index, y + 24))
+        index_rows.append({'index': index, 'background_path': record.background_path,
+                           'right_rank': record.right_rank, 'left_rank': record.left_rank,
+                           'rank_gap': record.rank_gap})
+    montage.save(output / 'background_high_candidates_all.png')
+    with (output / 'background_high_candidates_all_index.csv').open(
+            'w', newline='', encoding='utf-8-sig') as stream:
+        writer = csv.DictWriter(stream, fieldnames=[
+            'index', 'background_path', 'right_rank', 'left_rank', 'rank_gap'])
+        writer.writeheader()
+        writer.writerows(index_rows)
 
 
 def main() -> None:
