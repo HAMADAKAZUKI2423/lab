@@ -296,6 +296,68 @@ def save_figures(frame, paired, output):
     print(f'Saved 6 figures (no CI, no tests): {output}')
 
 
+def relation_trials(target):
+    """一致回答のみ。反復は後段で画像組単位に平均する。"""
+    raw = pd.read_csv(target/'image_matching.csv', dtype=str, encoding='utf-8-sig')
+    if raw['ID'].nunique() != 1:
+        raise ValueError('Analyze one participant/session at a time')
+    raw = raw.loc[raw['Match_Status'].eq('matched')].copy()
+    alpha = raw['Condition'].eq('SP_ALPHA_BLEND')
+    raw['Value'] = pd.to_numeric(raw['Matched_Gain'].where(~alpha, raw['Matched_Alpha']), errors='coerce')
+    if not np.isfinite(raw['Value']).all() or not raw['Value'].between(0, 1).all():
+        raise ValueError('Invalid matched gain/alpha')
+    return raw
+
+
+def relation_means(target):
+    return relation_trials(target).groupby(
+        ['ID', 'Dominance', 'Pair_ID', 'Condition'], as_index=False)['Value'].mean()
+
+
+def save_relation_analysis(target):
+    from scipy.stats import pearsonr
+    frame = relation_means(target)
+    table = target/'matching_analysis'/'relations'; table.mkdir(parents=True, exist_ok=True)
+    output = FIGURE_ROOT/target.name/'matching_analysis'/'relations'
+    output.mkdir(parents=True, exist_ok=True)
+    wide = frame.pivot(index=['ID','Dominance','Pair_ID'], columns='Condition', values='Value')
+    fig, ax = plt.subplots(figsize=(6, 6)); points=[]; statistics=[]
+    dominance = frame['Dominance'].str.strip().str.capitalize().unique()
+    if len(dominance) != 1 or dominance[0] not in ('Left','Right'):
+        raise ValueError('One consistent Left/Right dominance is required')
+    for eye, color in [('Right','tab:blue'), ('Left','tab:orange')]:
+        dp = 'DP_MONO_DOM' if eye == dominance[0] else 'DP_MONO_NONDOM'
+        sp = 'SP_REPRO_RIGHT_EYE' if eye == 'Right' else 'SP_REPRO_LEFT_EYE'
+        part = wide.reindex(columns=[sp,dp]).dropna().reset_index()
+        part = part.rename(columns={sp:'SP_Gain', dp:'DP_Gain'})
+        part['Eye']=eye; part['SP_Condition']=sp; part['DP_Condition']=dp
+        points.append(part)
+        ax.scatter(part['SP_Gain'], part['DP_Gain'], color=color, label=f'{eye} (n={len(part)})')
+        r=p=np.nan; status='insufficient_pairs'
+        if len(part)>=3:
+            status='constant_values'
+            if part['SP_Gain'].nunique()>1 and part['DP_Gain'].nunique()>1:
+                r,p=pearsonr(part['SP_Gain'],part['DP_Gain']); status='ok'
+        statistics.append(dict(Eye=eye, SP_Condition=sp, DP_Condition=dp,
+                               N=len(part), Pearson_r=r, P_value=p, Status=status))
+    ax.plot([0,1],[0,1], '--', color='gray', linewidth=1)
+    ax.set(xlabel='SP reproduced-eye gain', ylabel='DP same-eye gain', xlim=(0,1), ylim=(0,1))
+    ax.legend(); fig.tight_layout(); fig.savefig(output/'sp_dp_same_eye.png', dpi=300); plt.close(fig)
+    pd.concat(points,ignore_index=True).to_csv(table/'sp_dp_same_eye_points.csv',index=False,encoding='utf-8-sig')
+    pd.DataFrame(statistics).to_csv(table/'sp_dp_same_eye_correlations.csv',index=False,encoding='utf-8-sig')
+    alpha = frame.loc[frame['Condition'].eq('SP_ALPHA_BLEND'),['ID','Pair_ID','Value']].rename(columns={'Value':'Alpha'})
+    gains = frame.loc[~frame['Condition'].eq('SP_ALPHA_BLEND')]
+    joined = gains.merge(alpha,on=['ID','Pair_ID'],validate='many_to_one')
+    joined.to_csv(table/'alpha_vs_gain_points.csv',index=False,encoding='utf-8-sig')
+    fig, ax = plt.subplots(figsize=(7,5))
+    for condition, part in joined.groupby('Condition'):
+        ax.scatter(part['Alpha'],part['Value'],label=CONDITIONS.get(condition,condition))
+    ax.set(xlabel='Matched alpha (SP alpha blend)',ylabel='Matched gain',xlim=(0,1),ylim=(0,1))
+    if len(joined): ax.legend(fontsize=8)
+    else: ax.text(.5,.5,'No corresponding alpha/gain data',ha='center')
+    fig.tight_layout(); fig.savefig(output/'alpha_vs_gain.png',dpi=300); plt.close(fig)
+
+
 def save_alpha_analysis(target):
     frame,metadata=load_results(target,control='alpha')
     output=FIGURE_ROOT/target.name/'matching_analysis'/'alpha'
@@ -319,6 +381,7 @@ def main():
     parser.add_argument('target_dir', nargs='?', help='Session directory or image_matching.csv')
     args = parser.parse_args()
     target = resolve_target(args.target_dir)
+    save_relation_analysis(target)
     columns = pd.read_csv(target / 'image_matching.csv', encoding='utf-8-sig', nrows=0).columns
     conditions=pd.read_csv(target/'image_matching.csv',encoding='utf-8-sig',usecols=['Condition'])['Condition']
     if conditions.eq('SP_ALPHA_BLEND').any(): save_alpha_analysis(target)
