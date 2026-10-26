@@ -86,8 +86,8 @@ CONDITION_ENABLED: dict[ConditionId, bool] = {
     "SP_ALPHA_BLEND":     True,  # matchingのみ：α値を調整
     "SP_NO_DEFOCUS":      False,  # SP：defocusなし
     "SP_DEFOCUS_SIMPLE":  False,   # SP：defocus＋左右眼像融合
-    "SP_REPRO_LEFT_EYE":  False, # SP：左眼像を再現、両眼観察
-    "SP_REPRO_RIGHT_EYE": False, # SP：右眼像を再現、両眼観察
+    "SP_REPRO_LEFT_EYE":  True, # SP：左眼像を再現、両眼観察
+    "SP_REPRO_RIGHT_EYE": True, # SP：右眼像を再現、両眼観察
 }
 
 
