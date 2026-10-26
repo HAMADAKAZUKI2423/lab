@@ -95,7 +95,7 @@ class ImageExperimentApp(ExperimentBaseUI):
             return configured.resolve()
         chosen = filedialog.askdirectory(
             parent=self.root,
-            title="high10.csvとlow10.csvのある選定結果フォルダ",
+            title="selected_pairs.csv または high5.csv・low5.csv のある選定結果フォルダ",
             initialdir=str(self.session_config.selected_pairs_root),
         )
         if not chosen:

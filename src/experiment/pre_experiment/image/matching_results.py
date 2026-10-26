@@ -73,7 +73,9 @@ def trial_base(app,trial):
     row.update({'Control_Kind':'alpha' if alpha else 'gain','Repetition':trial.repetition,
       'Initial_Alpha':initial if alpha else '',
       'Task_Mode':'matching','Initial_Gain':'' if alpha else initial,
-      'Reference_Observed_Eye':'Right',
+      'Reference_Observed_Eye':(
+          'Left' if app.participant_dominance.get().strip().capitalize() == 'Right' else 'Right'
+      ) if trial.condition_id == 'DP_MONO_NONDOM' else 'Right',
       'Reference_Center_Deg':app.session_config.reference_center_deg,
       'Test_Center_Deg':app.session_config.test_center_deg,
       'Reference_Gain':app.session_config.reference_gain})

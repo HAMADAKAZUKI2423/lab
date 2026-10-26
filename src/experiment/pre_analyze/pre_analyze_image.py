@@ -98,8 +98,8 @@ def load_results(target, direction='all', control='gain'):
     if metadata['Pair_ID'].duplicated().any():
         raise ValueError('Pair metadata differs between conditions')
     pair_count=len(metadata); per_group=pair_count//2
-    if pair_count not in {18,20} or set(metadata['Difference_Group']) != {'high','low'}:
-        raise ValueError('Exactly high/low 9+9 or legacy 10+10 pairs are required')
+    if pair_count not in {10,18,20} or set(metadata['Difference_Group']) != {'high','low'}:
+        raise ValueError('high/low 5+5 pairs required; legacy 9+9 and 10+10 also supported')
     for _, group in metadata.groupby('Difference_Group'):
         if len(group)!=per_group or set(group['Group_Rank'])!=set(range(1,per_group+1)):
             raise ValueError('Invalid group ranks')

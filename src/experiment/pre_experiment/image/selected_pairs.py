@@ -1,4 +1,4 @@
-"""selectorの新18組形式（旧high10/low10も可）を検証して読み込む。"""
+"""selectorのhigh5/low5計10組を読み込む。旧18/20組も対応。"""
 from dataclasses import dataclass
 from pathlib import Path
 import csv
@@ -25,14 +25,27 @@ def load_selected_pairs(selection_dir: Path)->list[SelectedPair]:
     selection_dir=selection_dir.expanduser().resolve()
     if not selection_dir.is_dir(): raise FileNotFoundError(selection_dir)
     combined=selection_dir/'selected_pairs.csv'; pairs=[]
-    sources=[(combined,None)] if combined.is_file() else [(selection_dir/f'{g}10.csv',g) for g in ('high','low')]
+    if combined.is_file():
+        sources=[(combined,None)]
+    else:
+        suffix=next((n for n in (5,9,10) if all(
+            (selection_dir/f'{g}{n}.csv').is_file() for g in ('high','low'))), None)
+        if suffix is None:
+            raise FileNotFoundError('selected_pairs.csv または high5.csv / low5.csv が必要です')
+        sources=[(selection_dir/f'{g}{suffix}.csv',g) for g in ('high','low')]
+    raw_rows=[]
+    for csv_path,expected in sources:
+        with csv_path.open(newline='',encoding='utf-8-sig') as stream:
+            raw_rows.extend(csv.DictReader(stream))
+    counts={g:sum(r['difference_group'].strip().lower()==g for r in raw_rows)
+            for g in ('high','low')}
     for csv_path,expected in sources:
         if not csv_path.is_file(): raise FileNotFoundError(csv_path)
         with csv_path.open(newline='',encoding='utf-8-sig') as f: rows=list(csv.DictReader(f))
         for row in rows:
             group=row['difference_group'].strip().lower()
             if expected and group!=expected: raise ValueError(f'{csv_path.name}: invalid group')
-            group_rank=int(row['group_rank']); suffix=9 if combined.is_file() else 10
+            group_rank=int(row['group_rank']); suffix=counts.get(group,0)
             pair_dir=selection_dir/f'{group}{suffix}'/f'rank_{group_rank:02d}'
             level=row.get('visibility_level','').strip().lower()
             pairs.append(SelectedPair(
@@ -49,11 +62,22 @@ def load_selected_pairs(selection_dir: Path)->list[SelectedPair]:
     return pairs
 
 def _validate_selected_pairs(pairs):
-    new=any(p.visibility_level for p in pairs); expected=18 if new else 20; per_group=9 if new else 10
-    if len(pairs)!=expected or len({p.pair_id for p in pairs})!=expected: raise ValueError(f'Exactly {expected} unique pairs required')
+    expected=len(pairs)
+    if expected not in {10,18,20} or len({p.pair_id for p in pairs})!=expected:
+        raise ValueError('10 unique pairs (high5/low5) required; legacy 18/20 also supported')
+    per_group=expected//2
+    if {p.difference_group for p in pairs}!={'high','low'}:
+        raise ValueError('Both high and low groups are required')
     for group in ('high','low'):
         rows=[p for p in pairs if p.difference_group==group]
-        if {p.group_rank for p in rows}!=set(range(1,per_group+1)): raise ValueError(f'{group}: invalid ranks')
-        if new and {level:sum(p.visibility_level==level for p in rows) for level in ('low','mid','high')}!={'low':3,'mid':3,'high':3}: raise ValueError(f'{group}: each visibility level requires 3 pairs')
+        if len(rows)!=per_group or {p.group_rank for p in rows}!=set(range(1,per_group+1)):
+            raise ValueError(f'{group}: invalid pair count/ranks')
+        if expected==10 and any(p.visibility_level not in {'','mid'} for p in rows):
+            raise ValueError(f'{group}: current 5-pair format requires mid visibility')
+        if expected==18 and {level:sum(p.visibility_level==level for p in rows) for level in ('low','mid','high')}!={'low':3,'mid':3,'high':3}:
+            raise ValueError(f'{group}: legacy 18-pair format requires 3 pairs per visibility level')
     fg={str(p.foreground_path).casefold() for p in pairs}; bg={str(p.background_path).casefold() for p in pairs}
-    if len(fg)!=expected or len(bg)!=expected or fg&bg: raise ValueError('Source images must be unique across roles')
+    if len(fg)!=expected or len(bg)!=expected:
+        raise ValueError('Foreground and background images must each be unique')
+    if any(p.foreground_path==p.background_path for p in pairs):
+        raise ValueError('The same image cannot be used for both roles in one pair')

@@ -31,7 +31,7 @@ class ImageTrial:
     within_block_order: int
     condition_id: str
     pair: SelectedPair
-    repetition: int = 2
+    repetition: int = 1
 
 
 @dataclass
@@ -90,7 +90,25 @@ def condition_order_for_participant(
 
 
 def _stratified_pair_order(pairs: list[SelectedPair], rng: random.Random) -> list[SelectedPair]:
-    """新形式はhigh/low×視認性3層を均等化。旧20組も従来どおり均衡化。"""
+    """現行10組はhigh/low各5組を均衡化。旧18/20組の処理も維持。"""
+    if len(pairs) == 10:
+        high = [p for p in pairs if p.difference_group == 'high']
+        low = [p for p in pairs if p.difference_group == 'low']
+        if len(high) != 5 or len(low) != 5:
+            raise ValueError('Current format requires high 5 and low 5')
+        if len({p.pair_id for p in pairs}) != 10:
+            raise ValueError('Current format requires 10 unique pairs')
+        if any(p.visibility_level not in ('', 'mid') for p in pairs):
+            raise ValueError('Current format requires mid visibility')
+        rng.shuffle(high)
+        rng.shuffle(low)
+        order = []
+        # 2試行ごとにhigh/lowを1組ずつ。各組は1巡につき必ず1回。
+        for high_pair, low_pair in zip(high, low):
+            block = [high_pair, low_pair]
+            rng.shuffle(block)
+            order.extend(block)
+        return order
     if any(pair.visibility_level for pair in pairs):
         groups={(difference,level):[p for p in pairs if p.difference_group==difference and p.visibility_level==level]
                 for difference in ('high','low') for level in ('low','mid','high')}

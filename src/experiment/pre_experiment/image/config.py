@@ -41,8 +41,8 @@ class ImageSessionConfig:
     visual_angle_deg: float = IMAGE_VISUAL_ANGLE_DEG
     background_width_factor: float = 2.0
     background_width_scale: float = 1.2
-    trials_per_condition: int = 18
-    repetitions_per_pair: int = 1  # matching：全画像組を各条件でn回（正の整数）
+    trials_per_condition: int = 10
+    repetitions_per_pair: int = 2  # matching：全画像組を各条件でn回（正の整数）
     trials_before_break: int = 10
     time_foreground_only_ms: int = 500
     time_isi_ms: int = 1000
@@ -185,8 +185,8 @@ def create_image_config(
     )
     if not 0 < config.distance_fg_cm < config.distance_bg_cm:
         raise ValueError("DISTANCE_FG must be positive and smaller than DISTANCE_BG")
-    if config.trials_per_condition not in {18, 20}:
-        raise ValueError("Image experiment requires 18 new-format or 20 legacy pairs")
+    if config.trials_per_condition not in {10, 18, 20}:
+        raise ValueError("Image experiment requires 10 pairs (high5/low5); legacy 18/20 also supported")
     if config.background_width_factor <= 0:
         raise ValueError("background_width_factor must be positive")
     if not config.conditions:

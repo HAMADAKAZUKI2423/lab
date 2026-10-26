@@ -150,11 +150,21 @@ class ImageMatchingApp(ImageExperimentApp):
         if self.viewports()!=self.frozen_viewports: raise ValueError('Display window moved/resized. Restart calibration; positions were not silently updated.')
         apply_trial_calibration(self,trial.condition_id)
         layout=self.layout_for_current_eye();fg,bg=self.viewports()
+        if trial.condition_id == 'DP_MONO_NONDOM':
+            # Reference・観察眼はnon-domのまま、test背景だけDP_BINOCULARと同じdom配置。
+            dominant = self.participant_dominance.get().strip().capitalize()
+            dom_calibration = self.calib_results[dominant]
+            dom_layout = make_layout(self.session_config, fg[:2], bg[:2],
+                int(dom_calibration['offset_x']), int(dom_calibration['offset_y']))
+            layout['background'] = dom_layout['background']
         validate_layout(layout,fg[:2],bg[:2],get_condition(trial.condition_id).plane_mode=='single')
         right=self.calib_results['Right'];left=self.calib_results['Left']
         prepared=prepare_matching_stimulus(trial,self.session_config,layout=layout,
             calibration=self.defocus_display_calibration,dominant_eye=self.participant_dominance.get(),
             left_pupil_mm=float(left['pd_mean']),right_pupil_mm=float(right['pd_mean']),ipd_mm=float(self.participant_ipd.get()))
+        if trial.condition_id == 'DP_MONO_NONDOM':
+            # 右眼基準のReference画像内容は変更せず、実際の観察眼を記録する。
+            prepared.metadata['Reference_Observed_Eye'] = self.current_alignment_eye
         return layout,prepared
 
     def _preflight_next(self):
