@@ -338,8 +338,20 @@ def save_relation_analysis(target):
             status='constant_values'
             if part['SP_Gain'].nunique()>1 and part['DP_Gain'].nunique()>1:
                 r,p=pearsonr(part['SP_Gain'],part['DP_Gain']); status='ok'
+        # 回帰直線を当てはめず、固定したy=x（予測DP=SP）に対する決定係数。
+        # R2 = 1 - sum((DP-SP)**2) / sum((DP-mean(DP))**2)。負値もそのまま保存。
+        identity_r2=np.nan; identity_status='insufficient_pairs'
+        if len(part)>=2:
+            x=part['SP_Gain'].to_numpy(dtype=float)
+            y=part['DP_Gain'].to_numpy(dtype=float)
+            sst=float(np.sum((y-y.mean())**2))
+            identity_status='constant_DP'
+            if sst>0:
+                identity_r2=1.0-float(np.sum((y-x)**2))/sst
+                identity_status='ok'
         statistics.append(dict(Eye=eye, SP_Condition=sp, DP_Condition=dp,
-                               N=len(part), Pearson_r=r, P_value=p, Status=status))
+                               N=len(part), Pearson_r=r, P_value=p, Status=status,
+                               R2_y_equals_x=identity_r2, R2_Status=identity_status))
     ax.plot([0,1],[0,1], '--', color='gray', linewidth=1)
     ax.set(xlabel='SP reproduced-eye gain', ylabel='DP same-eye gain', xlim=(0,1), ylim=(0,1))
     ax.legend(); fig.tight_layout(); fig.savefig(output/'sp_dp_same_eye.png', dpi=300); plt.close(fig)
