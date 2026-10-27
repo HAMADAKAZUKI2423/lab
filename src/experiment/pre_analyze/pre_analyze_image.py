@@ -361,9 +361,19 @@ def save_relation_analysis(target):
     gains = frame.loc[~frame['Condition'].eq('SP_ALPHA_BLEND')]
     joined = gains.merge(alpha,on=['ID','Pair_ID'],validate='many_to_one')
     joined.to_csv(table/'alpha_vs_gain_points.csv',index=False,encoding='utf-8-sig')
+    alpha_statistics=[]
     fig, ax = plt.subplots(figsize=(7,5))
     for condition, part in joined.groupby('Condition'):
         ax.scatter(part['Alpha'],part['Value'],label=CONDITIONS.get(condition,condition))
+        r=p=np.nan; status='insufficient_pairs'
+        if len(part)>=3:
+            status='constant_values'
+            if part['Alpha'].nunique()>1 and part['Value'].nunique()>1:
+                r,p=pearsonr(part['Alpha'],part['Value']); status='ok'
+        alpha_statistics.append(dict(
+            Condition=condition, N=len(part), Pearson_r=r, P_value=p, Status=status))
+    pd.DataFrame(alpha_statistics).to_csv(
+        table/'alpha_vs_gain_correlations.csv',index=False,encoding='utf-8-sig')
     ax.set(xlabel='Matched alpha (SP alpha blend)',ylabel='Matched gain',xlim=(0,1),ylim=(0,1))
     if len(joined): ax.legend(fontsize=8)
     else: ax.text(.5,.5,'No corresponding alpha/gain data',ha='center')
