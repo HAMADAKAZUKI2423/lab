@@ -92,7 +92,7 @@ class MatchingStimulus:
 def prepare_matching_stimulus(trial,config,*,layout,calibration,dominant_eye,left_pupil_mm,right_pupil_mm,ipd_mm):
     validate_calibration(calibration)
     spec=get_condition(trial.condition_id)
-    source,physical_bg,sp_bg=_prepare_sources(trial.pair,config)
+    source,physical_bg,sp_bg=_prepare_sources(trial.pair,config,trial.mirrored,ipd_mm)
     source=source.resize(layout['test'].size,RESAMPLE)
     corrected=_color_correct_foreground(source,calibration)
     fg=decode(corrected,calibration.gamma_fg)
@@ -106,7 +106,9 @@ def prepare_matching_stimulus(trial,config,*,layout,calibration,dominant_eye,lef
     # Referenceは全条件でSP_NO_DEFOCUS：右眼基準・ぼかしなしの光学加算。
     # 前景ゲインは従来同様0.5固定。testの操作・観察眼には依存しない。
     rw,rh=layout['reference_singleplane'].size
-    reference_background=sp_bg.resize((rw,rh),RESAMPLE)
+    # Referenceは反転時も右眼基準SP：視差シフトなし（元の右眼領域の鏡像）を使う。
+    ref_sp_bg=_prepare_sources(trial.pair,config,trial.mirrored,ipd_mm,shift_background=False)[2] if trial.mirrored else sp_bg
+    reference_background=ref_sp_bg.resize((rw,rh),RESAMPLE)
     bg_linear=decode(reference_background,calibration.gamma_bg)
     reference_bg_xyz=bg_linear @ calibration.t_prime.T
     ref_fg_linear=decode(ref,calibration.gamma_fg)

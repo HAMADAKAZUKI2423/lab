@@ -32,6 +32,7 @@ class ImageTrial:
     condition_id: str
     pair: SelectedPair
     repetition: int = 1
+    mirrored: bool = False  # 前景・背景をともに左右反転
 
 
 @dataclass
@@ -161,6 +162,9 @@ def _read_rgb(path: Path) -> Image.Image:
 def _prepare_sources(
     pair: SelectedPair,
     config: ImageSessionConfig,
+    mirrored: bool = False,
+    ipd_mm: float = 60.0,
+    shift_background: bool = True,
 ) -> tuple[Image.Image, Image.Image, Image.Image]:
     foreground_size = geometry.get_size_for_visual_angle(
         config.distance_fg_cm, config.visual_angle_deg
@@ -184,7 +188,25 @@ def _prepare_sources(
     background_square = _read_rgb(pair.background_path).resize(
         (512, 512), RESAMPLE
     )
+    if mirrored:
+        # 前景・背景を同時に反転し、画像固有の左右眼像を入れ替える。
+        foreground = foreground.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
+        background_square = background_square.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
     background_strip = background_square.crop((0, 128, 512, 384))
+    if mirrored and shift_background:
+        # 右眼基準視差の中点で反転する：反転像を視差分右へずらし、
+        # 右眼像=元の左眼像の鏡像、左眼像=元の右眼像の鏡像にする（SP/DP共通）。
+        ipd_cm = ipd_mm / 10.0
+        disparity_deg = float(np.degrees(
+            np.arctan2(ipd_cm, config.distance_fg_cm)
+            - np.arctan2(ipd_cm, config.distance_bg_cm)))
+        shift = round(background_strip.width * disparity_deg
+                      / config.background_visual_angle_width_deg)
+        values = np.asarray(background_strip)
+        if not 0 < shift < values.shape[1]:
+            raise ValueError(f'Invalid mirrored background shift: {shift}px')
+        background_strip = Image.fromarray(np.ascontiguousarray(np.pad(
+            values, ((0, 0), (shift, 0), (0, 0)), mode='reflect')[:, :values.shape[1]]))
     physical_background = background_strip.resize(
         (background_width, background_height), RESAMPLE
     )
@@ -271,7 +293,7 @@ def prepare_trial_stimulus(
         foreground_source,
         physical_background,
         singleplane_background,
-    ) = _prepare_sources(trial.pair, config)
+    ) = _prepare_sources(trial.pair, config, trial.mirrored, ipd_mm)
     corrected_foreground = _color_correct_foreground(
         foreground_source, calibration
     )

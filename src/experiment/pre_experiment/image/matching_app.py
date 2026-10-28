@@ -137,7 +137,9 @@ class ImageMatchingApp(ImageExperimentApp):
         self.participant_seed=participant_seed(self.session_config.random_seed,self.participant_id.get().strip())
         self.condition_order=condition_order_for_participant(self.session_config.conditions,self.participant_id.get(),self.session_config.random_seed)
         self.trial_list=build_matching_trials(self.selected_pairs,self.condition_order,random.Random(self.participant_seed),self.session_config.repetitions_per_pair)
-        if len(self.trial_list)!=self.session_config.expected_trial_count: raise RuntimeError('Trial count mismatch')
+        expected=len(self.condition_order)*len(self.selected_pairs)*self.session_config.repetitions_per_pair*2  # 原画像+左右反転
+        if len(self.trial_list)!=expected:
+            raise RuntimeError(f'Trial count mismatch: generated={len(self.trial_list)}, expected={expected}, config={self.session_config.expected_trial_count}')
         self.initial_gains=initial_gain_plan(self.trial_list,self.participant_seed)
         self.frozen_viewports=self.viewports();self.preflight_index=0
         self.canvas1.delete('all');self.canvas2.delete('all')

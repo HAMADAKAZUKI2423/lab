@@ -129,7 +129,8 @@ class ImageSessionConfig:
     @property
     def expected_trial_count(self) -> int:
         repeats = self.repetitions_per_pair if self.task_mode == "matching" else 1
-        return len(self.conditions) * self.trials_per_condition * repeats
+        # matchingは全画像組を原画像・左右反転の2通りで提示する。
+        return len(self.conditions) * self.trials_per_condition * repeats * (2 if self.task_mode == "matching" else 1)
 
     @property
     def background_visual_angle_width_deg(self) -> float:

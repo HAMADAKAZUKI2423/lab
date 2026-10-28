@@ -6,7 +6,7 @@ import csv, json, os, random
 import tempfile
 from .results import RESULT_FIELDS, _trial_metadata, _jsonable
 
-EXTRA_FIELDS=['Control_Kind','Repetition','Initial_Alpha','Final_Alpha','Matched_Alpha','Displayed_Alpha','Task_Mode','Reference_Observed_Eye','Alignment_Eye','Initial_Gain',
+EXTRA_FIELDS=['Control_Kind','Repetition','Mirrored','Initial_Alpha','Final_Alpha','Matched_Alpha','Displayed_Alpha','Task_Mode','Reference_Observed_Eye','Alignment_Eye','Initial_Gain',
  'Final_Gain','Matched_Gain','Original_FG_Y_cd_m2','Reference_Gain',
  'Reference_Target_Y_cd_m2','Reference_Quantized_Y_cd_m2',
  'Test_Target_FG_Y_cd_m2','Test_Quantized_FG_Y_cd_m2','Match_Status',
@@ -47,19 +47,23 @@ def atomic_json(path,value):
         if tmp.exists(): tmp.unlink()
 
 def build_matching_trials(pairs,condition_order,rng,repetitions):
+    """各条件・各反復で全画像組を原画像と左右反転で1回ずつ提示（反転順はランダム）。"""
     trials=[]
     for block_id,condition in enumerate(condition_order,1):
+        order=0
         for repetition in range(1,repetitions+1):
-            for trial in build_trials(pairs,(condition,),rng):
-                trials.append(replace(trial, trial_order=len(trials)+1, block_id=block_id,
-                    within_block_order=(repetition-1)*len(pairs)+trial.within_block_order,
-                    repetition=repetition))
+            flags=[False,True]; rng.shuffle(flags)
+            for mirrored in flags:
+                for trial in build_trials(pairs,(condition,),rng):
+                    order+=1
+                    trials.append(replace(trial, trial_order=len(trials)+1, block_id=block_id,
+                        within_block_order=order, repetition=repetition, mirrored=mirrored))
     return trials
 
 def initial_gain_plan(trials,seed):
     """試行順とは独立した乱数で、各条件・high/lowごとに両端を均衡化。"""
     rng=random.Random(seed ^ 0x45A771);groups={};result={}
-    for t in trials: groups.setdefault((t.condition_id,t.pair.difference_group),[]).append(t)
+    for t in trials: groups.setdefault((t.condition_id,t.pair.difference_group,t.mirrored),[]).append(t)
     for key,group in sorted(groups.items()):
         values=[0.]* (len(group)//2)+[1.]*(len(group)-len(group)//2);rng.shuffle(values)
         result.update({t.trial_order:v for t,v in zip(group,values)})
@@ -71,6 +75,7 @@ def trial_base(app,trial):
     alpha=trial.condition_id=='SP_ALPHA_BLEND'
     initial=app.initial_gains[trial.trial_order]
     row.update({'Control_Kind':'alpha' if alpha else 'gain','Repetition':trial.repetition,
+      'Mirrored':trial.mirrored,
       'Initial_Alpha':initial if alpha else '',
       'Task_Mode':'matching','Initial_Gain':'' if alpha else initial,
       'Reference_Observed_Eye':(
