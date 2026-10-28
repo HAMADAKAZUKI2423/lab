@@ -89,6 +89,8 @@ def load_results(target, direction='all', control='gain'):
         if not (frame['Repetition'].ge(1) & frame['Repetition'].mod(1).eq(0)).all():
             raise ValueError('Invalid repetition index')
         keys=keys+['Repetition']
+    if 'Mirrored' in frame:
+        keys=keys+['Mirrored']  # 反転試行は同一画像組として後段で平均する。
     if frame.duplicated(keys).any():
         raise ValueError('Duplicate Condition/Pair_ID')
     frame['Difference_Group'] = frame['Difference_Group'].str.lower()
@@ -113,6 +115,19 @@ def load_results(target, direction='all', control='gain'):
         raise ValueError('Matched_Gain must be finite and in [0,1] for matched trials')
     # 範囲外・判断不能は一致値として平均しない。Final_Gainへの代替もしない。
     frame.loc[~matched, 'Gain'] = np.nan
+    # 左右差解析用: 観察眼(SP再現は再現眼)を反転時に入れ替えた「画像内容の眼」。
+    dom = frame['Dominance'].iloc[0]; oth = 'Left' if dom == 'Right' else 'Right'
+    cond = frame['Condition']
+    eye = np.select([cond.eq('DP_MONO_DOM'), cond.eq('DP_MONO_NONDOM'), cond.str.endswith('_LEFT'), cond.str.endswith('_RIGHT')],
+                    [dom, oth, 'Left', 'Right'], '')
+    mirrored = (frame['Mirrored'].astype(str).str.strip().str.lower().eq('true') if 'Mirrored' in frame
+                else pd.Series(False, index=frame.index))
+    flip = {'Left': 'Right', 'Right': 'Left'}
+    frame['Content_Eye'] = [flip[e] if m and e else e for e, m in zip(eye, mirrored)]
+    eyed = frame.loc[frame['Content_Eye'].ne('')]
+    # 条件内で反復・反転を平均し、各内容眼で条件を等重みに平均。
+    content = (eyed.groupby(['Pair_ID', 'Condition', 'Content_Eye'])['Gain'].mean()
+               .groupby(['Pair_ID', 'Content_Eye']).mean().unstack())
     if 'Repetition' in frame:
         grouping=['ID','Condition','Pair_ID']
         if direction!='all': grouping+=['Matching_Direction']
@@ -135,22 +150,16 @@ def load_results(target, direction='all', control='gain'):
         frame['Gain'] = gains
         frame['Match_Status'] = np.where(frame['Gain'].notna(), 'matched', 'mean_excluded')
         frame = frame.reset_index()
+    frame.attrs['content_gain'] = content
     metadata = metadata.assign(_order=metadata['Difference_Group'].map({'high': 0, 'low': 1}))
     metadata = metadata.sort_values(['_order', 'Group_Rank']).drop(columns='_order')
     return frame, metadata
 
 
 def build_dp_pairs(frame, metadata):
-    dp = frame.loc[frame['Condition'].isin(DP_EYES)].copy()
-    dominant = frame['Dominance'].iloc[0]
-    other = 'Left' if dominant == 'Right' else 'Right'
-    dp['Eye'] = np.where(dp['Condition'].eq('DP_MONO_DOM'), dominant, other)
-    # 実眼情報があるCSVでは、利き眼から導いた左右対応と照合する。
-    if 'Observed_Eye' in dp:
-        if not dp['Observed_Eye'].str.strip().str.capitalize().eq(dp['Eye']).all():
-            raise ValueError('Observed_Eye disagrees with Condition/Dominance')
-    pivot = dp.pivot(index='Pair_ID', columns='Eye', values='Gain')
-    paired = metadata.merge(pivot.reindex(columns=['Left', 'Right']),
+    # 提示・観察条件をまたぎ、左目基準/右目基準の重畳画像を見たときのゲインを比較(反転考慮)。
+    content = frame.attrs['content_gain'].reindex(columns=['Left', 'Right'])
+    paired = metadata.merge(content,
                             left_on='Pair_ID', right_index=True, how='left', validate='one_to_one')
     paired['Difference'] = paired['Left'] - paired['Right']
     return paired
@@ -175,7 +184,7 @@ def save_dp_msd_csv(frame, paired, target, subdir='matching_analysis'):
             'Excluded_Pairs': len(group) - n,
             'Mean_Squared_Difference': float(np.mean(differences ** 2)) if n else np.nan,
             'Calculation_Status': 'ok' if n else 'no_valid_pairs',
-            'Metric_Definition': 'mean((Left_Gain - Right_Gain)**2)',
+            'Metric_Definition': 'mean((LeftEyeImage_Gain - RightEyeImage_Gain)**2); content eye, mirror-aware, pooled over conditions',
             'Unit': 'normalized_gain_squared',
         })
     output = target / subdir / 'dp_eye_mean_squared_difference.csv'
@@ -231,9 +240,9 @@ def save_figures(frame, paired, output):
     ax.axvline((len(paired) / 2) - 0.5, color='gray', linestyle=':')
     ax.set_xticks(np.arange(len(paired)), paired['Pair_ID'], rotation=60, ha='right')
     ax.set_ylim(-1.05, 1.05)
-    ax.set_ylabel('DP matched gain: Left - Right')
+    ax.set_ylabel('Gain: left-eye-based - right-eye-based image')
     ax.set_xlabel('Image pair (red=high, blue=low; NA=unmatched)')
-    ax.set_title(f'DP eye differences / valid pairs={n}/{len(paired)}\n{identity}')
+    ax.set_title(f'Eye-based image differences / valid pairs={n}/{len(paired)}\n{identity}')
     save(fig, '02_dp_left_minus_right_gain.png')
 
     fig, ax = plt.subplots(figsize=(7, 7))
@@ -245,8 +254,8 @@ def save_figures(frame, paired, output):
                         xytext=(4, 4), textcoords='offset points', fontsize=8)
     ax.plot([0, 1], [0, 1], '--', color='black', label='Left = Right')
     ax.set(xlim=(-.03, 1.03), ylim=(-.03, 1.03),
-           xlabel='DP Left-eye matched gain (slider 0-1)',
-           ylabel='DP Right-eye matched gain (slider 0-1)',
+           xlabel='Left-eye-based image gain (slider 0-1)',
+           ylabel='Right-eye-based image gain (slider 0-1)',
            title=f'DP eye comparison / valid pairs={n}/{len(paired)}\n{identity}')
     ax.set_aspect('equal', adjustable='box')
     ax.legend()
