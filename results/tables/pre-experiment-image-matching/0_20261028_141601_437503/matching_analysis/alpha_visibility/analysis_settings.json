@@ -1,0 +1,30 @@
+{
+  "model": "vismlp_norm",
+  "image_height": 512,
+  "map_width": 1231,
+  "aggregation": "mean_of_per_trial_L2",
+  "map_scope": "full_background_strip_zero_outside_foreground",
+  "model_input": "calibrated_linear_RGB_components",
+  "model_component_gamut_policy": "clip_to_0_1_report_ratio",
+  "inference_mask": "all_ones",
+  "alpha_map": "uniform_measured_alpha",
+  "outside_foreground_components": "FG_equals_BG",
+  "invalid_roi_policy": "save_diagnostics_and_stop",
+  "calibration_files": {
+    "C.csv": {
+      "sha256": "42b0fae6615276440fa3db130b250915aaea8ee9d2a2da145e69fd8f507715dc"
+    },
+    "T_prime.csv": {
+      "sha256": "7578a93589de6908eb630d14bd6fac3109f507c8c561eea74068a771fa30a053"
+    },
+    "R_prime.csv": {
+      "sha256": "5cf667b485cfc5f0649dfb848dc85df00c5336351b3101d7490799411947439d"
+    },
+    "gamma_bg.csv": {
+      "sha256": "eb1df8f0d6ea9d75d94e0900a76536a8b5fdbc775752d960789679a542f55470"
+    },
+    "gamma_fg.csv": {
+      "sha256": "7260649436bf6461066e55bdf2403e807b1b003291019dc01f7641d05ee68c5d"
+    }
+  }
+}
