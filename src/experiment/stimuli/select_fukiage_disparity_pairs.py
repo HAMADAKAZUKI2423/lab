@@ -163,6 +163,7 @@ class PairResult:
     background_texture_rank_gap: int | None = None
     background_candidate_group: str = ""
     visibility_level: str = ""
+    visibility_class: int = 0
     visibility_map_l2: float = 0.0
     visibility_map_l2_rms: float = 0.0
     visibility_local_std: float = float("nan")
@@ -392,7 +393,7 @@ def compute_laplacian_mad(bgr: np.ndarray, levels: int) -> np.ndarray:
 
 
 def classify_images(paths: list[Path], settings: RunSettings, *, luminance_items=None) -> list[ImageItem]:
-    """輝度では除外せず、全前景をラプラシアン特徴10クラスへ分類する。"""
+    """輝度では除外せず、全前景をラプラシアン特徴+平均輝度（標準化）でクラス分類する。"""
     if len(paths) < settings.texture_class_count:
         raise ValueError("前景画像数がテクスチャクラス数未満です")
     from sklearn.cluster import KMeans
@@ -400,11 +401,17 @@ def classify_images(paths: list[Path], settings: RunSettings, *, luminance_items
     measured = [(item.path, item.mean_relative_luminance,
                  compute_laplacian_mad(read_bgr(item.path), settings.laplacian_levels))
                 for item in base]
-    x = np.vstack([row[2] for row in measured])
+    from sklearn.preprocessing import StandardScaler
+    lap = np.vstack([row[2] for row in measured])
+    # 平均輝度も特徴量に含め、尺度差を標準化してKMeans。
+    x = StandardScaler().fit_transform(
+        np.column_stack([lap, [row[1] for row in measured]]))
     model = KMeans(n_clusters=settings.texture_class_count,
                    random_state=settings.kmeans_random_state, n_init=10)
     labels = model.fit_predict(x)
-    order = np.argsort(model.cluster_centers_.sum(axis=1), kind="stable")
+    # クラス順位は従来どおりラプラシアン特徴の合計（クラス平均）で付ける。
+    order = np.argsort([lap[labels == k].mean(axis=0).sum()
+                        for k in range(settings.texture_class_count)], kind="stable")
     rank_by_label = {int(label): rank for rank, label in enumerate(order, start=1)}
     items = []
     for i, (path, luminance, features) in enumerate(measured):
@@ -672,11 +679,26 @@ def _image_key(path: str) -> str:
     return str(Path(path).resolve()).casefold()
 
 
+VISIBILITY_CLASS_COUNT = 7
+VISIBILITY_INCLUDED_CLASSES = tuple(range(2, VISIBILITY_CLASS_COUNT))
+
+
+def assign_visibility_classes(valid) -> tuple[float, ...]:
+    """右眼視認性を共通7分位化。最下位1・最上位7を除く2〜6をmidとする。同値は低い側へ。"""
+    q = np.quantile([r.right_visibility_score for r in valid],
+                    np.arange(1, VISIBILITY_CLASS_COUNT) / VISIBILITY_CLASS_COUNT)
+    for r in valid:
+        r.visibility_class = int(np.searchsorted(q, r.right_visibility_score, side='left')) + 1
+        r.visibility_level = ('low' if r.visibility_class == 1 else
+                              'high' if r.visibility_class == VISIBILITY_CLASS_COUNT else 'mid')
+    return tuple(float(v) for v in q)
+
+
 def _select_unbalanced_high_low_pairs(
     results: list[PairResult], pool_size: int, max_clip_ratio: float,
     *, use_laplacian_difference: bool, use_model_difference: bool,
 ) -> tuple[list[PairResult], tuple[float, float]]:
-    """右眼視認性を共通3分位化し、中位層からhigh/low各5組を選ぶ。"""
+    """右眼視認性を共通7分位化し、中位5クラス(2〜6)からhigh/low各5組を選ぶ。"""
     from scipy.optimize import Bounds, LinearConstraint, milp
     from scipy.sparse import coo_matrix
     valid = [r for r in results if math.isfinite(r.right_visibility_score)
@@ -684,12 +706,8 @@ def _select_unbalanced_high_low_pairs(
              and max(r.right_clip_ratio, r.left_clip_ratio) <= max_clip_ratio]
     if not valid:
         raise ValueError('有効な候補がありません')
-    q1, q2 = np.quantile(
-        [r.right_visibility_score for r in valid], [1/3, 2/3])
-    # 同値は分割せず低い側へ。low/highは分類だけ残し、選定にはmidのみ使う。
-    for r in valid:
-        r.visibility_level = ('low' if r.right_visibility_score <= q1 else
-                              'mid' if r.right_visibility_score <= q2 else 'high')
+    # 7分位。最下位(low)/最上位(high)は分類だけ残し、選定には2〜6(mid)のみ使う。
+    thresholds = assign_visibility_classes(valid)
     levels = ('mid',)
     candidates = []
     for group in ('high', 'low'):
@@ -740,7 +758,7 @@ def _select_unbalanced_high_low_pairs(
         group_rows=[r for r in chosen if r.difference_group==group]
         for i,r in enumerate(group_rows,1): r.group_rank=i
     if len(chosen)!=10: raise RuntimeError(f'選定組数が10ではありません: {len(chosen)}')
-    return chosen,tuple(float(q) for q in (q1,q2))
+    return chosen,thresholds
 
 
 def select_high_low_pairs(
@@ -763,10 +781,7 @@ def select_high_low_pairs(
         and _image_key(r.foreground_path) != _image_key(r.background_path)]
     if not valid:
         raise ValueError('有効な候補がありません')
-    q1, q2 = np.quantile([r.right_visibility_score for r in valid], [1/3, 2/3])
-    for r in valid:
-        r.visibility_level = ('low' if r.right_visibility_score <= q1 else
-                              'mid' if r.right_visibility_score <= q2 else 'high')
+    thresholds = assign_visibility_classes(valid)  # 7分位、2〜6をmid
     strata = [(g, c) for g in ('high', 'low') for c in range(1, 6)]
     candidates = []
     for group, cls in strata:
@@ -819,7 +834,7 @@ def select_high_low_pairs(
     if len(chosen) != 10 or any(sum(r.difference_group==g and
             r.foreground_texture_class==c for r in chosen) != 1 for g,c in strata):
         raise RuntimeError('前景クラス別の選定数検証に失敗しました')
-    return chosen, (float(q1), float(q2))
+    return chosen, thresholds
 
 
 def write_csv(path: Path, rows: list[PairResult]) -> None:
@@ -1311,13 +1326,14 @@ def main() -> None:
         'foreground_candidate_count': len(fg_items),
         'background_bright_count': len(bg_luminance_items),
         'selection_pool_size': args.selection_pool_size, 'max_clip_ratio': args.max_clip_ratio,
-        'selection_rule': 'mid only; each foreground class 1 high and 1 low; maximize custom L2 combined visibility gap in both groups; unique FG and unique BG',
+        'selection_rule': 'right-eye visibility septile classes 2-6 only; each foreground class 1 high and 1 low; maximize custom L2 combined visibility gap in both groups; unique FG and unique BG',
         'foreground_class_quota_per_group': {str(c): 1 for c in range(1, 6)},
         'final_selection_metric': 'sqrt(var(L-R)+2*mean(L-R)**2)',
         'final_selection_direction': {'high': 'maximize', 'low': 'maximize'},
-        'visibility_partition': 'common_valid_candidate_tertiles',
-        'visibility_quantile_probabilities': [1/3, 2/3],
+        'visibility_partition': 'common_valid_candidate_septiles',
+        'visibility_quantile_probabilities': [i / 7 for i in range(1, 7)],
         'visibility_included_levels': ['mid'],
+        'visibility_included_classes': list(VISIBILITY_INCLUDED_CLASSES),
         'use_laplacian_difference': not args.no_laplacian_difference,
         'use_model_difference': not args.no_model_difference,
         'display_dir': str(image_config.display_dir), 'visibility_repo': str(VISIBILITY_REPO)}
@@ -1428,12 +1444,12 @@ def main() -> None:
     low_results = sorted((r for r in selected if r.difference_group == 'low'), key=lambda r:r.group_rank)
     write_csv(output_dir / "high5.csv", high_results)
     write_csv(output_dir / "low5.csv", low_results)
-    config.update(visibility_level_thresholds=dict(zip(
-        ('low_mid', 'mid_high'), visibility_thresholds)),
+    config.update(visibility_class_thresholds={
+        f'{i}_{i + 1}': t for i, t in enumerate(visibility_thresholds, 1)},
         selected_per_stratum={'mid': 5},
         visibility_exclusion_counts={level: sum(r.visibility_level == level for r in results)
                                      for level in ('low', 'high')})
-    # 全候補CSVにも3分位分類を残す（選定対象はmidのみ）。
+    # 全候補CSVにも7分位分類を残す（選定対象は2〜6のみ）。
     write_csv(output_dir / "all_pairs.csv", results)
 
     for result in selected:

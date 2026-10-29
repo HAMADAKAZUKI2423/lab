@@ -5,7 +5,7 @@ lab/srcから:
   # 背景作成・左右像保存のみは --background-only
 - 全背景元画像をラプラシアン帯域構成比+平均Yで10クラス化（従来と同じ周波数順位）。
 - high: 順位差5の組(1-6,2-7,3-8,4-9,5-10)ごとに5枚。元画像は重複なしでランダム、左右配置もランダム。
-  縦横比を保つ中央クロップで横に並べ、右端から全体幅の--overlap-center-from-right(既定1/3)を重なり中心とし、全体幅の--overlap-ratio(既定0.2)をcosineで接続。
+  縦横比を保つ中央クロップで横に並べ、既定では左右眼像中心の中点（視差の中心）を重なり中心とし（--overlap-center-from-right指定時は右端からの全体幅比）、全体幅の--overlap-ratio(既定0.2)をcosineで接続。
 - low: 未使用元画像の通常背景で、右眼像と左眼像のクラス差<=1。右眼クラスごと3枚。
 - 前景抽出・総当たり・high5/low5選定は従来どおり。前景・背景を含め画像の重複なし。
 """
@@ -77,7 +77,8 @@ def fit_classes(features, settings):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--overlap-ratio', type=float, default=0.2)
-    parser.add_argument('--overlap-center-from-right', type=float, default=1 / 3)
+    parser.add_argument('--overlap-center-from-right', type=float, default=None,
+                        help='未指定時は視差の中心')
     parser.add_argument('--composites-per-pair', type=int, default=5)
     parser.add_argument('--low-per-class', type=int, default=3)
     parser.add_argument('--seed', type=int, default=0)
@@ -97,15 +98,18 @@ def main():
     parser.set_defaults(background_clusters=7, min_background_rank_gap=0)
     args = parser.parse_args()
     r, c = args.overlap_ratio, args.overlap_center_from_right
-    if not (0 < r and r / 2 < c < 1 - r / 2):
-        parser.error('重なり範囲が全体幅に収まりません')
     settings = replace(base.load_settings(args), texture_class_count=5)
     rng = np.random.default_rng(args.seed)
     n = settings.image_size_px
     total = round(n * settings.background_width_ratio)
     overlap = max(2, round(total * args.overlap_ratio))
-    left_w = round(total * (1 - args.overlap_center_from_right) + overlap / 2)
+    # 既定: 右眼像中心と左眼像中心の中点（視差の中心）を重なり中心にする。
+    center_px = ((total - n) // 2 + n / 2 + settings.disparity_px / 2
+                 if c is None else total * (1 - c))
+    left_w = round(center_px + overlap / 2)
     right_w = total + overlap - left_w
+    if not (0 < r and overlap < left_w < total):
+        parser.error('重なり範囲が全体幅に収まりません')
     tile = left_w  # 分類用クロップ幅（左タイル幅）
     image_dirs = [p.expanduser().resolve() for p in
                   (args.image_dirs or (base.MCGILL_IMAGE_DIR, base.DTD_IMAGE_DIR))]
@@ -246,7 +250,8 @@ def main():
         for c in candidates])
     config = {**asdict(settings), **dataset_info, 'mode': 'composite', 'complete': False,
               'texture_class_count_background': K, 'class_pairs': PAIRS,
-              'overlap_ratio': args.overlap_ratio, 'overlap_px': overlap, 'overlap_center_from_right': args.overlap_center_from_right,
+              'overlap_ratio': args.overlap_ratio, 'overlap_px': overlap, 'overlap_center_from_right': c, 'overlap_center_px': center_px,
+              'overlap_center_rule': 'disparity_midpoint' if c is None else 'from_right_ratio',
               'left_tile_width_px': left_w, 'right_tile_width_px': right_w,
               'blend': 'raised_cosine_alpha_in_linear_RGB', 'crop': 'aspect_preserving_center_crop',
               'side': 'random', 'duplicate_images': False, 'seed': args.seed,
@@ -295,7 +300,7 @@ def main():
         base.save_selected_pair(output, r, foregrounds[Path(r.foreground_path)], c['panorama'],
                                 calibration, model, settings, device, eye_backgrounds=c['eyes'])
     config.update(foreground_info, complete=True, selected_pair_count=len(chosen),
-                  visibility_level_thresholds=dict(zip(('low_mid', 'mid_high'), thresholds)))
+                  visibility_class_thresholds={f'{i}_{i + 1}': t for i, t in enumerate(thresholds, 1)})
     save_config(); print(f'Saved: {output}')
 
 
