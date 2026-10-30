@@ -76,8 +76,9 @@ _CONTRAST_Y_TICK_LABELS = (
     "1.0",
 )
 _CONTRAST_ANNOTATION_Y = 0.055
-_H4_Y_LIMITS = (-0.25, 0.15)
 _H4_SYMLOG_LINTHRESH = 0.01
+_H4_SYMLOG_LINSCALE = 1.0  # 上端10^1でも収まらない場合のみ0〜10^-2区間を縮める
+_H4_SYMLOG_MIN_LINSCALE = 0.1
 
 
 class FigureInputError(ValueError):
@@ -1031,124 +1032,443 @@ def save_corrected_significance_figures(
     return outputs
 
 
+# ---- 4条件図の半分の横幅で描く追加図（DPF眼間・H4低減量・H6低減量比較） ----
+# 見た目は*_significance_no_title.pngに揃える（点・m/d注記なし、t CI、括弧注記）。
+_HALF_WIDTH_RATIO = 0.5
+
+
+def _selected_font() -> str:
+    from matplotlib import font_manager
+
+    for candidate in ("Times New Roman", "Arial", "Helvetica", "Times"):
+        try:
+            font_manager.findfont(candidate, fallback_to_default=False)
+        except ValueError:
+            continue
+        return candidate
+    raise RuntimeError(
+        "Times New Roman / Arial / Helvetica / Timesのいずれかをインストールしてください。"
+    )
+
+
+def _half_width_canvas(
+    metadata: dict[str, object],
+    uncorrected_output_dir: str | Path | None,
+) -> tuple[tuple[float, float], tuple[int, int] | None]:
+    """未補正4条件_no_title PNGと同じ高さ・半分の横幅のキャンバスを返す。"""
+    if uncorrected_output_dir is None:
+        width, height = _SIGNIFICANCE_FIGSIZE
+        return (width * _HALF_WIDTH_RATIO, height), None
+    from PIL import Image
+
+    base = Path(uncorrected_output_dir) / _file_name("uncorrected", metadata)
+    reference_path = base.with_name(f"{base.stem}_no_title{base.suffix}")
+    if not reference_path.is_file():
+        raise FigureInputError(f"サイズ基準の未補正PNGがありません: {reference_path}")
+    with Image.open(reference_path) as image:
+        width_px, height_px = image.size
+    target = (int(width_px * _HALF_WIDTH_RATIO), int(height_px))
+    return ((target[0] + 0.01) / _DPI, (target[1] + 0.01) / _DPI), target
+
+
+def _effect_test_p(
+    group: pd.DataFrame,
+    tests: pd.DataFrame,
+    metadata: dict[str, object],
+    *,
+    hypothesis: str,
+    ocularity: str,
+) -> float:
+    """既存の両側t検定のHolm補正p値を1行だけ取得する（再検定・再補正しない）。"""
+    required = [
+        *ANALYSIS_GROUP_COLUMNS, "Participant_Aggregation", "Hypothesis",
+        "Ocularity", "Data_State", "Analysis_Scale", "holm_adjusted_p_value", "n",
+    ]
+    missing = [column for column in required if column not in tests.columns]
+    if missing:
+        raise FigureInputError(f"有意差注記の検定表に必要な列がありません: {missing}")
+    aggregations = group["Participant_Aggregation"].astype("string").str.strip()
+    if aggregations.isna().any() or aggregations.nunique() != 1:
+        raise FigureInputError("参加者表の集約方法を一意に特定できません")
+    mask = (
+        tests["Session_Type"].astype("string").eq(str(metadata["Session_Type"]))
+        & tests["Participant_Aggregation"].astype("string").eq(str(aggregations.iloc[0]))
+        & tests["Hypothesis"].eq(hypothesis)
+        & tests["Ocularity"].eq(ocularity)
+    )
+    for column in ("Ref_Contrast", "Orientation"):
+        numeric = pd.to_numeric(tests[column], errors="coerce").to_numpy(float)
+        mask &= np.isclose(numeric, float(metadata[column]), rtol=0.0, atol=1e-12)
+    rows = tests.loc[mask.fillna(False)]
+    if hypothesis == "H4":
+        # H4は眼別DP-SPD（H4-2/3）ではなく眼間差H4-1だけを使う。
+        rows = rows.loc[rows["Component"].eq("H4-1")]
+    if len(rows) != 1:
+        raise FigureInputError(
+            f"有意差注記の検定結果は1行必要です: {hypothesis}, {ocularity}, found={len(rows)}"
+        )
+    row = rows.iloc[0]
+    if row["Data_State"] != "dpf_corrected" or row["Analysis_Scale"] != ANALYSIS_SCALE:
+        raise FigureInputError("有意差注記の検定表の補正状態・解析尺度が一致しません")
+    if float(row["n"]) != group["ID"].nunique():
+        raise FigureInputError("図と検定の参加者数が一致しません")
+    adjusted_p = float(row["holm_adjusted_p_value"])
+    _significance_label(adjusted_p)  # 欠損・不正値をn.s.扱いにしない。
+    return adjusted_p
+
+
+def _half_width_bar_figure(
+    bars: list[dict[str, object]],
+    *,
+    xticks: list[float],
+    xticklabels: list[str],
+    ylabel: str,
+    contrast: bool,
+    figsize: tuple[float, float],
+    legend: bool,
+    brackets: list[dict[str, object]],
+    xlim: tuple[float, float] | None = None,
+    reference: float | None = None,
+):
+    """bars: x・width・color・values(log10参加者値)。brackets: left・right・p・color。
+
+    エラーバーは既存C_AR図と同じ参加者log10値の95% t CI。
+    contrast=Trueでは10**で幾何平均へ戻し、0.05〜1.0のlog軸に描く。
+    """
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    from matplotlib.text import Text
+
+    font = _selected_font()
+    figure, axis = _pyplot().subplots(figsize=figsize)
+    try:
+        floors: dict[float, float] = {}
+        lows: list[float] = []
+        highs: list[float] = []
+        for bar in bars:
+            mean, lower, upper = _mean_t_ci(np.asarray(bar["values"], dtype=float))
+            if contrast:
+                mean, lower, upper = (10.0 ** value for value in (mean, lower, upper))
+            x = float(bar["x"])
+            axis.bar(x, mean, width=float(bar["width"]), color=bar["color"],
+                     alpha=0.82, zorder=2)
+            axis.errorbar(x, mean, yerr=[[mean - lower], [upper - mean]], fmt="none",
+                          ecolor="#222222", elinewidth=1.2, capsize=4, zorder=4)
+            floors[x] = max(mean, upper, 0.0 if not contrast else upper)
+            lows.append(min(mean, lower))
+            highs.append(max(mean, upper))
+        if contrast:
+            _configure_contrast_axis(axis)
+            if max(highs) >= 1.0:
+                raise FigureInputError("CIが1.0以上のため表示範囲に収まりません")
+            lower_limit = min(0.05, min(lows) / 1.1)
+            axis.set_ylim(lower_limit, 1.0)
+            ticks = sorted(set([*_CONTRAST_Y_TICKS, *([lower_limit] if lower_limit < 0.05 else [])]))
+            axis.set_yticks(ticks)
+            axis.set_yticklabels([
+                "" if any(abs(value - hidden) < 1e-8 for hidden in (0.6, 0.7, 0.8, 0.9))
+                else f"{value:.1f}" if 0.1 <= value <= 1.0 else f"{value:g}"
+                for value in ticks
+            ])
+            upper_limit = 1.0
+            if reference is not None:
+                axis.axhline(reference, color="red", linestyle="--", linewidth=1.5, zorder=1)
+        else:
+            # 0〜10^0（上端=10^0）から始め、注記が収まらなければ上端を10^1にする。
+            # 負のCIがある場合のみ下側へ広げる。
+            if max(highs) >= 1.0:
+                raise FigureInputError("CIが10^0以上のため表示範囲に収まりません")
+            linscale = _H4_SYMLOG_LINSCALE
+            lower_limit = 0.0 if min(lows) >= 0.0 else min(lows) * 1.1
+            upper_limit = 1.0
+            axis.axhline(0.0, color="#444444", linestyle="--", linewidth=1.2, zorder=1)
+
+            def apply_symlog_axis() -> None:
+                axis.set_yscale("symlog", base=10, linthresh=_H4_SYMLOG_LINTHRESH,
+                                linscale=linscale)
+                axis.set_ylim(lower_limit, upper_limit)
+                # 0付近を縮めた場合は、ラベル重なりを避けるため±10^-2目盛りを省く。
+                exponents = (0, -1, -2) if linscale >= _H4_SYMLOG_LINSCALE else (0, -1)
+                negative = [-(10.0 ** k) for k in exponents if -(10.0 ** k) >= lower_limit]
+                positive = [10.0 ** k for k in sorted(exponents)]
+                positive += [10.0] if upper_limit > 1.0 else []
+                axis.set_yticks([*negative, 0.0, *positive])
+                axis.set_yticks([], minor=True)
+                axis.tick_params(axis="y", which="both", direction="in")
+
+            apply_symlog_axis()
+        axis.set_xticks(xticks)
+        axis.set_xticklabels(xticklabels)
+        if xlim is not None:
+            axis.set_xlim(*xlim)
+        axis.grid(axis="y", which="both", linestyle=":", alpha=0.4)
+        axis.set_ylabel(ylabel)
+        for text in figure.findobj(Text):
+            text.set_fontsize(_SIGNIFICANCE_AXIS_FONT_SIZE)
+            text.set_fontfamily([font])
+        axis.yaxis.label.set_fontsize(_SIGNIFICANCE_YLABEL_FONT_SIZE)
+
+        px_per_pt = figure.dpi / 72.0
+        pt = lambda value: value * px_per_pt
+        # 半分幅で凡例が1行に収まらなければ、文字サイズを保って2行にする。
+        legend_handles = [Patch(color=_EYE_COLORS[eye], alpha=0.82, label=_EYE_LABELS[eye])
+                          for eye in OCULARITY_ORDER]
+        if reference is not None:
+            legend_handles.append(Line2D([], [], color="red", linestyle="--",
+                                         linewidth=1.5, label="Reference"))
+        legend_columns = len(legend_handles)
+        for _ in range(80):
+            if axis.get_legend() is not None:
+                axis.get_legend().remove()
+            figure.tight_layout()
+            figure.canvas.draw()
+            renderer = figure.canvas.get_renderer()
+            bounds = axis.get_window_extent(renderer)
+            region_top = bounds.y1 - pt(_SIGNIFICANCE_TOP_PADDING_PT)
+            annotation_top = region_top
+            legend_box = None
+            if legend:
+                handle = axis.legend(
+                    handles=legend_handles,
+                    frameon=False, ncol=legend_columns, loc="upper center",
+                    bbox_to_anchor=(0.5, (region_top - bounds.y0) / bounds.height),
+                    fontsize=_SIGNIFICANCE_LEGEND_FONT_SIZE, borderaxespad=0.0,
+                    handlelength=1.2, handletextpad=0.5, columnspacing=0.8, borderpad=0.0,
+                )
+                for text in handle.get_texts():
+                    text.set_fontfamily([font])
+                figure.canvas.draw()
+                legend_box = handle.get_window_extent(renderer)
+                annotation_top = legend_box.y0 - pt(_SIGNIFICANCE_LEGEND_GAP_PT)
+            # 既存の6比較図と同じく、表示時の行高さで占有領域を測る。
+            probe = axis.text(0.5, 0.5, "n.s.", transform=axis.transAxes, va="bottom",
+                              fontsize=_SIGNIFICANCE_LABEL_FONT_SIZE, fontfamily=font)
+            figure.canvas.draw()
+            text_height = probe.get_window_extent(renderer).height
+            probe.remove()
+            cap = pt(_SIGNIFICANCE_CAP_HEIGHT_PT)
+            label_gap = pt(_SIGNIFICANCE_LABEL_GAP_PT)
+            row_gap = pt(_SIGNIFICANCE_ROW_GAP_PT)
+            row_height = cap + label_gap + text_height
+            placed = []
+            for bracket in brackets:
+                left, right = sorted((float(bracket["left"]), float(bracket["right"])))
+                local_high = max(value for x, value in floors.items() if left - 0.02 <= x <= right + 0.02)
+                x0, x1 = axis.transData.transform([(left, local_high), (right, local_high)])[:, 0]
+                bottom = axis.transData.transform((left, local_high))[1] + pt(_SIGNIFICANCE_DATA_GAP_PT)
+                # 指定順（単眼→両眼）に下から積み、横に重なる括弧とは高さを分ける。
+                for other in placed:
+                    if x0 < other["x1"] and x1 > other["x0"]:
+                        bottom = max(bottom, other["top"] + row_gap)
+                placed.append(dict(bracket, left=left, right=right, x0=x0, x1=x1,
+                                   bottom=bottom, top=bottom + row_height))
+            fits = all(item["top"] <= annotation_top for item in placed)
+            if legend_box is not None:
+                fits &= legend_box.x0 >= bounds.x0 and legend_box.x1 <= bounds.x1
+            if fits:
+                break
+            if legend_box is not None and legend_columns > 1 and (
+                    legend_box.x0 < bounds.x0 or legend_box.x1 > bounds.x1):
+                legend_columns -= 1
+                continue
+            if contrast or linscale <= _H4_SYMLOG_MIN_LINSCALE:
+                raise FigureInputError("10^1未満の空き領域に注記と凡例が収まりません")
+            if upper_limit < 10.0:
+                # まず上端を10^1へ広げて注記領域を確保する。
+                upper_limit = 10.0
+            else:
+                # それでも収まらない場合のみ、0〜10^-2区間の目盛り間隔を縮める。
+                linscale = max(_H4_SYMLOG_MIN_LINSCALE, linscale * 0.85)
+            apply_symlog_axis()
+        else:
+            raise FigureInputError("注記と凡例を図内に配置できません")
+        transform = axis.get_xaxis_transform()
+        for index, item in enumerate(placed):
+            y = (item["bottom"] + cap - bounds.y0) / bounds.height
+            cap_y = cap / bounds.height
+            line, = axis.plot(
+                [item["left"], item["left"], item["right"], item["right"]],
+                [y - cap_y, y, y, y - cap_y], transform=transform, clip_on=True,
+                color=item["color"], linewidth=_SIGNIFICANCE_LINE_WIDTH, zorder=10,
+            )
+            line.set_gid(f"significance_bracket_{index}")
+            text = axis.text(
+                (item["left"] + item["right"]) / 2.0, y + label_gap / bounds.height,
+                _significance_label(float(item["p"])), transform=transform, clip_on=True,
+                ha="center", va="bottom", fontsize=_SIGNIFICANCE_LABEL_FONT_SIZE,
+                fontfamily=font, color=item["color"], zorder=11,
+            )
+            text.set_gid(f"significance_label_{index}")
+        # ここから先はtight_layoutを呼ばない（測定済みの軸サイズを変えない）。
+        return figure
+    except Exception:
+        _pyplot().close(figure)
+        raise
+
+
+def _save_half_width(figure, output_path: Path, target_px: tuple[int, int] | None) -> Path:
+    """tight cropせず、4条件図の半分の画素幅で_no_title版を保存する。"""
+    from PIL import Image
+
+    path = output_path.with_name(f"{output_path.stem}_no_title{output_path.suffix}")
+    try:
+        with _pyplot().rc_context({"savefig.bbox": None}):
+            figure.savefig(path, dpi=_DPI, bbox_inches=None, facecolor="white")
+    finally:
+        _pyplot().close(figure)
+    if target_px is not None:
+        with Image.open(path) as image:
+            if image.size != target_px:
+                raise FigureInputError("追加PNGの画素数が4条件図の半分幅と一致しません")
+    return path
+
+
+def _eye_pivot(group: pd.DataFrame, eye: str) -> pd.DataFrame:
+    pivot = group.loc[
+        group["Ocularity"] == eye, ["ID", "Condition", CORRECTED_LOG10_COLUMN],
+    ].pivot(index="ID", columns="Condition", values=CORRECTED_LOG10_COLUMN)
+    return pivot.sort_index()
+
+
 def _h4_effects(group: pd.DataFrame) -> pd.DataFrame:
-    effects: dict[str, pd.Series] = {}
-    for eye in OCULARITY_ORDER:
-        pivot = group.loc[
-            group["Ocularity"] == eye,
-            ["ID", "Condition", CORRECTED_LOG10_COLUMN],
-        ].pivot(index="ID", columns="Condition", values=CORRECTED_LOG10_COLUMN)
-        effects[eye] = pivot[DP_CONDITION] - pivot[SPD_CONDITION]
+    """masking低減が正になるよう、眼別にSPD−DP（log10）を返す。"""
+    effects = {
+        eye: (lambda pivot: pivot[SPD_CONDITION] - pivot[DP_CONDITION])(_eye_pivot(group, eye))
+        for eye in OCULARITY_ORDER
+    }
     paired = pd.concat(
-        [
-            effects["monocular"].rename("monocular"),
-            effects["binocular"].rename("binocular"),
-        ],
-        axis=1,
-        join="outer",
+        [effects["monocular"].rename("monocular"), effects["binocular"].rename("binocular")],
+        axis=1, join="outer",
     )
     if paired.isna().any().any():
         raise FigureInputError("H4 interactionの眼間参加者対応が不完全です")
+    # 検定表H4-1（DP/SPDのBino−Mono）とは符号のみ逆。両側p値は同じ。
     paired["interaction"] = paired["binocular"] - paired["monocular"]
     return paired.sort_index()
 
 
-def _h4_figure(group: pd.DataFrame, metadata: dict[str, object]):
-    plt = _pyplot()
-    effect_frame = _h4_effects(group)
-    columns = ("monocular", "binocular", "interaction")
-    labels = (
-        "Monocular\nlog10(DP/SPD)",
-        "Binocular\nlog10(DP/SPD)",
-        "Interaction\nBino − Mono",
-    )
-    colors = (_EYE_COLORS["monocular"], _EYE_COLORS["binocular"], "seagreen")
-    summaries = [
-        _bootstrap_mean_ci(
-            effect_frame[column].to_numpy(float),
-            seed_parts=("H4", *metadata.values(), column),
-        )
-        for column in columns
+def _h4_figure(group, metadata, hypothesis_tests=None, *, figsize):
+    effects = _h4_effects(group)
+    bars = [
+        dict(x=float(index), width=0.62, color=_EYE_COLORS[eye], values=effects[eye].to_numpy(float))
+        for index, eye in enumerate(("monocular", "binocular"))
     ]
-    means = np.asarray([summary[0] for summary in summaries])
-    lowers = np.asarray([summary[1] for summary in summaries])
-    uppers = np.asarray([summary[2] for summary in summaries])
-    x = np.arange(3, dtype=float)
-    figure, axis = plt.subplots(figsize=(8.0, 5.6))
-    axis.bar(x, means, width=0.62, color=colors, alpha=0.84, zorder=2)
-    axis.errorbar(
-        x,
-        means,
-        yerr=np.vstack([means - lowers, uppers - means]),
-        fmt="none",
-        ecolor="#222222",
-        elinewidth=1.2,
-        capsize=4,
-        zorder=4,
+    brackets = []
+    if hypothesis_tests is not None:
+        brackets.append(dict(left=0.0, right=1.0, color="black", p=_effect_test_p(
+            group, hypothesis_tests, metadata,
+            hypothesis="H4", ocularity="binocular_minus_monocular",
+        )))
+    return _half_width_bar_figure(
+        bars, xticks=[0.0, 1.0], xticklabels=["Mono", "Bino"],
+        ylabel=r"$C'_{\mathrm{AR}}$ reduction" + "\n" + r"$\log_{10}$(SPD/DP)",
+        contrast=False, figsize=figsize, legend=False, brackets=brackets,
     )
-    for index, column in enumerate(columns):
-        values = effect_frame[column].to_numpy(float)
-        jitter = np.linspace(-0.08, 0.08, len(values))
-        axis.scatter(
-            np.full(len(values), x[index]) + jitter,
-            values,
-            s=32,
-            color="#202020",
-            alpha=0.55,
-            linewidths=0,
-            zorder=3,
-        )
-        axis.annotate(
-            f"ratio={10.0 ** means[index]:.3f}",
-            (x[index], means[index]),
-            xytext=(4, 5 if means[index] >= 0 else -12),
-            textcoords="offset points",
-            fontsize=8.5,
-        )
-    axis.axhline(0.0, color="#444444", linestyle="--", linewidth=1.2, zorder=1)
-    axis.set_yscale(
-        "symlog",
-        base=10,
-        linthresh=_H4_SYMLOG_LINTHRESH,
-        linscale=1.0,
-    )
-    axis.set_ylim(*_H4_Y_LIMITS)
-    axis.tick_params(axis="y", which="both", direction="in")
-    axis.set_xticks(x)
-    axis.set_xticklabels(labels)
-    axis.set_ylabel("Participant-level log10 effect")
-    axis.set_title(_title("H4 SPD→DP effects and interaction", metadata))
-    axis.grid(axis="y", linestyle=":", alpha=0.4)
-    figure.tight_layout()
-    return figure
 
 
 def save_h4_interaction_figures(
     corrected_df: pd.DataFrame,
     output_dir: str | Path,
+    *,
+    hypothesis_tests: pd.DataFrame | None = None,
+    uncorrected_output_dir: str | Path | None = None,
 ) -> list[Path]:
-    """H4の眼別SPD→DP効果とinteractionを描画する。"""
-    plt = _pyplot()
+    """H4の眼別SPD−DP低減量とinteractionを、4条件図の半分幅で描画する。"""
     validated = _validate_frame(
-        corrected_df,
-        label="DPF補正後参加者表",
-        conditions=CORRECTED_CONDITIONS,
-        value_column=CORRECTED_LOG10_COLUMN,
+        corrected_df, label="DPF補正後参加者表",
+        conditions=CORRECTED_CONDITIONS, value_column=CORRECTED_LOG10_COLUMN,
     )
     destination = Path(output_dir)
     destination.mkdir(parents=True, exist_ok=True)
     outputs: list[Path] = []
-    for group_values, group in validated.groupby(
-        list(ANALYSIS_GROUP_COLUMNS), sort=True, dropna=False
-    ):
-        metadata = dict(zip(ANALYSIS_GROUP_COLUMNS, group_values))
-        figure = _h4_figure(group, metadata)
-        output_path = destination / _file_name("h4_interaction", metadata)
-        try:
-            saved_paths = _save_with_title_variants(figure, output_path, dpi=_DPI)
-        finally:
-            plt.close(figure)
-        outputs.extend(saved_paths)
+    for values, group in validated.groupby(list(ANALYSIS_GROUP_COLUMNS), sort=True, dropna=False):
+        metadata = dict(zip(ANALYSIS_GROUP_COLUMNS, values))
+        figsize, target_px = _half_width_canvas(metadata, uncorrected_output_dir)
+        figure = _h4_figure(group, metadata, hypothesis_tests, figsize=figsize)
+        outputs.append(_save_half_width(
+            figure, destination / _file_name("h4_interaction", metadata), target_px,
+        ))
+    return outputs
+
+
+def save_successive_reduction_figures(
+    corrected_df: pd.DataFrame,
+    hypothesis_tests: pd.DataFrame,
+    output_dir: str | Path,
+    *,
+    uncorrected_output_dir: str | Path | None = None,
+) -> list[Path]:
+    """H6: SP−SPDとSPD−DPの低減量を眼別に並べ、眼別の有意差を示す。"""
+    validated = _validate_frame(
+        corrected_df, label="DPF補正後参加者表",
+        conditions=CORRECTED_CONDITIONS, value_column=CORRECTED_LOG10_COLUMN,
+    )
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    outputs: list[Path] = []
+    width = 0.34
+    for values, group in validated.groupby(list(ANALYSIS_GROUP_COLUMNS), sort=True, dropna=False):
+        metadata = dict(zip(ANALYSIS_GROUP_COLUMNS, values))
+        bars, brackets = [], []
+        for eye_index, eye in enumerate(OCULARITY_ORDER):
+            pivot = _eye_pivot(group, eye)
+            offset = (eye_index - 0.5) * width
+            for x, reduction in enumerate((
+                pivot[SP_CONDITION] - pivot[SPD_CONDITION],
+                pivot[SPD_CONDITION] - pivot[DP_CONDITION],
+            )):
+                bars.append(dict(x=x + offset, width=width * 0.92, color=_EYE_COLORS[eye],
+                                 values=reduction.to_numpy(float)))
+            brackets.append(dict(left=offset, right=1.0 + offset, color=_EYE_COLORS[eye],
+                                 p=_effect_test_p(group, hypothesis_tests, metadata,
+                                                  hypothesis="H6", ocularity=eye)))
+        figsize, target_px = _half_width_canvas(metadata, uncorrected_output_dir)
+        figure = _half_width_bar_figure(
+            bars, xticks=[0.0, 1.0],
+            xticklabels=[r"SP$\rightarrow$SPD", r"SPD$\rightarrow$DP"],
+            ylabel=r"$C'_{\mathrm{AR}}$ reduction" + "\n" + r"($\log_{10}$ ratio)",
+            contrast=False, figsize=figsize, legend=True, brackets=brackets,
+        )
+        outputs.append(_save_half_width(
+            figure, destination / _file_name("successive_reductions", metadata), target_px,
+        ))
+    return outputs
+
+
+def save_dpf_ocularity_figures(
+    uncorrected_df: pd.DataFrame,
+    output_dir: str | Path,
+    *,
+    uncorrected_output_dir: str | Path | None = None,
+) -> list[Path]:
+    """未補正DPFのC_ARを単眼・両眼の2本で示す（reference線あり・有意差なし）。"""
+    validated = _validate_frame(
+        uncorrected_df, label="未補正参加者表",
+        conditions=CONDITION_ORDER, value_column=MEAN_LOG10_COLUMN,
+    )
+    destination = Path(output_dir)
+    destination.mkdir(parents=True, exist_ok=True)
+    outputs: list[Path] = []
+    width = 0.34
+    for values, group in validated.groupby(list(ANALYSIS_GROUP_COLUMNS), sort=True, dropna=False):
+        metadata = dict(zip(ANALYSIS_GROUP_COLUMNS, values))
+        bars = [
+            dict(x=(eye_index - 0.5) * width, width=width * 0.92, color=_EYE_COLORS[eye],
+                 values=group.loc[group["Ocularity"].eq(eye) & group["Condition"].eq(DPF_CONDITION),
+                                  MEAN_LOG10_COLUMN].to_numpy(float))
+            for eye_index, eye in enumerate(OCULARITY_ORDER)
+        ]
+        figsize, target_px = _half_width_canvas(metadata, uncorrected_output_dir)
+        figure = _half_width_bar_figure(
+            bars, xticks=[0.0], xticklabels=[_CONDITION_LABELS[DPF_CONDITION]],
+            ylabel="Matched contrast\n" + r"$C_{\mathrm{AR}}$ (geometric mean)",
+            # 4条件図と同じ棒幅になるよう、2条件分の横範囲を確保する。
+            contrast=True, figsize=figsize, legend=True, brackets=[], xlim=(-1.0, 1.0),
+            reference=float(metadata["Ref_Contrast"]),
+        )
+        outputs.append(_save_half_width(
+            figure, destination / _file_name("dpf_ocularity", metadata), target_px,
+        ))
     return outputs
 
 
@@ -1529,11 +1849,21 @@ def save_all_figures(
         "dpf_corrected": save_corrected_figures(
             corrected_df, output_paths.corrected_figure_dir
         ),
-        "h4_interaction": save_h4_interaction_figures(
-            corrected_df, output_paths.h4_figure_dir
-        ),
     }
+    # 半分幅の図は未補正4条件_no_title PNGの画素数を基準にする。
+    outputs["h4_interaction"] = save_h4_interaction_figures(
+        corrected_df, output_paths.h4_figure_dir, hypothesis_tests=hypothesis_tests,
+        uncorrected_output_dir=output_paths.uncorrected_figure_dir,
+    )
+    outputs["dpf_ocularity"] = save_dpf_ocularity_figures(
+        uncorrected_df, output_paths.uncorrected_figure_dir,
+        uncorrected_output_dir=output_paths.uncorrected_figure_dir,
+    )
     if hypothesis_tests is not None:
+        outputs["successive_reductions"] = save_successive_reduction_figures(
+            corrected_df, hypothesis_tests, output_paths.h4_figure_dir,
+            uncorrected_output_dir=output_paths.uncorrected_figure_dir,
+        )
         outputs["dpf_corrected_significance"] = save_corrected_significance_figures(
             corrected_df, hypothesis_tests, output_paths.corrected_figure_dir,
             uncorrected_output_dir=output_paths.uncorrected_figure_dir,
@@ -1546,7 +1876,9 @@ __all__ = [
     "save_all_figures",
     "save_corrected_figures",
     "save_corrected_significance_figures",
+    "save_dpf_ocularity_figures",
     "save_h4_interaction_figures",
     "save_legacy_contrast_figures",
+    "save_successive_reduction_figures",
     "save_uncorrected_figures",
 ]
