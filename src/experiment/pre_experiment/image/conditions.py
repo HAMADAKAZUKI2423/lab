@@ -92,8 +92,8 @@ CONDITION_BY_ID = {spec.condition_id: spec for spec in ALL_CONDITION_SPECS}
 # SP_REPRO_LEFT/RIGHT_EYEは対応する左眼/右眼だけで単眼観察する。
 CONDITION_ENABLED: dict[ConditionId, bool] = {
     "DP_BINOCULAR":       True,   # DP両眼
-    "DP_MONO_DOM":        True,   # DP利き眼のみ
-    "DP_MONO_NONDOM":     True,   # DP非利き眼のみ
+    "DP_MONO_DOM":        False,   # DP利き眼のみ
+    "DP_MONO_NONDOM":     False,   # DP非利き眼のみ
     "SP_ALPHA_BLEND":     True,  # matchingのみ：α値を調整
     "SP_NO_DEFOCUS":      False,  # SP：defocusなし
     "SP_DEFOCUS_SIMPLE":  False,   # SP：defocus＋左右眼像融合

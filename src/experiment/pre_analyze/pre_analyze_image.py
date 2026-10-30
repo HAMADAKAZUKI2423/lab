@@ -1,4 +1,4 @@
-"""画像matchingを1セッションずつ解析し、CI・検定なしの6図と左右差MSD CSVを保存する。
+"""画像matchingを1セッションずつ解析し、必要条件を満たす図と左右差MSD CSVを保存する。
 cd src && py -m experiment.pre_analyze.pre_analyze_image [session_dir]
 省略時はimage_matching.csvを含む最新セッション。旧rating CSVは対象外。
 値は物理輝度ではなく、確定した前景ゲイン（スライダー値0〜1）。
@@ -105,8 +105,6 @@ def load_results(target, direction='all', control='gain'):
             invalid_eye, ['Condition', 'Observed_Eye']
         ].drop_duplicates().to_dict('records')
         raise ValueError(f'Observed_Eye does not match condition: {details}')
-    if control=='gain' and not set(DP_EYES).issubset(set(frame['Condition'])):
-        raise ValueError('Both DP_MONO_DOM and DP_MONO_NONDOM are required for the 3 figures')
     allowed = ['matched', 'above_range', 'below_range', 'cannot_judge']
     if not frame['Match_Status'].isin(allowed).all():
         raise ValueError('Unknown/incomplete Match_Status')
@@ -153,8 +151,11 @@ def load_results(target, direction='all', control='gain'):
     frame['Content_Eye'] = [flip[e] if m and e else e for e, m in zip(eye, mirrored)]
     eyed = frame.loc[frame['Content_Eye'].ne('')]
     # 条件内で反復・反転を平均し、各内容眼で条件を等重みに平均。
-    content = (eyed.groupby(['Pair_ID', 'Condition', 'Content_Eye'])['Gain'].mean()
-               .groupby(['Pair_ID', 'Content_Eye']).mean().unstack())
+    if eyed.empty:
+        content = pd.DataFrame(index=pd.Index([], name='Pair_ID'))
+    else:
+        content = (eyed.groupby(['Pair_ID', 'Condition', 'Content_Eye'])['Gain'].mean()
+                   .groupby(['Pair_ID', 'Content_Eye']).mean().unstack())
     if 'Repetition' in frame:
         grouping=['ID','Condition','Pair_ID']
         if direction!='all': grouping+=['Matching_Direction']
@@ -223,8 +224,23 @@ def save_dp_msd_csv(frame, paired, target, subdir='matching_analysis'):
 
 def save_figures(frame, paired, output):
     output.mkdir(parents=True, exist_ok=True)
+    eye_analysis = paired is not None
+    eye_filenames = {
+        '02_dp_left_minus_right_gain.png',
+        '03_dp_left_vs_right_gain.png',
+    }
+    if not eye_analysis:
+        paired = frame[PAIR_COLUMNS].drop_duplicates().copy()
+        paired['_order'] = paired['Difference_Group'].map({'high': 0, 'low': 1})
+        paired = paired.sort_values(['_order', 'Group_Rank']).drop(columns='_order')
+        paired[['Left', 'Right', 'Difference']] = np.nan
+        for filename in eye_filenames:
+            (output / filename).unlink(missing_ok=True)
     identity = f"ID={frame['ID'].iloc[0]} / {len(paired)} image pairs"
     def save(fig, name):
+        if not eye_analysis and name in eye_filenames:
+            plt.close(fig)
+            return
         fig.tight_layout()
         try:
             fig.savefig(output / name, dpi=300, bbox_inches='tight')
@@ -329,7 +345,9 @@ def save_figures(frame, paired, output):
     ax.set_title(f'Raw matching gains / {identity}\n'
                  'Gray: Above=above range, Below=below range, ?=cannot judge, NA=missing')
     save(fig, '04_raw_gain_heatmap.png')
-    print(f'Saved 6 figures (no CI, no tests): {output}')
+    if not eye_analysis:
+        print('Skipped eye-based difference/scatter figures: no valid Left/Right content-eye pair')
+    print(f'Saved applicable figures (no CI, no tests): {output}')
 
 
 def relation_trials(target):
@@ -357,6 +375,7 @@ def save_relation_analysis(target):
     output = FIGURE_ROOT/target.name/'matching_analysis'/'relations'
     output.mkdir(parents=True, exist_ok=True)
     wide = frame.pivot(index=['ID','Dominance','Pair_ID'], columns='Condition', values='Value')
+    available = set(wide.columns)
     fig, ax = plt.subplots(figsize=(6, 6)); points=[]; statistics=[]
     dominance = frame['Dominance'].str.strip().str.capitalize().unique()
     if len(dominance) != 1 or dominance[0] not in ('Left','Right'):
@@ -364,6 +383,9 @@ def save_relation_analysis(target):
     for eye, color in [('Right','tab:blue'), ('Left','tab:orange')]:
         dp = 'DP_MONO_DOM' if eye == dominance[0] else 'DP_MONO_NONDOM'
         sp = 'SP_REPRO_RIGHT_EYE' if eye == 'Right' else 'SP_REPRO_LEFT_EYE'
+        if not {sp, dp}.issubset(available):
+            print(f'Skipped {eye} SP-vs-DP same-eye analysis: required conditions are absent')
+            continue
         part = wide.reindex(columns=[sp,dp]).dropna().reset_index()
         part = part.rename(columns={sp:'SP_Gain', dp:'DP_Gain'})
         part['Eye']=eye; part['SP_Condition']=sp; part['DP_Condition']=dp
@@ -388,13 +410,31 @@ def save_relation_analysis(target):
         statistics.append(dict(Eye=eye, SP_Condition=sp, DP_Condition=dp,
                                N=len(part), Pearson_r=r, P_value=p, Status=status,
                                R2_y_equals_x=identity_r2, R2_Status=identity_status))
-    ax.plot([0,1],[0,1], '--', color='gray', linewidth=1)
-    ax.set(xlabel='SP reproduced-eye gain', ylabel='DP same-eye gain', xlim=(0,1), ylim=(0,1))
-    ax.legend(); fig.tight_layout(); fig.savefig(output/'sp_dp_same_eye.png', dpi=300); plt.close(fig)
-    pd.concat(points,ignore_index=True).to_csv(table/'sp_dp_same_eye_points.csv',index=False,encoding='utf-8-sig')
-    pd.DataFrame(statistics).to_csv(table/'sp_dp_same_eye_correlations.csv',index=False,encoding='utf-8-sig')
+    if points:
+        ax.plot([0,1],[0,1], '--', color='gray', linewidth=1)
+        ax.set(xlabel='SP reproduced-eye gain', ylabel='DP same-eye gain', xlim=(0,1), ylim=(0,1))
+        ax.legend(); fig.tight_layout(); fig.savefig(output/'sp_dp_same_eye.png', dpi=300); plt.close(fig)
+        pd.concat(points,ignore_index=True).to_csv(table/'sp_dp_same_eye_points.csv',index=False,encoding='utf-8-sig')
+        pd.DataFrame(statistics).to_csv(table/'sp_dp_same_eye_correlations.csv',index=False,encoding='utf-8-sig')
+    else:
+        plt.close(fig)
+        for path in (
+            output/'sp_dp_same_eye.png',
+            table/'sp_dp_same_eye_points.csv',
+            table/'sp_dp_same_eye_correlations.csv',
+        ):
+            path.unlink(missing_ok=True)
     alpha = frame.loc[frame['Condition'].eq('SP_ALPHA_BLEND'),['ID','Pair_ID','Value']].rename(columns={'Value':'Alpha'})
     gains = frame.loc[~frame['Condition'].eq('SP_ALPHA_BLEND')]
+    if alpha.empty or gains.empty:
+        for path in (
+            output/'alpha_vs_gain.png',
+            table/'alpha_vs_gain_points.csv',
+            table/'alpha_vs_gain_correlations.csv',
+        ):
+            path.unlink(missing_ok=True)
+        print('Skipped alpha-vs-gain analysis: alpha or gain condition is absent')
+        return
     joined = gains.merge(alpha,on=['ID','Pair_ID'],validate='many_to_one')
     joined.to_csv(table/'alpha_vs_gain_points.csv',index=False,encoding='utf-8-sig')
     alpha_statistics=[]
@@ -447,9 +487,19 @@ def main():
     directions = ('up', 'down', 'mean') if 'Matching_Direction' in columns else ('all',)
     for direction in directions:
         frame, metadata = load_results(target, direction)
-        paired = build_dp_pairs(frame, metadata)
+        content = frame.attrs.get('content_gain', pd.DataFrame())
+        eye_ready = (
+            {'Left', 'Right'}.issubset(content.columns)
+            and content.reindex(columns=['Left', 'Right']).notna().all(axis=1).any()
+        )
+        paired = build_dp_pairs(frame, metadata) if eye_ready else None
         name = 'matching_analysis' if direction == 'all' else f'matching_analysis/{direction}'
-        save_dp_msd_csv(frame, paired, target, name)
+        if eye_ready:
+            save_dp_msd_csv(frame, paired, target, name)
+        else:
+            stale = target / name / 'dp_eye_mean_squared_difference.csv'
+            stale.unlink(missing_ok=True)
+            print(f'[{direction}] Skipped DP eye MSD: no valid Left/Right content-eye pair')
         save_figures(frame, paired, FIGURE_ROOT / target.name / name)
 
 
