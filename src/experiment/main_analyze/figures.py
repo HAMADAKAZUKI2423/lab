@@ -1393,12 +1393,12 @@ def save_h4_interaction_figures(
 
 def save_successive_reduction_figures(
     corrected_df: pd.DataFrame,
-    hypothesis_tests: pd.DataFrame,
+    hypothesis_tests: pd.DataFrame | None,
     output_dir: str | Path,
     *,
     uncorrected_output_dir: str | Path | None = None,
 ) -> list[Path]:
-    """H6: SP−SPDとSPD−DPの低減量を眼別に並べ、眼別の有意差を示す。"""
+    """SP−SPD / SPD−DP低減量にH6を示し、SPD−DP側だけにH4眼間差を統合する。"""
     validated = _validate_frame(
         corrected_df, label="DPF補正後参加者表",
         conditions=CORRECTED_CONDITIONS, value_column=CORRECTED_LOG10_COLUMN,
@@ -1419,9 +1419,18 @@ def save_successive_reduction_figures(
             )):
                 bars.append(dict(x=x + offset, width=width * 0.92, color=_EYE_COLORS[eye],
                                  values=reduction.to_numpy(float)))
-            brackets.append(dict(left=offset, right=1.0 + offset, color=_EYE_COLORS[eye],
-                                 p=_effect_test_p(group, hypothesis_tests, metadata,
-                                                  hypothesis="H6", ocularity=eye)))
+            if hypothesis_tests is not None:
+                brackets.append(dict(left=offset, right=1.0 + offset, color=_EYE_COLORS[eye],
+                                     p=_effect_test_p(group, hypothesis_tests, metadata,
+                                                      hypothesis="H6", ocularity=eye)))
+        if hypothesis_tests is not None:
+            _h4_effects(group)  # H4の眼間参加者対応を検証する。
+            # 短いH4括弧を先に置き、その上へH6を積む。SP→SPD側に眼間比較は置かない。
+            brackets.insert(0, dict(left=1.0 - width / 2, right=1.0 + width / 2,
+                                    color="black", p=_effect_test_p(
+                                        group, hypothesis_tests, metadata,
+                                        hypothesis="H4", ocularity="binocular_minus_monocular",
+                                    )))
         figsize, target_px = _half_width_canvas(metadata, uncorrected_output_dir)
         figure = _half_width_bar_figure(
             bars, xticks=[0.0, 1.0],
@@ -1851,8 +1860,9 @@ def save_all_figures(
         ),
     }
     # 半分幅の図は未補正4条件_no_title PNGの画素数を基準にする。
-    outputs["h4_interaction"] = save_h4_interaction_figures(
-        corrected_df, output_paths.h4_figure_dir, hypothesis_tests=hypothesis_tests,
+    # H4はSPD→DP側の眼間比較として統合し、独立したH4図は通常出力しない。
+    outputs["successive_reductions"] = save_successive_reduction_figures(
+        corrected_df, hypothesis_tests, output_paths.h4_figure_dir,
         uncorrected_output_dir=output_paths.uncorrected_figure_dir,
     )
     outputs["dpf_ocularity"] = save_dpf_ocularity_figures(
@@ -1860,10 +1870,6 @@ def save_all_figures(
         uncorrected_output_dir=output_paths.uncorrected_figure_dir,
     )
     if hypothesis_tests is not None:
-        outputs["successive_reductions"] = save_successive_reduction_figures(
-            corrected_df, hypothesis_tests, output_paths.h4_figure_dir,
-            uncorrected_output_dir=output_paths.uncorrected_figure_dir,
-        )
         outputs["dpf_corrected_significance"] = save_corrected_significance_figures(
             corrected_df, hypothesis_tests, output_paths.corrected_figure_dir,
             uncorrected_output_dir=output_paths.uncorrected_figure_dir,

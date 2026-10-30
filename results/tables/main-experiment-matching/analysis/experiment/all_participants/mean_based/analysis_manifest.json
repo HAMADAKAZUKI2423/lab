@@ -1,6 +1,6 @@
 {
   "Manifest_Version": 1,
-  "Generated_At_UTC": "2026-10-30T03:27:35.071166+00:00",
+  "Generated_At_UTC": "2026-10-30T13:41:07.822949+00:00",
   "Run_Name": "all_participants_mean_based",
   "Analysis_Mode": "full_analysis",
   "Input_Mode": "all_participants",
@@ -180,17 +180,13 @@
       "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\dpf_corrected\\dpf_corrected__experiment__ref_0p2__ori_0.png",
       "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\dpf_corrected\\dpf_corrected__experiment__ref_0p2__ori_0_no_title.png"
     ],
-    "h4_interaction": [
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\h4_interaction\\h4_interaction__experiment__ref_0p1__ori_0_no_title.png",
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\h4_interaction\\h4_interaction__experiment__ref_0p2__ori_0_no_title.png"
+    "successive_reductions": [
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\h4_interaction\\successive_reductions__experiment__ref_0p1__ori_0_no_title.png",
+      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\h4_interaction\\successive_reductions__experiment__ref_0p2__ori_0_no_title.png"
     ],
     "dpf_ocularity": [
       "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\uncorrected\\dpf_ocularity__experiment__ref_0p1__ori_0_no_title.png",
       "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\uncorrected\\dpf_ocularity__experiment__ref_0p2__ori_0_no_title.png"
-    ],
-    "successive_reductions": [
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\h4_interaction\\successive_reductions__experiment__ref_0p1__ori_0_no_title.png",
-      "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\h4_interaction\\successive_reductions__experiment__ref_0p2__ori_0_no_title.png"
     ],
     "dpf_corrected_significance": [
       "C:\\Users\\Hamada.MSI\\Desktop\\Hamada\\lab\\results\\figures\\main-experiment-matching\\experiment\\all_participants\\mean_based\\dpf_corrected\\dpf_corrected__experiment__ref_0p1__ori_0_significance_no_title.png",
