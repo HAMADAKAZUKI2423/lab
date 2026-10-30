@@ -6,7 +6,7 @@ from tkinter import messagebox
 from PIL import ImageTk
 from .app import ImageExperimentApp, WIN1_MARKER_COLOR, WIN2_MARKER_COLOR
 from .calibration import apply_trial_calibration
-from .conditions import get_condition
+from .conditions import get_condition, resolve_observed_eye
 from .stimuli import participant_seed, condition_order_for_participant, build_trials
 from .matching_layout import (Box,make_layout,validate_layout,layout_metadata,draw_brackets)
 from .matching_stimuli import (calibration_files_metadata,validate_calibration,prepare_matching_stimulus)
@@ -164,9 +164,10 @@ class ImageMatchingApp(ImageExperimentApp):
         prepared=prepare_matching_stimulus(trial,self.session_config,layout=layout,
             calibration=self.defocus_display_calibration,dominant_eye=self.participant_dominance.get(),
             left_pupil_mm=float(left['pd_mean']),right_pupil_mm=float(right['pd_mean']),ipd_mm=float(self.participant_ipd.get()))
-        if trial.condition_id == 'DP_MONO_NONDOM':
-            # 右眼基準のReference画像内容は変更せず、実際の観察眼を記録する。
-            prepared.metadata['Reference_Observed_Eye'] = self.current_alignment_eye
+        # Reference画像内容は常に右眼基準SPのまま、実際の観察眼だけを記録する。
+        prepared.metadata['Reference_Observed_Eye'] = resolve_observed_eye(
+            get_condition(trial.condition_id), self.participant_dominance.get()
+        )
         return layout,prepared
 
     def _preflight_next(self):
@@ -193,12 +194,56 @@ class ImageMatchingApp(ImageExperimentApp):
         trial=self.trial_list[self.current_trial_index]
         if trial.block_id!=self.active_block_id:
             self.matching_state='block_confirmation';self.show_block_confirmation(trial);return
-        self.matching_state='preparing';self.current_trial=trial
+        self.current_trial=trial
         try:
             self.current_layout,self.matching_prepared=self.prepare(trial)
             self.current_layout_metadata=layout_metadata(self.current_layout)
             self.current_prepared=None
             self.canvas1.delete('all');self.canvas2.delete('all')
+            self.photo_foreground_only=ImageTk.PhotoImage(
+                self.matching_prepared.foreground_only_image
+            )
+            self.test_item=None;self.adjustment_count=0;self.trial_started=None
+            self.desired_gain=self.initial_gains[trial.trial_order]
+            self.matching_state='pre_preview_blank'
+            self.pending_transition=self.root.after(
+                self.session_config.pre_stimulus_blank_ms,
+                self.show_foreground_preview,
+            )
+        except Exception as exc: self.fail_matching(exc)
+
+    def show_foreground_preview(self):
+        self.pending_transition=None
+        if self.matching_state!='pre_preview_blank': return
+        try:
+            self.matching_state='foreground_preview'
+            for key in ('reference','test'):
+                box=self.current_layout[key]
+                self.canvas2.create_image(
+                    box.x0,box.y0,image=self.photo_foreground_only,
+                    anchor='nw',tags='foreground_preview',
+                )
+            self.pending_transition=self.root.after(
+                self.session_config.foreground_preview_ms,
+                self.show_post_foreground_blank,
+            )
+        except Exception as exc: self.fail_matching(exc)
+
+    def show_post_foreground_blank(self):
+        self.pending_transition=None
+        if self.matching_state!='foreground_preview': return
+        self.canvas1.delete('all');self.canvas2.delete('all')
+        self.matching_state='post_foreground_blank'
+        self.pending_transition=self.root.after(
+            self.session_config.post_foreground_blank_ms,
+            self.start_matching_display,
+        )
+
+    def start_matching_display(self):
+        self.pending_transition=None
+        if self.matching_state!='post_foreground_blank': return
+        try:
+            self.matching_state='preparing'
             self.photo_reference=ImageTk.PhotoImage(self.matching_prepared.reference_image)
             rb=self.current_layout['reference_singleplane']
             self.canvas2.create_image(rb.x0,rb.y0,
@@ -207,8 +252,6 @@ class ImageMatchingApp(ImageExperimentApp):
             if self.matching_prepared.physical_background is not None:
                 self.photo_background=ImageTk.PhotoImage(self.matching_prepared.physical_background)
                 b=self.current_layout['background'];self.canvas1.create_image(b.x0,b.y0,image=self.photo_background,anchor='nw',tags='matching')
-            self.test_item=None;self.adjustment_count=0;self.trial_started=None
-            self.desired_gain=self.initial_gains[trial.trial_order]
             self.render_now(log=False)
             if self.matching_state=='error': return
             self.controls=MatchingControls(self);self.root.update_idletasks()
@@ -288,11 +331,9 @@ class ImageMatchingApp(ImageExperimentApp):
         self.matching_state='between_trials'
         self.controls.destroy();self.controls=None;self.clear_key_bindings()
         self.canvas1.delete('all');self.canvas2.delete('all');self.current_trial_index+=1
-        if self.current_trial_index>=len(self.trial_list): callback=self.finish_experiment
-        else:
-            next_trial=self.trial_list[self.current_trial_index]
-            callback=self.start_break if (next_trial.block_id==self.active_block_id and next_trial.within_block_order==self.session_config.trials_before_break+1) else self.run_trial
-        self.pending_transition=self.root.after(500,callback)
+        callback=self.finish_experiment if self.current_trial_index>=len(self.trial_list) else self.run_trial
+        # 次試行側の0.5秒暗転だけを使い、10試行後の休憩や余分な待機は挟まない。
+        self.pending_transition=self.root.after(1,callback)
         return 'break'
 
     def _checkpoint_results(self):

@@ -10,6 +10,20 @@ class SelectedPair:
     right_visibility_score: float|None; left_visibility_score: float|None
     absolute_score_difference: float|None; visibility_level: str=""; visibility_map_l2: float|None=None
 
+def load_eye_vismaps(pair_dir: Path):
+    """選定時の左右視認性マップ(右,左,出典)。npy優先、無ければgray PNG/255。"""
+    import numpy as np
+    from PIL import Image
+    maps=[]; source='npy'
+    for eye in ('right','left'):
+        npy=pair_dir/f'{eye}_vismap.npy'; png=pair_dir/f'{eye}_vismap_gray.png'
+        if npy.is_file(): maps.append(np.load(npy).astype(np.float64))
+        elif png.is_file():
+            maps.append(np.asarray(Image.open(png).convert('L'),dtype=np.float64)/255.); source='gray_png'
+        else: raise FileNotFoundError(f'{eye} visibility map missing: {pair_dir}')
+    if maps[0].shape!=maps[1].shape: raise ValueError(f'L/R visibility map shapes differ: {pair_dir}')
+    return maps[0],maps[1],source
+
 def _optional_float(row,key):
     value=row.get(key,'').strip(); return None if value=='' else float(value)
 

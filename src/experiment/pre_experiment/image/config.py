@@ -42,8 +42,11 @@ class ImageSessionConfig:
     background_width_factor: float = 2.0
     background_width_scale: float = 1.2
     trials_per_condition: int = 10
-    repetitions_per_pair: int = 2  # matching：全画像組を各条件でn回（正の整数）
-    trials_before_break: int = 10
+    repetitions_per_pair: int = 1  # matching：全画像組を各条件でn回（正の整数）
+    trials_before_break: int = 10  # 旧rating互換用。matchingでは休憩に使わない。
+    pre_stimulus_blank_ms: int = 500
+    foreground_preview_ms: int = 1000
+    post_foreground_blank_ms: int = 500
     time_foreground_only_ms: int = 500
     time_isi_ms: int = 1000
     time_both_ms: int = 500
@@ -54,6 +57,9 @@ class ImageSessionConfig:
     defocus_cpd: float = 4.0
     defocus_repetitions: int = 5
     binocular_fusion_dominant_weight: float = 0.5
+    # model3：ε=kV^γ。γ大でWTAに近づく。
+    sp_model_gain_k: float = 1.0
+    sp_model_gain_gamma: float = 1.0
 
     def __post_init__(self) -> None:
         if self.task_mode not in {"matching", "rating"}:
@@ -73,6 +79,14 @@ class ImageSessionConfig:
             raise ValueError("Invalid update interval or gamut tolerance")
         if self.task_mode == "matching" and self.background_color.lower() != "black":
             raise ValueError("Matching requires black blank regions")
+        for name in (
+            "pre_stimulus_blank_ms",
+            "foreground_preview_ms",
+            "post_foreground_blank_ms",
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
         # 有効条件をセッション生成時にtupleへ固定し、開始後の変更を防ぐ。
         if type(self.repetitions_per_pair) is not int or self.repetitions_per_pair < 1:
             raise ValueError("repetitions_per_pair must be a positive integer")
@@ -198,6 +212,8 @@ def create_image_config(
         get_condition(condition_id)
     if not 0.0 <= config.binocular_fusion_dominant_weight <= 1.0:
         raise ValueError("binocular_fusion_dominant_weight must be in [0, 1]")
+    if config.sp_model_gain_k < 0 or config.sp_model_gain_gamma <= 0:
+        raise ValueError("sp_model_gain_k must be >=0 and sp_model_gain_gamma > 0")
     config.result_root.mkdir(parents=True, exist_ok=True)
     config.participant_data_dir.mkdir(parents=True, exist_ok=True)
     config.selected_pairs_root.mkdir(parents=True, exist_ok=True)

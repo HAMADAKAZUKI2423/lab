@@ -21,8 +21,11 @@ CONDITIONS = {
     'SP_ALPHA_BLEND': 'SP alpha blend',
     'SP_NO_DEFOCUS': 'SP no defocus',
     'SP_DEFOCUS_SIMPLE': 'SP fused',
-    'SP_REPRO_LEFT_EYE': 'SP reproduce Left',
-    'SP_REPRO_RIGHT_EYE': 'SP reproduce Right',
+    'SP_REPRO_LEFT_EYE': 'SP reproduce Left (monocular)',
+    'SP_REPRO_RIGHT_EYE': 'SP reproduce Right (monocular)',
+    'SP_MODEL_MEAN': 'SP model1 mean',
+    'SP_MODEL_WTA': 'SP model2 WTA',
+    'SP_MODEL_GAIN': 'SP model3 gain',
 }
 DP_EYES = ('DP_MONO_DOM', 'DP_MONO_NONDOM')
 PAIR_COLUMNS = ['Pair_ID', 'Difference_Group', 'Group_Rank']
@@ -63,7 +66,8 @@ def load_results(target, direction='all', control='gain'):
             keys = keys + ['Matching_Direction']
         else:
             raise ValueError(f'Unknown direction: {direction}')
-    required = ['ID', 'Condition', *PAIR_COLUMNS, 'Dominance', 'Match_Status', 'Matched_Gain']
+    required = ['ID', 'Condition', *PAIR_COLUMNS, 'Dominance', 'Observed_Eye',
+                'Match_Status', 'Matched_Gain']
     missing = set(required) - set(frame.columns)
     if frame.empty or missing:
         raise ValueError(f'Empty matching data or missing columns: {sorted(missing)}')
@@ -79,6 +83,28 @@ def load_results(target, direction='all', control='gain'):
         raise ValueError('Dominance must be one consistent Left/Right value')
     if not frame['Condition'].isin(CONDITIONS).all():
         raise ValueError('Unknown matching condition')
+    dom = frame['Dominance'].iloc[0]
+    oth = 'Left' if dom == 'Right' else 'Right'
+    frame['Observed_Eye'] = frame['Observed_Eye'].fillna('').str.strip().str.capitalize()
+    cond = frame['Condition']
+    expected_eye = np.select(
+        [
+            cond.eq('DP_MONO_DOM'),
+            cond.eq('DP_MONO_NONDOM'),
+            cond.eq('SP_REPRO_LEFT_EYE'),
+            cond.eq('SP_REPRO_RIGHT_EYE'),
+        ],
+        [dom, oth, 'Left', 'Right'],
+        'Both',
+    )
+    invalid_eye = frame['Observed_Eye'].ne(
+        pd.Series(expected_eye, index=frame.index)
+    )
+    if invalid_eye.any():
+        details = frame.loc[
+            invalid_eye, ['Condition', 'Observed_Eye']
+        ].drop_duplicates().to_dict('records')
+        raise ValueError(f'Observed_Eye does not match condition: {details}')
     if control=='gain' and not set(DP_EYES).issubset(set(frame['Condition'])):
         raise ValueError('Both DP_MONO_DOM and DP_MONO_NONDOM are required for the 3 figures')
     allowed = ['matched', 'above_range', 'below_range', 'cannot_judge']
@@ -115,11 +141,12 @@ def load_results(target, direction='all', control='gain'):
         raise ValueError('Matched_Gain must be finite and in [0,1] for matched trials')
     # 範囲外・判断不能は一致値として平均しない。Final_Gainへの代替もしない。
     frame.loc[~matched, 'Gain'] = np.nan
-    # 左右差解析用: 観察眼(SP再現は再現眼)を反転時に入れ替えた「画像内容の眼」。
-    dom = frame['Dominance'].iloc[0]; oth = 'Left' if dom == 'Right' else 'Right'
-    cond = frame['Condition']
-    eye = np.select([cond.eq('DP_MONO_DOM'), cond.eq('DP_MONO_NONDOM'), cond.str.endswith('_LEFT'), cond.str.endswith('_RIGHT')],
-                    [dom, oth, 'Left', 'Right'], '')
+    # 左右差解析用: 単眼条件の検証済み観察眼を、反転時に入れ替えた「画像内容の眼」。
+    monocular = cond.isin(
+        ('DP_MONO_DOM', 'DP_MONO_NONDOM',
+         'SP_REPRO_LEFT_EYE', 'SP_REPRO_RIGHT_EYE')
+    )
+    eye = frame['Observed_Eye'].where(monocular, '')
     mirrored = (frame['Mirrored'].astype(str).str.strip().str.lower().eq('true') if 'Mirrored' in frame
                 else pd.Series(False, index=frame.index))
     flip = {'Left': 'Right', 'Right': 'Left'}

@@ -19,6 +19,7 @@ EXTRA_FIELDS=['Control_Kind','Repetition','Mirrored','Initial_Alpha','Final_Alph
  'Reference_Reproduction_Method','Reference_OutOfGamut_Ratio',
  'Reference_Total_Target_Y_cd_m2','Reference_Total_Quantized_Y_cd_m2',
  'Reference_FG_Alpha','Reference_BG_Alpha','Reference_Blend_Space',
+ 'Combination_Model','Model_k','Model_gamma','Model_Left_Weight_Mean','Weight_Source',
  'Reference_FG_Weighted_Target_Y_cd_m2']
 MATCHING_FIELDS=[f for f in RESULT_FIELDS if f!='Score']+EXTRA_FIELDS
 HISTORY_FIELDS=['Control_Kind','Repetition','Requested_Alpha','Displayed_Alpha','ID','Trial_ID','Condition','Pair_ID','Elapsed_s','Requested_Gain','Displayed_Gain','Event']
@@ -78,9 +79,7 @@ def trial_base(app,trial):
       'Mirrored':trial.mirrored,
       'Initial_Alpha':initial if alpha else '',
       'Task_Mode':'matching','Initial_Gain':'' if alpha else initial,
-      'Reference_Observed_Eye':(
-          'Left' if app.participant_dominance.get().strip().capitalize() == 'Right' else 'Right'
-      ) if trial.condition_id == 'DP_MONO_NONDOM' else 'Right',
+      'Reference_Observed_Eye':row['Observed_Eye'],
       'Reference_Center_Deg':app.session_config.reference_center_deg,
       'Test_Center_Deg':app.session_config.test_center_deg,
       'Reference_Gain':app.session_config.reference_gain})

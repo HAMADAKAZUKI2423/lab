@@ -527,8 +527,7 @@ class ImageExperimentApp(ExperimentBaseUI):
             text=(
                 f"Block {trial.block_id}/{len(self.condition_order)}\n"
                 f"{spec.label}\n\n{eye_instruction}\n"
-                f"{self.session_config.trials_per_condition} trials; "
-                f"a short break follows trial {self.session_config.trials_before_break}."
+                f"{self.session_config.trials_per_condition} trials."
             ),
             bg="gray",
             fg="white",

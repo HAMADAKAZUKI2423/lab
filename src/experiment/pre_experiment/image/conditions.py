@@ -13,6 +13,9 @@ ConditionId = Literal[
     "SP_DEFOCUS_SIMPLE",
     "SP_REPRO_LEFT_EYE",
     "SP_REPRO_RIGHT_EYE",
+    "SP_MODEL_MEAN",
+    "SP_MODEL_WTA",
+    "SP_MODEL_GAIN",
 ]
 EyeName = Literal["Left", "Right"]
 ReproducedEye = Literal["", "Both", "Left", "Right"]
@@ -24,10 +27,12 @@ class ImageConditionSpec:
     label: str
     plane_mode: Literal["dual", "single"]
     viewing_mode: Literal["binocular", "monocular"]
-    reference_eye: Literal["dominant", "non_dominant", "both"]
+    reference_eye: Literal["dominant", "non_dominant", "both", "left", "right"]
     defocus_mode: Literal["physical", "none", "matched_simulation"]
     disparity_mode: Literal["physical", "none", "simple"]
     reproduced_eye: ReproducedEye = ""
+    # 左右眼像の合成モデル：mean=1/2平均、wta=視認性WTA、gain=正規化ゲイン。
+    combination_model: Literal["", "mean", "wta", "gain"] = ""
 
 
 # 条件定義はすべて残す。実行対象はENABLED_CONDITION_IDSだけで切り替える。
@@ -59,18 +64,24 @@ ALL_CONDITION_SPECS: tuple[ImageConditionSpec, ...] = (
     ),
     ImageConditionSpec(
         "SP_REPRO_LEFT_EYE",
-        "Single Plane / reproduce left-eye view",
-        "single", "binocular", "both", "matched_simulation", "simple", "Left",
+        "Single Plane / reproduce left-eye view (monocular)",
+        "single", "monocular", "left", "matched_simulation", "simple", "Left",
     ),
     ImageConditionSpec(
         "SP_REPRO_RIGHT_EYE",
-        "Single Plane / reproduce right-eye view",
-        "single", "binocular", "both", "matched_simulation", "simple", "Right",
+        "Single Plane / reproduce right-eye view (monocular)",
+        "single", "monocular", "right", "matched_simulation", "simple", "Right",
     ),
 )
 ALL_CONDITION_SPECS += (
     ImageConditionSpec("SP_ALPHA_BLEND", "Single Plane / alpha blend",
                        "single", "binocular", "both", "none", "none"),
+    ImageConditionSpec("SP_MODEL_MEAN", "Single Plane / model1 mean",
+                       "single", "binocular", "both", "matched_simulation", "simple", "Both", "mean"),
+    ImageConditionSpec("SP_MODEL_WTA", "Single Plane / model2 WTA",
+                       "single", "binocular", "both", "matched_simulation", "simple", "Both", "wta"),
+    ImageConditionSpec("SP_MODEL_GAIN", "Single Plane / model3 normalized gain",
+                       "single", "binocular", "both", "matched_simulation", "simple", "Both", "gain"),
 )
 CONDITION_BY_ID = {spec.condition_id: spec for spec in ALL_CONDITION_SPECS}
 
@@ -78,7 +89,7 @@ CONDITION_BY_ID = {spec.condition_id: spec for spec in ALL_CONDITION_SPECS}
 # ファイル保存後、実験を再起動する。起動済みセッションの設定は変更しない。
 # matching：DP3条件＋SP_ALPHA_BLEND、10組×反復数（既定1）、計40×n試行。
 # SP_DEFOCUS_SIMPLEは、defocus＋単純視差で作った左右眼像を融合して両眼観察。
-# SP_REPRO_LEFT/RIGHT_EYEも観察は両眼。再現する眼像だけが異なる。
+# SP_REPRO_LEFT/RIGHT_EYEは対応する左眼/右眼だけで単眼観察する。
 CONDITION_ENABLED: dict[ConditionId, bool] = {
     "DP_BINOCULAR":       True,   # DP両眼
     "DP_MONO_DOM":        True,   # DP利き眼のみ
@@ -86,8 +97,11 @@ CONDITION_ENABLED: dict[ConditionId, bool] = {
     "SP_ALPHA_BLEND":     True,  # matchingのみ：α値を調整
     "SP_NO_DEFOCUS":      False,  # SP：defocusなし
     "SP_DEFOCUS_SIMPLE":  False,   # SP：defocus＋左右眼像融合
-    "SP_REPRO_LEFT_EYE":  True, # SP：左眼像を再現、両眼観察
-    "SP_REPRO_RIGHT_EYE": True, # SP：右眼像を再現、両眼観察
+    "SP_REPRO_LEFT_EYE":  False, # SP：左眼像を再現、左眼のみで観察
+    "SP_REPRO_RIGHT_EYE": False, # SP：右眼像を再現、右眼のみで観察
+    "SP_MODEL_MEAN":      True,  # SP：model1 左右眼像1/2平均（線形）
+    "SP_MODEL_WTA":       True,  # SP：model2 視認性WTA
+    "SP_MODEL_GAIN":      True,  # SP：model3 正規化ゲイン
 }
 
 
@@ -146,6 +160,10 @@ def resolve_reference_eye(spec: ImageConditionSpec, dominant_eye: str) -> str:
         return dominant
     if spec.reference_eye == "non_dominant":
         return opposite_eye(dominant)
+    if spec.reference_eye == "left":
+        return "Left"
+    if spec.reference_eye == "right":
+        return "Right"
     return "Both"
 
 

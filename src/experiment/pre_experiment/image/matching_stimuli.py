@@ -8,6 +8,25 @@ from .conditions import get_condition, resolve_observed_eye
 from .stimuli import (_prepare_sources, _color_correct_foreground, _apply_channel_gamma,
                       _blur_eye_background, RESAMPLE)
 from .disparity import right_aligned_disparity_px, make_constant_eye_views, fuse_eye_views
+from .selected_pairs import load_eye_vismaps
+
+
+def _model_left_weight(trial,spec,config,size):
+    """前景領域の左眼重みw_L（w_R=1-w_L）。マップは選定時条件で事前計算済み。"""
+    w,h=size
+    if spec.combination_model=='mean': return np.full((h,w),0.5),''
+    right_map,left_map,source=load_eye_vismaps(trial.pair.pair_dir)
+    if trial.mirrored:
+        # 反転時は内容眼が入れ替わる：右眼=元左眼の鏡像、左眼=元右眼の鏡像。
+        right_map,left_map=np.fliplr(left_map),np.fliplr(right_map)
+    fit=lambda v: np.asarray(Image.fromarray(np.clip(v,0,1).astype(np.float32),'F').resize(
+        (w,h),Image.Resampling.BILINEAR),dtype=np.float64)
+    vr,vl=fit(right_map),fit(left_map)
+    if spec.combination_model=='wta':
+        return np.where(vl>vr,1.0,np.where(vl<vr,0.0,0.5)),source
+    el=config.sp_model_gain_k*vl**config.sp_model_gain_gamma
+    er=config.sp_model_gain_k*vr**config.sp_model_gain_gamma
+    return (1+el)/(2+el+er),source
 
 CALIBRATION_FILES=('C.csv','T_prime.csv','R_prime.csv','gamma_bg.csv','gamma_fg.csv')
 
@@ -51,6 +70,7 @@ class MatchingStimulus:
     foreground_linear: np.ndarray
     background_xyz: np.ndarray | None
     physical_background: Image.Image | None
+    foreground_only_image: Image.Image
     reference_image: Image.Image
     reference_gain: float
     calibration: object
@@ -129,7 +149,7 @@ def prepare_matching_stimulus(trial,config,*,layout,calibration,dominant_eye,lef
     if reference_gamut:
         print(f"WARN: reference optical addition out-of-gamut ratio={reference_gamut:.6f}; clipping linear RGB to [0,1].",flush=True)
     meta={'Task_Mode':'matching','Plane_Mode':spec.plane_mode,'Viewing_Mode':spec.viewing_mode,
-          'Reference_Observed_Eye':'Right',
+          'Reference_Observed_Eye':resolve_observed_eye(spec,dominant_eye),
           'Reproduced_Eye':spec.reproduced_eye,'Defocus_Mode':spec.defocus_mode,
           'Disparity_Mode':spec.disparity_mode,'Disparity_Px':0,
           'Original_FG_Y_cd_m2':original_y,'Reference_Gain':config.reference_gain,
@@ -167,16 +187,31 @@ def prepare_matching_stimulus(trial,config,*,layout,calibration,dominant_eye,lef
             left=_blur_eye_background(left,pupil_mm=left_pupil_mm,config=config,pixels_per_degree=ppd)
         if spec.reproduced_eye=='Left': reproduced=left
         elif spec.reproduced_eye=='Right': reproduced=right
+        elif spec.combination_model: reproduced=right
         elif spec.reproduced_eye=='Both':
             reproduced=fuse_eye_views(right,left,dominant_eye=dominant_eye,dominant_weight=config.binocular_fusion_dominant_weight)
         else: reproduced=sp_bg
-        background_xyz=decode(reproduced,calibration.gamma_bg) @ calibration.t_prime.T
         bw,bh=reproduced.size; fw,fh=corrected.size
         if fw>bw or fh>bh: raise ValueError("Foreground does not fit inside SP background")
         x=(bw-fw)//2; y=(bh-fh)//2
+        if spec.combination_model:
+            # I_SP(g)=w_L(B_L+gF)+w_R(B_R+gF)=w_L B_L+w_R B_R+gF（w_L+w_R=1、線形RGB）。
+            # 前景外は視認性未定義のため0.5。
+            w_left=np.full((bh,bw,1),0.5)
+            weight,source=_model_left_weight(trial,spec,config,(fw,fh))
+            w_left[y:y+fh,x:x+fw,0]=weight
+            bg_linear=(w_left*decode(left,calibration.gamma_bg)
+                       +(1-w_left)*decode(right,calibration.gamma_bg))
+            meta.update({'Combination_Model':spec.combination_model,
+                         'Model_k':config.sp_model_gain_k if spec.combination_model=='gain' else '',
+                         'Model_gamma':config.sp_model_gain_gamma if spec.combination_model=='gain' else '',
+                         'Model_Left_Weight_Mean':float(np.mean(weight)),'Weight_Source':source})
+        else: bg_linear=decode(reproduced,calibration.gamma_bg)
+        background_xyz=bg_linear @ calibration.t_prime.T
         layer=np.zeros((bh,bw,3)); layer[y:y+fh,x:x+fw]=fg
         fg=layer; fg_slice=(slice(y,y+fh),slice(x,x+fw))
     stim=MatchingStimulus(fg,background_xyz,physical,
+                         source_out.transpose(Image.Transpose.FLIP_LEFT_RIGHT),
                          reference_composite.transpose(Image.Transpose.FLIP_LEFT_RIGHT),config.reference_gain,
                          calibration,meta,config.gamut_tolerance,fg_slice,0.,
                          reference_background=None, control_kind=meta['Control_Kind'])
